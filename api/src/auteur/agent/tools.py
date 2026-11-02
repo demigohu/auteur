@@ -27,7 +27,7 @@ from auteur.timeline.models import (
 )
 from auteur.timeline.ops import (
     MIN_CLIP, AddAudio, AddClip, AddOverlay, AddText, Delete, DeleteAudio, DeleteOverlay, DeleteText, Op, SetCrop,
-    SetEffects, SetFinish, SetGrade, SetSpeed, SetTransition, SetZoom, Split, Trim, apply, new_id,
+    SetEffects, SetFinish, SetGrade, SetSpeed, SetTransition, SetZoom, SpeedRamp, Split, Trim, apply, new_id,
 )
 from auteur.tracking import Track, load_track, track_media
 from auteur.transcript import Transcript, cut_ranges, transcribe
@@ -665,9 +665,19 @@ async def transisi(ctx: ToolContext, a: TransisiArgs) -> str:
 class KecepatanArgs(ToolArgs):
     clip_ids: list[str]
     speed: float = Field(ge=0.25, le=4, description="0.5 = slow motion (best on 60fps footage), 2-4 = time-lapse feel")
+    ramp_mulai: float | None = Field(
+        None, description="Speed ramp: timeline time (inside the single clip given) where the clip eases from its "
+        "current speed into `speed`, the classic 'normal then slow motion' move",
+    )
+    ramp_durasi: float = Field(0.6, ge=0.2, le=3, description="Seconds the ramp takes")
 
 
 async def kecepatan(ctx: ToolContext, a: KecepatanArgs) -> str:
+    if a.ramp_mulai is not None:
+        if len(a.clip_ids) != 1:
+            raise ToolError("A speed ramp works on exactly one clip")
+        ctx.commit(f"Speed ramp ke {a.speed}x", [SpeedRamp(clip_id=a.clip_ids[0], at=a.ramp_mulai, to_speed=a.speed, ramp=a.ramp_durasi)])
+        return f"Ramped into {a.speed}x from {a.ramp_mulai:.2f}s over {a.ramp_durasi}s.\n" + describe_timeline(ctx.project)
     ctx.commit(f"Kecepatan {a.speed}x", [SetSpeed(clip_id=c.id, speed=a.speed) for c in ctx.clips(a.clip_ids)])
     slow = [c for c in ctx.clips(a.clip_ids) if a.speed < 1 and ctx.project.media[c.media_id].fps < 50]
     note = (f" Note: {[c.id for c in slow]} were shot below 50fps, so slow motion will look a bit choppy."
@@ -883,7 +893,8 @@ TOOLS = [
     Tool("potong_di_beat", "Move the cuts between clips onto the music's beat grid. Call after `susun` and `musik`.",
          PotongDiBeatArgs, potong_di_beat),
     Tool("transisi", "Set transitions between clips: crossfade, dip to black/white, or plain cuts.", TransisiArgs, transisi),
-    Tool("kecepatan", "Change clip speed: slow motion (0.5) or sped up (2-4). Sped/slowed clips are muted.",
+    Tool("kecepatan", "Change clip speed: slow motion (0.5) or sped up (2-4), or a speed ramp into it with "
+         "ramp_mulai. Sped/slowed clips are muted.",
          KecepatanArgs, kecepatan),
     Tool("zoom", "Slow push-in (or pull-out) over clips, Ken Burns style.", ZoomArgs, zoom),
     Tool("sinematik", "Cinema finishing for the whole video: letterbox bars and film grain.", SinematikArgs, sinematik),

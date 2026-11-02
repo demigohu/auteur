@@ -2,7 +2,9 @@
 
 import { Trash } from "@phosphor-icons/react";
 import { useEditor } from "@/lib/store";
-import type { AudioItem, Clip, Overlay, Transition } from "@/lib/timeline";
+import { cropAt, upsertKey, volumeAt } from "@/lib/keys";
+import { clipDuration, clipStarts } from "@/lib/time";
+import type { AudioItem, Clip, CropKey, Overlay, Transition, VolumeKey } from "@/lib/timeline";
 
 const SPEEDS = [0.25, 0.5, 0.75, 1, 1.5, 2, 4];
 const TRANSITIONS: { id: Transition["kind"] | "potong"; label: string }[] = [
@@ -147,6 +149,33 @@ export function ClipMotion({ clip, isFirst, locked }: { clip: Clip; isFirst: boo
         format={(v) => `${Math.round(v * 100)}%`}
         onCommit={(v) => applyOps("Volume klip", [{ op: "set_volume", clip_id: clip.id, volume: v }])}
       />
+      <VolumeKeys clip={clip} />
+      <div className="space-y-1.5">
+        <p className="text-xs text-text">Speed ramp di playhead</p>
+        <div className="flex gap-1.5">
+          {[
+            { to: 0.5, label: "Ke slow-mo" },
+            { to: 1, label: "Ke normal" },
+            { to: 2, label: "Ke cepat" },
+          ].map((r) => (
+            <button
+              key={r.to}
+              type="button"
+              disabled={clip.speed === r.to}
+              onClick={() => {
+                const at = playheadIn(clip);
+                const start = at === null ? null : useEditor.getState().time;
+                if (start !== null)
+                  applyOps(`Speed ramp ke ${r.to}x`, [{ op: "speed_ramp", clip_id: clip.id, at: Number(start.toFixed(3)), to_speed: r.to }]);
+              }}
+              className="rounded-md border border-line px-2 py-1 text-[11px] text-muted transition hover:border-line-strong hover:text-text active:scale-[0.97] disabled:opacity-35"
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+        <p className="text-[11px] text-faint">Taruh playhead di dalam klip ini dulu.</p>
+      </div>
     </fieldset>
   );
 }
@@ -219,6 +248,46 @@ export function MusicInspector({ item, locked }: { item: AudioItem; locked: bool
   );
 }
 
+/** Volume keyframes at the playhead: fade the clip's own sound in or out anywhere. */
+function VolumeKeys({ clip }: { clip: Clip }) {
+  const applyOps = useEditor((s) => s.applyOps);
+  const seek = useEditor((s) => s.seek);
+  const keys = clip.volume_keys;
+  const clipStart = useEditor((s) => {
+    const clips = s.project?.timeline.clips ?? [];
+    return clipStarts(clips)[clips.findIndex((c) => c.id === clip.id)] ?? 0;
+  });
+  const commit = (next: VolumeKey[], label: string) => applyOps(label, [{ op: "set_volume_keys", clip_id: clip.id, keys: next }]);
+  const add = (v: number | null) => {
+    const at = playheadIn(clip);
+    if (at === null) return;
+    commit(upsertKey(keys, { t: at, v: v ?? volumeAt(keys, at) }), "Keyframe volume");
+  };
+  return (
+    <div className="space-y-1.5">
+      <KeyList
+        keys={keys}
+        format={(k) => `${Math.round(k.v * 100)}%`}
+        onSeek={(k) => seek(clipStart + k.t)}
+        onRemove={(k) => commit(keys.filter((x) => x !== k), "Hapus keyframe volume")}
+      />
+      <div className="flex gap-3 text-[11px] text-muted">
+        <button type="button" onClick={() => add(null)} className="transition hover:text-text">
+          ◆ Keyframe volume
+        </button>
+        <button type="button" onClick={() => add(0)} className="transition hover:text-text">
+          ◆ Senyap di playhead
+        </button>
+        {keys.length > 0 && (
+          <button type="button" onClick={() => commit([], "Hapus keyframe volume")} className="transition hover:text-danger">
+            Hapus semua
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /** Whole-video finishing, shown when nothing is selected. */
 export function FinishPanel({ locked }: { locked: boolean }) {
   const applyOps = useEditor((s) => s.applyOps);
@@ -253,39 +322,101 @@ export function FinishPanel({ locked }: { locked: boolean }) {
  * Manual framing: where the output-aspect window sits in the source (one crop key). Only the axis
  * that has room to move is shown; a subject-following reframe is replaced when you set it by hand.
  */
+/** Playhead position inside a clip (clip-local seconds), or null when the playhead is elsewhere. */
+function playheadIn(clip: Clip): number | null {
+  const s = useEditor.getState();
+  const clips = s.project?.timeline.clips ?? [];
+  const i = clips.findIndex((c) => c.id === clip.id);
+  if (i < 0) return null;
+  const local = s.time - clipStarts(clips)[i];
+  return local >= 0 && local <= clipDuration(clip) ? Number(local.toFixed(3)) : null;
+}
+
+function KeyList<K extends { t: number }>(props: { keys: K[]; format: (k: K) => string; onRemove: (k: K) => void; onSeek: (k: K) => void }) {
+  if (props.keys.length < 2) return null;
+  return (
+    <div className="flex flex-wrap gap-1">
+      {props.keys.map((k) => (
+        <span key={k.t} className="flex items-center gap-1 rounded-md border border-line bg-panel-2 px-1.5 py-0.5 font-mono text-[10px] text-text">
+          <button type="button" onClick={() => props.onSeek(k)} title="Ke keyframe ini" className="hover:text-accent">
+            ◆ {k.t.toFixed(2)}s {props.format(k)}
+          </button>
+          <button type="button" aria-label="Hapus keyframe" onClick={() => props.onRemove(k)} className="text-muted hover:text-danger">
+            <Trash size={10} />
+          </button>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Manual framing: where the output-aspect window sits in the source. One key = a fixed position;
+ * add keyframes at the playhead to pan over time. Only the axis with room to move is shown, and a
+ * subject-following reframe is replaced when you set it by hand.
+ */
 export function FramePosition({ clip, locked }: { clip: Clip; locked: boolean }) {
   const applyOps = useEditor((s) => s.applyOps);
+  const seek = useEditor((s) => s.seek);
   const media = useEditor((s) => s.project?.media.find((m) => m.id === clip.media_id));
   const aspect = useEditor((s) => s.project?.timeline.aspect ?? "16:9");
+  const clipStart = useEditor((s) => {
+    const clips = s.project?.timeline.clips ?? [];
+    return clipStarts(clips)[clips.findIndex((c) => c.id === clip.id)] ?? 0;
+  });
   if (!media || !media.width) return null;
   const [ow, oh] = aspect === "16:9" ? [16, 9] : aspect === "9:16" ? [9, 16] : [1, 1];
   const srcRatio = media.width / media.height;
   const outRatio = ow / oh;
   if (Math.abs(srcRatio - outRatio) < 0.01) return null;
   const horizontal = srcRatio > outRatio;
-  const key = clip.crop[0] ?? { t: 0, cx: 0.5, cy: 0.5 };
-  const set = (v: number) =>
-    applyOps("Posisi bingkai", [
-      { op: "set_crop", clip_id: clip.id, keys: [{ t: 0, cx: horizontal ? v : key.cx, cy: horizontal ? key.cy : v }], follow: null },
-    ]);
+  const keys = clip.crop;
+  const commit = (next: CropKey[], label = "Posisi bingkai") => applyOps(label, [{ op: "set_crop", clip_id: clip.id, keys: next, follow: null }]);
+  const withValue = (at: number, v: number): CropKey => {
+    const cur = cropAt(keys, at);
+    return { t: at, cx: horizontal ? v : cur.cx, cy: horizontal ? cur.cy : v };
+  };
+  const onSlider = (v: number) => {
+    // With keyframes, the slider edits the key at the playhead; otherwise it sets one fixed position.
+    const at = playheadIn(clip);
+    if (keys.length >= 2 && at !== null) commit(upsertKey(keys, withValue(at, v)));
+    else commit([withValue(0, v)]);
+  };
+  const addKey = () => {
+    const at = playheadIn(clip);
+    if (at === null) return;
+    const cur = cropAt(keys, at);
+    const base = keys.length ? keys : [{ t: 0, cx: cur.cx, cy: cur.cy }];
+    commit(upsertKey(base, { t: at, cx: cur.cx, cy: cur.cy }), "Keyframe bingkai");
+  };
+  const first = keys[0] ?? { t: 0, cx: 0.5, cy: 0.5 };
   return (
     <fieldset disabled={locked} className="space-y-2 disabled:opacity-50">
       <legend className="mb-2 text-xs font-medium text-muted">Bingkai {aspect}</legend>
       {clip.follow ? (
         <p className="text-[11px] leading-relaxed text-faint">
-          Bingkai mengikuti subjek otomatis. Menggeser slider di bawah menggantinya dengan posisi tetap.
+          Bingkai mengikuti subjek otomatis. Mengubahnya di sini menggantinya dengan posisi manual.
         </p>
       ) : null}
       <Slider
         id="frame-pos"
-        label={horizontal ? "Posisi kiri-kanan" : "Posisi atas-bawah"}
-        value={horizontal ? key.cx : key.cy}
+        label={`${horizontal ? "Posisi kiri-kanan" : "Posisi atas-bawah"}${keys.length >= 2 ? " (di playhead)" : ""}`}
+        value={horizontal ? first.cx : first.cy}
         min={0}
         max={1}
         step={0.01}
         format={(v) => `${Math.round(v * 100)}%`}
-        onCommit={set}
+        onCommit={onSlider}
       />
+      <KeyList
+        keys={keys}
+        format={(k) => `${Math.round((horizontal ? k.cx : k.cy) * 100)}%`}
+        onSeek={(k) => seek(clipStart + k.t)}
+        onRemove={(k) => commit(keys.filter((x) => x !== k), "Hapus keyframe bingkai")}
+      />
+      <button type="button" onClick={addKey} className="text-[11px] text-muted transition hover:text-text">
+        ◆ Tambah keyframe di playhead
+      </button>
     </fieldset>
   );
 }

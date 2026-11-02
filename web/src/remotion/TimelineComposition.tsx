@@ -4,8 +4,9 @@ import { Audio, Video } from "@remotion/media";
 import { AbsoluteFill, Sequence, useCurrentFrame, useVideoConfig } from "remotion";
 import { fileUrl, type MediaView } from "@/lib/api";
 import { clipDuration, clipStarts, timelineDuration, toFrames } from "@/lib/time";
-import type { AudioItem, Clip, CropKey, Grade, Overlay, Timeline, Transition } from "@/lib/timeline";
+import type { AudioItem, Clip, Grade, Overlay, Timeline, Transition } from "@/lib/timeline";
 import { isIdentity, NEUTRAL_GRADE, saturationMatrix, tableValues, vignetteAt } from "@/lib/grade";
+import { cropAt, volumeAt } from "@/lib/keys";
 import { boxAt, type NormBox, type TrackData } from "@/lib/tracks";
 import { TextLayer } from "./TextLayer";
 
@@ -49,20 +50,6 @@ function Vignette({ grade }: { grade: Grade }) {
   return <AbsoluteFill style={{ background: `radial-gradient(ellipse farthest-corner at center, ${stops.join(", ")})` }} />;
 }
 
-function interpolateKeys(keys: CropKey[], t: number): { cx: number; cy: number } {
-  if (!keys.length) return { cx: 0.5, cy: 0.5 };
-  if (t <= keys[0].t) return keys[0];
-  for (let i = 0; i < keys.length - 1; i++) {
-    const a = keys[i];
-    const b = keys[i + 1];
-    if (t < b.t) {
-      const k = (t - a.t) / Math.max(b.t - a.t, 1e-3);
-      return { cx: a.cx + (b.cx - a.cx) * k, cy: a.cy + (b.cy - a.cy) * k };
-    }
-  }
-  return keys[keys.length - 1];
-}
-
 type Place = (b: NormBox) => { left: number; top: number; width: number; height: number };
 
 type Joins = { crossIn: number; crossOut: number; dipIn: Transition | null; dipOut: Transition | null };
@@ -94,7 +81,7 @@ function ClipLayer(props: {
   const scale = Math.max(W / media.width, H / media.height);
   const vw = media.width * scale;
   const vh = media.height * scale;
-  const { cx, cy } = interpolateKeys(clip.crop, frame / fps);
+  const { cx, cy } = cropAt(clip.crop, frame / fps);
   const left = Math.min(0, Math.max(W - vw, W / 2 - cx * vw));
   const top = Math.min(0, Math.max(H - vh, H / 2 - cy * vh));
   const t = clip.src_in + local * clip.speed;
@@ -116,7 +103,7 @@ function ClipLayer(props: {
         trimBefore={Math.round(clip.src_in * fps)}
         playbackRate={clip.speed}
         muted={!audible}
-        volume={audible ? clip.volume * audioIn * audioOut : 0}
+        volume={audible ? clip.volume * volumeAt(clip.volume_keys, local) * audioIn * audioOut : 0}
         objectFit="fill"
         style={{
           position: "absolute", left, top, width: vw, height: vh,

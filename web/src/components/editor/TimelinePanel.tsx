@@ -4,6 +4,7 @@ import {
   ArrowArcLeft,
   ArrowArcRight,
   ArrowsInLineHorizontal,
+  ClipboardText,
   Copy,
   MagnetStraight,
   MagnifyingGlassMinus,
@@ -68,6 +69,8 @@ export function TimelinePanel() {
   const selectedOverlayId = useEditor((s) => s.selectedOverlayId);
   const selectedAudioId = useEditor((s) => s.selectedAudioId);
   const marks = useEditor((s) => s.marks);
+  const multiClipIds = useEditor((s) => s.multiClipIds);
+  const toggleMulti = useEditor((s) => s.toggleMulti);
   const [drag, setDrag] = useState<Drag | null>(null);
   const [snap, setSnap] = useState(true);
   const [dropAt, setDropAt] = useState<{ track: "V1" | "V2" | "A1"; t: number } | null>(null);
@@ -136,13 +139,10 @@ export function TimelinePanel() {
     const i = starts.findIndex((s, k) => time > s + MIN_CLIP && time < s + clipDuration(shown[k]) - MIN_CLIP);
     if (i >= 0) applyOps("Potong klip di playhead", [{ op: "split", clip_id: clips[i].id, at: Number(time.toFixed(3)) }]);
   };
-  const deleteSelected = () => {
-    if (selectedClipId) applyOps("Hapus klip", [{ op: "delete", clip_id: selectedClipId }]);
-    else if (selectedTextId) applyOps("Hapus teks", [{ op: "delete_text", text_id: selectedTextId }]);
-    else if (selectedOverlayId) applyOps("Hapus B-roll", [{ op: "delete_overlay", overlay_id: selectedOverlayId }]);
-    else if (selectedAudioId) applyOps("Hapus musik", [{ op: "delete_audio", audio_id: selectedAudioId }]);
-    select({});
-  };
+  const deleteSelected = () => useEditor.getState().deleteSelection();
+  // The track row under the pointer, for dragging items between V1 and V2.
+  const trackAt = (e: React.PointerEvent) =>
+    document.elementFromPoint(e.clientX, e.clientY)?.closest("[data-track]")?.getAttribute("data-track");
   const addText = () => {
     const t = Number(useEditor.getState().time.toFixed(2));
     applyOps("Tambah teks", [{ op: "add_text", text: "Judul", start: t, end: Number((t + 2).toFixed(2)), style: "title", y: 0.2 }]);
@@ -221,11 +221,22 @@ export function TimelinePanel() {
       : [{ op: "update_audio", audio_id: item.id, ...patch }];
   }
 
-  function onPointerUp() {
+  function onPointerUp(e: React.PointerEvent) {
     if (!drag) return;
     setDrag(null);
     if (drag.kind === "span") {
       if (Math.abs(drag.dt * px) < 3) return;
+      if (drag.span === "overlay" && drag.edge === "move" && trackAt(e) === "V1") {
+        // B-roll dropped onto the main track becomes a clip there.
+        const o = overlays.find((x) => x.id === drag.id)!;
+        const t = o.start + drag.dt;
+        const index = clips.filter((c, k) => starts[k] + clipDuration(c) / 2 < t).length;
+        applyOps("B-roll ke track utama", [
+          { op: "delete_overlay", overlay_id: o.id },
+          { op: "add_clip", media_id: o.media_id, src_in: o.src_in, src_out: o.src_out, index },
+        ]);
+        return;
+      }
       const label = { text: "Geser teks", overlay: "Geser B-roll", audio: "Geser musik" }[drag.span];
       applyOps(drag.edge === "move" ? label : label.replace("Geser", "Trim"), spanOps(drag));
       return;
@@ -240,8 +251,18 @@ export function TimelinePanel() {
       }
       return;
     }
-    if (Math.abs(drag.dx) < 4) {
-      select({ clip: drag.id });
+    if (Math.abs(drag.dx) < 4 && trackAt(e) !== "V2") {
+      if (e.shiftKey) toggleMulti(drag.id);
+      else select({ clip: drag.id });
+      return;
+    }
+    if (trackAt(e) === "V2") {
+      // A clip dragged up onto V2 becomes B-roll at the same moment.
+      const c = clips[i];
+      applyOps("Klip jadi B-roll", [
+        { op: "delete", clip_id: c.id },
+        { op: "add_overlay", media_id: c.media_id, src_in: c.src_in, src_out: c.src_out, start: Number(Math.max(0, starts[i] + drag.dx / px).toFixed(3)) },
+      ]);
       return;
     }
     const center = starts[i] + clipDuration(clips[i]) / 2 + drag.dx / px;
@@ -291,6 +312,16 @@ export function TimelinePanel() {
           disabled={locked || (!selectedClipId && !selectedTextId && !selectedOverlayId && !selectedAudioId)}
         >
           <Trash size={15} />
+        </ToolButton>
+        <ToolButton
+          label="Salin klip (⌘C), tempel di playhead (⌘V)"
+          onClick={() => {
+            useEditor.getState().copyClips();
+            useEditor.getState().pasteClips();
+          }}
+          disabled={locked || !selectedClipId}
+        >
+          <ClipboardText size={15} />
         </ToolButton>
         <span className="mx-1 h-4 w-px bg-line" />
         <ToolButton label="Undo (⌘Z)" onClick={undo} disabled={locked || !project.can_undo}>
@@ -362,7 +393,7 @@ export function TimelinePanel() {
                 left={starts[i] * px}
                 width={clipDuration(c) * px}
                 px={px}
-                selected={selectedClipId === c.id}
+                selected={selectedClipId === c.id || multiClipIds.includes(c.id)}
                 dragging={drag?.kind === "clip-move" && drag.id === c.id ? drag.dx : null}
                 locked={locked}
                 onMoveStart={(x) => setDrag({ kind: "clip-move", id: c.id, startX: x, dx: 0 })}
@@ -483,6 +514,7 @@ function Track(props: {
 }) {
   return (
     <div
+      data-track={props.label}
       className="relative flex border-b border-line"
       style={{ height: props.height + 12 }}
       onDragOver={props.onDragOver}

@@ -36,7 +36,10 @@ export interface Schema {
     | DeleteAudio
     | SetFinish
     | SetFps
-    | DuplicateClip;
+    | DuplicateClip
+    | SetVolumeKeys
+    | SpeedRamp
+    | PasteClips;
 }
 /**
  * This interface was referenced by `Schema`'s JSON-Schema
@@ -123,6 +126,10 @@ export interface Clip {
   effects: (Blur | Highlight)[];
   muted: boolean;
   volume: number;
+  /**
+   * Volume over time, multiplied with `volume`
+   */
+  volume_keys: VolumeKey[];
 }
 /**
  * Color adjustments, all 0 = untouched. Ranges are the safe bounds the renderer accepts.
@@ -265,6 +272,16 @@ export interface Highlight {
   dim_background: number;
 }
 /**
+ * Clip volume multiplier at a clip-local time (seconds on the timeline).
+ *
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "VolumeKey".
+ */
+export interface VolumeKey {
+  t: number;
+  v: number;
+}
+/**
  * A B-roll clip on the second video track, at an absolute timeline time.
  *
  * This interface was referenced by `Schema`'s JSON-Schema
@@ -394,6 +411,9 @@ export interface Commit {
     | SetFinish
     | SetFps
     | DuplicateClip
+    | SetVolumeKeys
+    | SpeedRamp
+    | PasteClips
   )[];
   run_id: string | null;
   at: string;
@@ -700,6 +720,53 @@ export interface DuplicateClip {
   op: "duplicate_clip";
   clip_id: string;
   new_clip_id: string | null;
+}
+/**
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "SetVolumeKeys".
+ */
+export interface SetVolumeKeys {
+  op: "set_volume_keys";
+  clip_id: string;
+  keys: VolumeKey[];
+}
+/**
+ * Ease from one speed to another starting at a timeline time: the clip is cut into short steps
+ * with gradually changing speed, and the rest of the clip continues at `to_speed`.
+ *
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "SpeedRamp".
+ */
+export interface SpeedRamp {
+  op: "speed_ramp";
+  clip_id: string;
+  /**
+   * Timeline time where the ramp starts
+   */
+  at: number;
+  to_speed: number;
+  /**
+   * Seconds (timeline) the change takes
+   */
+  ramp: number;
+  steps: number;
+}
+/**
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "PasteClips".
+ */
+export interface PasteClips {
+  op: "paste_clips";
+  /**
+   * Position in the video track
+   */
+  index: number;
+  /**
+   * Copied clips; they get new ids
+   *
+   * @minItems 1
+   */
+  clips: [Clip, ...Clip[]];
 }
 /**
  * This interface was referenced by `Schema`'s JSON-Schema

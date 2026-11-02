@@ -98,6 +98,13 @@ class Highlight(Model):
 Effect = Blur | Highlight
 
 
+class VolumeKey(Model):
+    """Clip volume multiplier at a clip-local time (seconds on the timeline)."""
+
+    t: float = Field(ge=0)
+    v: float = Field(ge=0, le=2)
+
+
 class Transition(Model):
     """How a clip enters from the previous one. A crossfade overlaps the two clips by `duration`;
     dips fade out to a color and back in without overlapping."""
@@ -127,6 +134,7 @@ class Clip(Model):
     effects: list[Effect] = Field(default_factory=list)
     muted: bool = False
     volume: float = Field(1.0, ge=0, le=2)
+    volume_keys: list[VolumeKey] = Field(default_factory=list, description="Volume over time, multiplied with `volume`")
 
     @property
     def src_duration(self) -> float:

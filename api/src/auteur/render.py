@@ -138,7 +138,9 @@ def build_command(
         if m.has_audio and c.has_sound:
             a = [
                 f"atrim=start={c.src_in}:end={c.src_out}", "asetpts=PTS-STARTPTS",
-                "aresample=48000", "aformat=channel_layouts=stereo", f"volume={c.volume:.3f}",
+                "aresample=48000", "aformat=channel_layouts=stereo",
+                (f"volume='{c.volume:.3f}*({_lerp_expr([(k.t, k.v) for k in c.volume_keys])})':eval=frame"
+                 if c.volume_keys else f"volume={c.volume:.3f}"),
                 f"afade=t=in:d={dip_in.duration / 2 if dip_in else 0.02:.3f}",
                 f"afade=t=out:st={max(c.duration - (dip_out.duration / 2 if dip_out else 0.02), 0):.3f}"
                 f":d={dip_out.duration / 2 if dip_out else 0.02:.3f}",

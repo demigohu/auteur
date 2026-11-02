@@ -529,6 +529,13 @@
           "maximum": 2,
           "minimum": 0,
           "type": "number"
+        },
+        "volume_keys": {
+          "description": "Volume over time, multiplied with `volume`",
+          "items": {
+            "$ref": "#/$defs/VolumeKey"
+          },
+          "type": "array"
         }
       },
       "required": [
@@ -544,7 +551,8 @@
         "transition",
         "effects",
         "muted",
-        "volume"
+        "volume",
+        "volume_keys"
       ],
       "title": "Clip",
       "type": "object"
@@ -579,6 +587,7 @@
                 "delete_text": "#/$defs/DeleteText",
                 "duplicate_clip": "#/$defs/DuplicateClip",
                 "move": "#/$defs/Move",
+                "paste_clips": "#/$defs/PasteClips",
                 "set_aspect": "#/$defs/SetAspect",
                 "set_crop": "#/$defs/SetCrop",
                 "set_effects": "#/$defs/SetEffects",
@@ -589,7 +598,9 @@
                 "set_speed": "#/$defs/SetSpeed",
                 "set_transition": "#/$defs/SetTransition",
                 "set_volume": "#/$defs/SetVolume",
+                "set_volume_keys": "#/$defs/SetVolumeKeys",
                 "set_zoom": "#/$defs/SetZoom",
+                "speed_ramp": "#/$defs/SpeedRamp",
                 "split": "#/$defs/Split",
                 "trim": "#/$defs/Trim",
                 "update_audio": "#/$defs/UpdateAudio",
@@ -676,6 +687,15 @@
               },
               {
                 "$ref": "#/$defs/DuplicateClip"
+              },
+              {
+                "$ref": "#/$defs/SetVolumeKeys"
+              },
+              {
+                "$ref": "#/$defs/SpeedRamp"
+              },
+              {
+                "$ref": "#/$defs/PasteClips"
               }
             ]
           },
@@ -1218,6 +1238,36 @@
       "title": "Overlay",
       "type": "object"
     },
+    "PasteClips": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "paste_clips",
+          "default": "paste_clips",
+          "type": "string"
+        },
+        "index": {
+          "description": "Position in the video track",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "clips": {
+          "description": "Copied clips; they get new ids",
+          "items": {
+            "$ref": "#/$defs/Clip"
+          },
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "op",
+        "index",
+        "clips"
+      ],
+      "title": "PasteClips",
+      "type": "object"
+    },
     "Project": {
       "additionalProperties": false,
       "properties": {
@@ -1591,6 +1641,32 @@
       "title": "SetVolume",
       "type": "object"
     },
+    "SetVolumeKeys": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "set_volume_keys",
+          "default": "set_volume_keys",
+          "type": "string"
+        },
+        "clip_id": {
+          "type": "string"
+        },
+        "keys": {
+          "items": {
+            "$ref": "#/$defs/VolumeKey"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "op",
+        "clip_id",
+        "keys"
+      ],
+      "title": "SetVolumeKeys",
+      "type": "object"
+    },
     "SetZoom": {
       "additionalProperties": false,
       "properties": {
@@ -1619,6 +1695,52 @@
         "zoom"
       ],
       "title": "SetZoom",
+      "type": "object"
+    },
+    "SpeedRamp": {
+      "additionalProperties": false,
+      "description": "Ease from one speed to another starting at a timeline time: the clip is cut into short steps\nwith gradually changing speed, and the rest of the clip continues at `to_speed`.",
+      "properties": {
+        "op": {
+          "const": "speed_ramp",
+          "default": "speed_ramp",
+          "type": "string"
+        },
+        "clip_id": {
+          "type": "string"
+        },
+        "at": {
+          "description": "Timeline time where the ramp starts",
+          "type": "number"
+        },
+        "to_speed": {
+          "maximum": 4,
+          "minimum": 0.25,
+          "type": "number"
+        },
+        "ramp": {
+          "default": 0.6,
+          "description": "Seconds (timeline) the change takes",
+          "maximum": 3,
+          "minimum": 0.2,
+          "type": "number"
+        },
+        "steps": {
+          "default": 5,
+          "maximum": 12,
+          "minimum": 2,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "op",
+        "clip_id",
+        "at",
+        "to_speed",
+        "ramp",
+        "steps"
+      ],
+      "title": "SpeedRamp",
       "type": "object"
     },
     "Split": {
@@ -2242,6 +2364,27 @@
       "title": "UpdateText",
       "type": "object"
     },
+    "VolumeKey": {
+      "additionalProperties": false,
+      "description": "Clip volume multiplier at a clip-local time (seconds on the timeline).",
+      "properties": {
+        "t": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "v": {
+          "maximum": 2,
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "t",
+        "v"
+      ],
+      "title": "VolumeKey",
+      "type": "object"
+    },
     "Zoom": {
       "additionalProperties": false,
       "description": "Slow push in/out over the clip (Ken Burns): scale 1 = the normal crop.",
@@ -2285,6 +2428,7 @@
           "delete_text": "#/$defs/DeleteText",
           "duplicate_clip": "#/$defs/DuplicateClip",
           "move": "#/$defs/Move",
+          "paste_clips": "#/$defs/PasteClips",
           "set_aspect": "#/$defs/SetAspect",
           "set_crop": "#/$defs/SetCrop",
           "set_effects": "#/$defs/SetEffects",
@@ -2295,7 +2439,9 @@
           "set_speed": "#/$defs/SetSpeed",
           "set_transition": "#/$defs/SetTransition",
           "set_volume": "#/$defs/SetVolume",
+          "set_volume_keys": "#/$defs/SetVolumeKeys",
           "set_zoom": "#/$defs/SetZoom",
+          "speed_ramp": "#/$defs/SpeedRamp",
           "split": "#/$defs/Split",
           "trim": "#/$defs/Trim",
           "update_audio": "#/$defs/UpdateAudio",
@@ -2382,6 +2528,15 @@
         },
         {
           "$ref": "#/$defs/DuplicateClip"
+        },
+        {
+          "$ref": "#/$defs/SetVolumeKeys"
+        },
+        {
+          "$ref": "#/$defs/SpeedRamp"
+        },
+        {
+          "$ref": "#/$defs/PasteClips"
         }
       ]
     }

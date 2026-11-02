@@ -53,11 +53,12 @@ function useShortcuts() {
         if (e.shiftKey) s.redo();
         else s.undo();
       } else if (e.key === "Delete" || e.key === "Backspace") {
-        if (s.selectedClipId) s.applyOps("Hapus klip", [{ op: "delete", clip_id: s.selectedClipId }]);
-        else if (s.selectedTextId) s.applyOps("Hapus teks", [{ op: "delete_text", text_id: s.selectedTextId }]);
-        else if (s.selectedOverlayId) s.applyOps("Hapus B-roll", [{ op: "delete_overlay", overlay_id: s.selectedOverlayId }]);
-        else if (s.selectedAudioId) s.applyOps("Hapus musik", [{ op: "delete_audio", audio_id: s.selectedAudioId }]);
-        s.select({});
+        s.deleteSelection();
+      } else if (mod && e.key.toLowerCase() === "c") {
+        s.copyClips();
+      } else if (mod && e.key.toLowerCase() === "v") {
+        e.preventDefault();
+        s.pasteClips();
       } else if (e.key.toLowerCase() === "s" && !mod) {
         const { clips } = s.project.timeline;
         const starts = clipStarts(clips);

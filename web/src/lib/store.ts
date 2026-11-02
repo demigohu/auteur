@@ -2,7 +2,8 @@
 
 import { create } from "zustand";
 import { api, API_URL, fileUrl, type OpInput, type ProjectView } from "./api";
-import type { Grade } from "./timeline";
+import { clipDuration, clipStarts } from "./time";
+import type { Clip, Grade } from "./timeline";
 import type { TrackData } from "./tracks";
 
 export type StepStatus = "pending" | "running" | "done" | "failed";
@@ -38,6 +39,9 @@ type EditorState = {
   selectedTextId: string | null;
   selectedOverlayId: string | null;
   selectedAudioId: string | null;
+  /** Extra clips picked with shift-click, on top of selectedClipId. */
+  multiClipIds: string[];
+  clipboard: Clip[];
   time: number;
   seekRequest: { time: number; nonce: number } | null;
   pxPerSecond: number;
@@ -60,6 +64,10 @@ type EditorState = {
   exportVideo: () => Promise<void>;
   select: (sel: { clip?: string | null; text?: string | null; overlay?: string | null; audio?: string | null }) => void;
   setTab: (tab: SideTab) => void;
+  toggleMulti: (clipId: string) => void;
+  copyClips: () => void;
+  pasteClips: () => void;
+  deleteSelection: () => void;
   setShowTracks: (on: boolean) => void;
   setBefore: (on: boolean) => void;
   /** Local-only grade change for live slider feedback; the commit goes through applyOps. */
@@ -195,6 +203,8 @@ export const useEditor = create<EditorState>((set, get) => {
     selectedTextId: null,
     selectedOverlayId: null,
     selectedAudioId: null,
+    multiClipIds: [],
+    clipboard: [],
     time: 0,
     seekRequest: null,
     pxPerSecond: 48,
@@ -268,6 +278,7 @@ export const useEditor = create<EditorState>((set, get) => {
 
     select: ({ clip, text, overlay, audio }) =>
       set((s) => ({
+        multiClipIds: [],
         selectedClipId: clip ?? null,
         selectedTextId: text ?? null,
         selectedOverlayId: overlay ?? null,
@@ -276,6 +287,39 @@ export const useEditor = create<EditorState>((set, get) => {
         tab: clip || text || overlay || audio ? "inspector" : s.tab,
       })),
     setTab: (tab) => set({ tab }),
+    toggleMulti: (clipId) =>
+      set((s) => {
+        if (!s.selectedClipId) return { selectedClipId: clipId, tab: "inspector" };
+        if (clipId === s.selectedClipId) return {};
+        const has = s.multiClipIds.includes(clipId);
+        return { multiClipIds: has ? s.multiClipIds.filter((x) => x !== clipId) : [...s.multiClipIds, clipId] };
+      }),
+    copyClips: () => {
+      const s = get();
+      const ids = new Set([s.selectedClipId, ...s.multiClipIds].filter(Boolean));
+      set({ clipboard: (s.project?.timeline.clips ?? []).filter((c) => ids.has(c.id)) });
+    },
+    pasteClips: () => {
+      const s = get();
+      if (!s.project || !s.clipboard.length) return;
+      // Paste after the clip under the playhead (or at the end).
+      const clips = s.project.timeline.clips;
+      const starts = clipStarts(clips);
+      const i = clips.findIndex((c, k) => s.time >= starts[k] && s.time < starts[k] + clipDuration(c));
+      const index = i < 0 ? clips.length : i + 1;
+      const [first, ...rest] = s.clipboard;
+      s.applyOps(`Tempel ${s.clipboard.length} klip`, [{ op: "paste_clips", index, clips: [first, ...rest] }]);
+    },
+    deleteSelection: () => {
+      const s = get();
+      const clipIds = [s.selectedClipId, ...s.multiClipIds].filter((x): x is string => Boolean(x));
+      const ops: OpInput[] = clipIds.map((id) => ({ op: "delete" as const, clip_id: id }));
+      if (s.selectedTextId) ops.push({ op: "delete_text", text_id: s.selectedTextId });
+      if (s.selectedOverlayId) ops.push({ op: "delete_overlay", overlay_id: s.selectedOverlayId });
+      if (s.selectedAudioId) ops.push({ op: "delete_audio", audio_id: s.selectedAudioId });
+      if (ops.length) s.applyOps(clipIds.length > 1 ? `Hapus ${clipIds.length} klip` : "Hapus", ops);
+      s.select({});
+    },
     setShowTracks: (on) => set({ showTracks: on }),
     setBefore: (on) => set({ before: on }),
     applyLook: async ({ clipIds, look, intensity, auto, match }) => {

@@ -12,7 +12,7 @@ from pydantic import Field, TypeAdapter
 
 from auteur.timeline.models import (
     Aspect, AudioItem, Clip, CropKey, Effect, Follow, Grade, Media, Model, Overlay, OverlayLayout, TextItem,
-    TextLook, TextWord, Timeline, Transition, Zoom,
+    TextLook, TextWord, Timeline, Transition, VolumeKey, Zoom,
 )
 
 MIN_CLIP = 0.1  # seconds; shorter clips are unwatchable and break ffmpeg concat
@@ -211,6 +211,30 @@ class DuplicateClip(Model):
     new_clip_id: str | None = None
 
 
+class SetVolumeKeys(Model):
+    op: Literal["set_volume_keys"] = "set_volume_keys"
+    clip_id: str
+    keys: list[VolumeKey]
+
+
+class SpeedRamp(Model):
+    """Ease from one speed to another starting at a timeline time: the clip is cut into short steps
+    with gradually changing speed, and the rest of the clip continues at `to_speed`."""
+
+    op: Literal["speed_ramp"] = "speed_ramp"
+    clip_id: str
+    at: float = Field(description="Timeline time where the ramp starts")
+    to_speed: float = Field(ge=0.25, le=4)
+    ramp: float = Field(0.6, ge=0.2, le=3, description="Seconds (timeline) the change takes")
+    steps: int = Field(5, ge=2, le=12)
+
+
+class PasteClips(Model):
+    op: Literal["paste_clips"] = "paste_clips"
+    index: int = Field(ge=0, description="Position in the video track")
+    clips: list[Clip] = Field(min_length=1, description="Copied clips; they get new ids")
+
+
 class SetFinish(Model):
     op: Literal["set_finish"] = "set_finish"
     letterbox: float | None = Field(None, ge=1.5, le=3, description="Cinema bars to this ratio (2.39 = scope); null removes")
@@ -222,7 +246,7 @@ Op = Annotated[
     | SetGrade | SetCrop | SetEffects | SetMuted | SetAspect
     | SetSpeed | SetTransition | SetZoom | SetVolume
     | AddOverlay | UpdateOverlay | DeleteOverlay | AddAudio | UpdateAudio | DeleteAudio | SetFinish
-    | SetFps | DuplicateClip,
+    | SetFps | DuplicateClip | SetVolumeKeys | SpeedRamp | PasteClips,
     Field(discriminator="op"),
 ]
 op_adapter: TypeAdapter[Op] = TypeAdapter(Op)
@@ -465,6 +489,55 @@ def apply(tl: Timeline, op: Op, media: dict[str, Media]) -> Timeline:
             tl.clips.insert(i + 1, tl.clips[i].model_copy(
                 deep=True, update={"id": op.new_clip_id or new_id("clip"), "transition": None}
             ))
+
+        case SetVolumeKeys():
+            i = _clip_index(tl, op.clip_id)
+            clip = tl.clips[i]
+            if any(k.t > clip.duration + 1e-3 for k in op.keys):
+                raise OpError(f"Volume key past the end of clip {clip.id!r} ({clip.duration:.2f}s)")
+            tl.clips[i] = clip.model_copy(update={"volume_keys": sorted(op.keys, key=lambda k: k.t)})
+
+        case SpeedRamp():
+            i = _clip_index(tl, op.clip_id)
+            clip = tl.clips[i]
+            offset = op.at - tl.clip_starts()[i]
+            if offset < 0 or offset > clip.duration - MIN_CLIP:
+                raise OpError(f"Ramp start {op.at}s is outside clip {clip.id!r}")
+            src = clip.to_source(offset)
+            pieces = []
+            if offset >= MIN_CLIP:
+                pieces.append(clip.model_copy(update={
+                    "src_out": round(src, 3),
+                    "crop": [k for k in clip.crop if k.t <= offset],
+                    "volume_keys": [k for k in clip.volume_keys if k.t <= offset],
+                }))
+            step_t = op.ramp / op.steps
+            for k in range(1, op.steps + 1):
+                speed = round(clip.speed + (op.to_speed - clip.speed) * k / op.steps, 3)
+                end = min(src + step_t * speed, clip.src_out)
+                if end - src < 0.02:
+                    break
+                pieces.append(clip.model_copy(deep=True, update={
+                    "id": new_id("clip"), "src_in": round(src, 3), "src_out": round(end, 3), "speed": speed,
+                    "crop": [], "transition": None, "volume_keys": [],
+                }))
+                src = end
+            if clip.src_out - src >= MIN_CLIP * op.to_speed:
+                pieces.append(clip.model_copy(deep=True, update={
+                    "id": new_id("clip"), "src_in": round(src, 3), "speed": op.to_speed, "crop": [],
+                    "transition": None, "volume_keys": [],
+                }))
+            if not offset >= MIN_CLIP:
+                pieces[0] = pieces[0].model_copy(update={"id": clip.id, "transition": clip.transition})
+            tl.clips[i : i + 1] = pieces
+
+        case PasteClips():
+            for c in op.clips:
+                _check_range(_media(media, c.media_id, "video"), c.src_in, c.src_out)
+            copies = [c.model_copy(deep=True, update={"id": new_id("clip"), "transition": None if k == 0 else c.transition})
+                      for k, c in enumerate(op.clips)]
+            index = min(op.index, len(tl.clips))
+            tl.clips[index:index] = copies
 
         case SetFinish():
             tl.finish = tl.finish.model_copy(update={"letterbox": op.letterbox, "grain": op.grain})

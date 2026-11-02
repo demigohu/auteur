@@ -104,3 +104,29 @@ def test_fps_and_duplicate(project: Project) -> None:
     assert tl.fps == 24
     assert [c.id for c in tl.clips] == ["c1", "c2", "c2copy", "c3"]
     assert (tl.clips[2].src_in, tl.clips[2].src_out) == (10, 14)
+
+
+def test_speed_ramp_eases_into_slow_motion(project: Project) -> None:
+    from auteur.timeline.ops import SpeedRamp
+
+    project.commit("user", "x", [SpeedRamp(clip_id="c2", at=4 + 1, to_speed=0.5, ramp=0.5, steps=5)])
+    ramped = [c for c in project.timeline.clips if c.media_id == "v" and 10 <= c.src_in < 14]
+    assert ramped[0].id == "c2" and ramped[0].src_out == 11 and ramped[0].speed == 1
+    assert [c.speed for c in ramped[1:-1]] == [0.9, 0.8, 0.7, 0.6, 0.5]
+    assert ramped[-1].speed == 0.5 and ramped[-1].src_out == 14
+    # Source is contiguous and nothing is lost.
+    assert all(abs(a.src_out - b.src_in) < 1e-6 for a, b in zip(ramped, ramped[1:]))
+
+
+def test_volume_keys_and_paste(project: Project) -> None:
+    from auteur.timeline.models import VolumeKey
+    from auteur.timeline.ops import PasteClips, SetVolumeKeys
+
+    project.commit("user", "x", [SetVolumeKeys(clip_id="c1", keys=[VolumeKey(t=2, v=0), VolumeKey(t=0, v=1)])])
+    assert [k.t for k in project.timeline.clips[0].volume_keys] == [0, 2]
+    with pytest.raises(OpError):
+        project.commit("user", "x", [SetVolumeKeys(clip_id="c1", keys=[VolumeKey(t=9, v=1)])])
+    copied = [c.model_copy() for c in project.timeline.clips[:2]]
+    project.commit("user", "paste", [PasteClips(index=3, clips=copied)])
+    tl = project.timeline
+    assert len(tl.clips) == 5 and tl.clips[3].src_in == 0 and tl.clips[3].id not in {"c1", "c2"}

@@ -7,9 +7,9 @@ import { HistoryTab } from "./HistoryTab";
 import { InspectorTab } from "./InspectorTab";
 
 const TABS = [
-  { id: "agent", label: "Agen" },
+  { id: "agent", label: "Agent" },
   { id: "inspector", label: "Inspector" },
-  { id: "history", label: "Riwayat" },
+  { id: "history", label: "History" },
 ] as const satisfies readonly { id: SideTab; label: string }[];
 
 export function SidePanel() {
@@ -18,22 +18,20 @@ export function SidePanel() {
   const runStatus = useEditor((s) => s.run?.status);
 
   return (
-    <aside className="flex min-h-0 flex-col border-l border-line bg-panel">
-      <div role="tablist" className="flex h-10 shrink-0 items-end gap-4 border-b border-line px-4">
+    <aside className="flex min-h-0 flex-col border-l-2 border-ink bg-panel">
+      <div role="tablist" className="flex h-12 shrink-0 items-center gap-1 border-b-2 border-ink px-3">
         {TABS.map((t) => (
           <button
             key={t.id}
             role="tab"
             aria-selected={tab === t.id}
             onClick={() => setTab(t.id)}
-            className={`relative pb-2.5 text-[13px] transition-colors ${tab === t.id ? "text-text" : "text-muted hover:text-text"}`}
+            className={`label relative rounded-full px-3 py-1.5 transition-colors ${tab === t.id ? "text-ink" : "text-muted hover:text-text"}`}
           >
-            {t.label}
+            {tab === t.id && <motion.span layoutId="tab-pill" className="absolute inset-0 rounded-full border-2 border-ink bg-lime" />}
+            <span className="relative">{t.label}</span>
             {t.id === "agent" && runStatus === "running" && (
-              <span className="ml-1.5 inline-block size-1.5 animate-pulse rounded-full bg-accent align-middle" aria-label="Agen sedang bekerja" />
-            )}
-            {tab === t.id && (
-              <motion.span layoutId="tab-underline" className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-accent" />
+              <span className="relative ml-1.5 inline-block size-1.5 animate-pulse rounded-full bg-tomato align-middle" aria-label="The agent is working" />
             )}
           </button>
         ))}

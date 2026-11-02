@@ -285,7 +285,7 @@ async def buang_filler(ctx: ToolContext, a: BuangFillerArgs) -> str:
         count += len(cuts)
     if not ops:
         return "No filler words or long pauses found in those clips."
-    ctx.commit(f"Buang {count} filler/jeda ({total:.1f} dtk)", ops)
+    ctx.commit(f"Remove {count} fillers/pauses ({total:.1f}s)", ops)
     return f"Removed {count} filler/pause ranges, {total:.1f}s total.\n" + describe_timeline(p)
 
 
@@ -359,7 +359,7 @@ async def subtitle(ctx: ToolContext, a: SubtitleArgs) -> str:
             words=[TextWord(text=w[2], start=round(w[0], 3), end=round(w[1], 3), emphasis=(w[0], w[2]) in marks) for w in ws],
         ))
     added = sum(isinstance(op, AddText) for op in ops)
-    ctx.commit(f"Subtitle {a.gaya} ({added} baris)", ops)
+    ctx.commit(f"Subtitles: {a.gaya} ({added} lines)", ops)
     sample = "\n".join(f"  {t.replace(chr(10), ' / ')}" for _, t in fitted[:6])
     return f"Added {added} subtitles ({a.gaya}, corrected={a.koreksi}). First lines:\n{sample}"
 
@@ -401,7 +401,7 @@ def periksa(ctx: ToolContext, out: Path) -> tuple[list[str], list[Mark]]:
         if c.follow and c.crop:
             track = ctx.track(c.follow.track_id)
             for a, b in out_of_frame(track, c.follow.object_id, c, m, out_w, out_h):
-                marks.append({"start": round(start + a, 2), "end": round(start + b, 2), "label": "Subjek keluar frame"})
+                marks.append({"start": round(start + a, 2), "end": round(start + b, 2), "label": "Subject leaves frame"})
                 issues.append(
                     f"Subject (object {c.follow.object_id}) leaves the {tl.aspect} frame at timeline "
                     f"{start + a:.1f}-{start + b:.1f}s in clip {c.id}: the crop lags behind. "
@@ -421,7 +421,7 @@ def periksa(ctx: ToolContext, out: Path) -> tuple[list[str], list[Mark]]:
                     gap = (f1 - f0) / track.fps
                     if 2 * e.hold < gap < 4.0:
                         a, b = start + c.to_local(f0 / track.fps), start + c.to_local(f1 / track.fps)
-                        marks.append({"start": round(a, 2), "end": round(b, 2), "label": "Blur mungkin bocor"})
+                        marks.append({"start": round(a, 2), "end": round(b, 2), "label": "Blur may leak"})
                         worst = max(worst, gap)
             if worst:
                 issues.append(
@@ -440,14 +440,14 @@ def periksa(ctx: ToolContext, out: Path) -> tuple[list[str], list[Mark]]:
         before, after = G.stats(f), G.stats(G.apply(c.grade, f))
         span = (round(start, 2), round(start + c.duration, 2))
         if after["clipped"] > 0.04 and after["clipped"] - before["clipped"] > 0.03:
-            marks.append({"start": span[0], "end": span[1], "label": "Warna terbakar"})
+            marks.append({"start": span[0], "end": span[1], "label": "Clipped highlights"})
             issues.append(
                 f"Clip {c.id}: the grade burns {after['clipped']:.0%} of the frame to pure white "
                 f"(source: {before['clipped']:.0%}). Call `warna` for it with penyesuaian "
                 f'{{"exposure": -0.2, "highlights": -0.3}} or a lower intensitas.'
             )
         if after["crushed"] > 0.08 and after["crushed"] - before["crushed"] > 0.05:
-            marks.append({"start": span[0], "end": span[1], "label": "Gelap hancur"})
+            marks.append({"start": span[0], "end": span[1], "label": "Crushed shadows"})
             issues.append(
                 f"Clip {c.id}: the grade crushes {after['crushed']:.0%} of the frame to black "
                 f"(source: {before['crushed']:.0%}). Call `warna` for it with penyesuaian "
@@ -458,7 +458,7 @@ def periksa(ctx: ToolContext, out: Path) -> tuple[list[str], list[Mark]]:
         # Loose on purpose: a montage may cut from a night street to a stage; only real jumps count.
         for (a, la, _, _), (b, lb, s, e) in zip(lumas, lumas[1:]):
             if abs(la - lb) > 0.18:
-                marks.append({"start": s, "end": e, "label": "Warna tidak seragam"})
+                marks.append({"start": s, "end": e, "label": "Color mismatch"})
                 issues.append(
                     f"Clips {a} and {b} differ in brightness ({la:.2f} vs {lb:.2f}) although they should "
                     f"match. Call `warna` on all clips with samakan=true."
@@ -472,7 +472,7 @@ def periksa(ctx: ToolContext, out: Path) -> tuple[list[str], list[Mark]]:
         off = [(s, min(abs(s - g) for g in grid)) for s in tl.clip_starts()[1:] if grid]
         late = [(s, d) for s, d in off if d > 0.08]
         for s, _ in late:
-            marks.append({"start": round(max(0, s - 0.15), 2), "end": round(s + 0.15, 2), "label": "Potongan lepas dari beat"})
+            marks.append({"start": round(max(0, s - 0.15), 2), "end": round(s + 0.15, 2), "label": "Cut off the beat"})
         if late:
             issues.append(
                 f"{len(late)} cuts are off the beat by up to {max(d for _, d in late):.2f}s (edits after potong_di_beat). "
@@ -550,7 +550,7 @@ async def warna(ctx: ToolContext, a: WarnaArgs) -> str:
     if a.samakan and len(clips) > 1:
         ctx.match_requested = True
     label = colorist.LOOK_LABELS.get(a.look or "", "Koreksi warna")
-    ctx.commit(f"Warna: {label}", [SetGrade(clip_ids=[cid], grade=g) for cid, g, _, _ in results])
+    ctx.commit(f"Color: {label}", [SetGrade(clip_ids=[cid], grade=g) for cid, g, _, _ in results])
     lines = [
         f"  {cid}: {G.describe(before)}\n    -> {G.describe(after)}"
         + ("\n    (source looks flat, like log footage: consider log='generic' or the camera's profile)"
@@ -577,7 +577,7 @@ async def musik(ctx: ToolContext, a: MusikArgs) -> str:
                         f"{[x.id for x in ctx.project.media.values() if x.kind == 'audio']}")
     ops: list[Op] = [DeleteAudio(audio_id=x.id) for x in ctx.project.timeline.audio] if a.ganti else []
     ops.append(AddAudio(media_id=m.id, src_in=a.mulai_musik, volume=a.volume, duck=a.duck))
-    ctx.commit(f"Musik: {m.name}", ops)
+    ctx.commit(f"Music: {m.name}", ops)
     beats = await asyncio.to_thread(load_beats, ctx.project_dir, m.id)
     on_timeline = [round(b - a.mulai_musik, 2) for b in beats.beats if b >= a.mulai_musik][:24]
     down = [round(b - a.mulai_musik, 2) for b in beats.downbeats if b >= a.mulai_musik][:8]
@@ -627,11 +627,14 @@ async def potong_di_beat(ctx: ToolContext, a: PotongDiBeatArgs) -> str:
     ctx.beat_every = a.tiap
     if not ops:
         return "Cuts already sit on the beat grid."
-    ctx.commit(f"Potong di beat (tiap {a.tiap} ketukan)", ops)
+    ctx.commit(f"Cut on the beat (every {a.tiap} beats)", ops)
     return f"Moved {moved} cuts onto every {a.tiap} beat(s).\n" + describe_timeline(ctx.project)
 
 
 # --- transisi, kecepatan, zoom, sinematik ----------------------------------------------------------
+
+TRANSITION_LABEL = {"crossfade": "crossfade", "hitam": "dip to black", "putih": "dip to white", "potong": "hard cut"}
+
 
 class TransisiArgs(ToolArgs):
     jenis: Literal["crossfade", "hitam", "putih", "potong"] = Field(
@@ -658,7 +661,7 @@ async def transisi(ctx: ToolContext, a: TransisiArgs) -> str:
         ops.append(SetTransition(clip_id=cid, transition=Transition(kind=a.jenis, duration=round(min(a.durasi, limit), 2))))
     if not ops:
         return "No transitions to set."
-    ctx.commit(f"Transisi {a.jenis}", ops)
+    ctx.commit(f"Transition: {TRANSITION_LABEL[a.jenis]}", ops)
     return f"Set {a.jenis} on {len(ops)} cuts.\n" + describe_timeline(ctx.project)
 
 
@@ -676,9 +679,9 @@ async def kecepatan(ctx: ToolContext, a: KecepatanArgs) -> str:
     if a.ramp_mulai is not None:
         if len(a.clip_ids) != 1:
             raise ToolError("A speed ramp works on exactly one clip")
-        ctx.commit(f"Speed ramp ke {a.speed}x", [SpeedRamp(clip_id=a.clip_ids[0], at=a.ramp_mulai, to_speed=a.speed, ramp=a.ramp_durasi)])
+        ctx.commit(f"Speed ramp to {a.speed}x", [SpeedRamp(clip_id=a.clip_ids[0], at=a.ramp_mulai, to_speed=a.speed, ramp=a.ramp_durasi)])
         return f"Ramped into {a.speed}x from {a.ramp_mulai:.2f}s over {a.ramp_durasi}s.\n" + describe_timeline(ctx.project)
-    ctx.commit(f"Kecepatan {a.speed}x", [SetSpeed(clip_id=c.id, speed=a.speed) for c in ctx.clips(a.clip_ids)])
+    ctx.commit(f"Speed {a.speed}x", [SetSpeed(clip_id=c.id, speed=a.speed) for c in ctx.clips(a.clip_ids)])
     slow = [c for c in ctx.clips(a.clip_ids) if a.speed < 1 and ctx.project.media[c.media_id].fps < 50]
     note = (f" Note: {[c.id for c in slow]} were shot below 50fps, so slow motion will look a bit choppy."
             if slow else "")
@@ -694,7 +697,7 @@ class ZoomArgs(ToolArgs):
 
 async def zoom(ctx: ToolContext, a: ZoomArgs) -> str:
     z = None if a.hapus else Zoom(start=a.dari, end=a.ke)
-    ctx.commit("Zoom pelan" if z else "Hapus zoom", [SetZoom(clip_id=c.id, zoom=z) for c in ctx.clips(a.clip_ids)])
+    ctx.commit("Slow zoom" if z else "Remove zoom", [SetZoom(clip_id=c.id, zoom=z) for c in ctx.clips(a.clip_ids)])
     return f"Zoom {'removed' if z is None else f'{a.dari}->{a.ke}'} on {len(a.clip_ids)} clips."
 
 
@@ -704,7 +707,7 @@ class SinematikArgs(ToolArgs):
 
 
 async def sinematik(ctx: ToolContext, a: SinematikArgs) -> str:
-    ctx.commit("Finishing sinematik", [SetFinish(letterbox=a.letterbox, grain=a.grain)])
+    ctx.commit("Cinematic finish", [SetFinish(letterbox=a.letterbox, grain=a.grain)])
     vertical = ctx.project.timeline.aspect == "9:16"
     return (f"Letterbox {a.letterbox}, grain {a.grain}."
             + (" The video is vertical, so bars leave a wide strip in the middle; that is a deliberate style." if vertical and a.letterbox else ""))
@@ -819,7 +822,7 @@ async def reframe(ctx: ToolContext, a: ReframeArgs) -> str:
         SetCrop(clip_id=c.id, keys=follow_keys(track, oid, c, a.halus), follow=Follow(track_id=track.id, object_id=oid))
         for c in clips
     ]
-    ctx.commit(f"Reframe {ctx.project.timeline.aspect} mengikuti subjek", ops)
+    ctx.commit(f"Reframe {ctx.project.timeline.aspect} to follow the subject", ops)
     return f"Crop on {len(clips)} clips now follows object {oid} (halus {a.halus}s).\n" + describe_timeline(ctx.project)
 
 
@@ -854,7 +857,7 @@ async def efek(ctx: ToolContext, a: EfekArgs) -> str:
         # Replace an earlier effect of the same kind on the same track instead of stacking them.
         kept = [e for e in c.effects if not (e.kind == new.kind and e.track_id == track.id)]
         ops.append(SetEffects(clip_id=c.id, effects=[*kept, new]))
-    ctx.commit(f"{'Blur' if a.jenis == 'blur' else 'Sorot'} '{track.prompt}'", ops)
+    ctx.commit(f"{'Blur' if a.jenis == 'blur' else 'Highlight'} '{track.prompt}'", ops)
     return f"{a.jenis} applied to {len(clips)} clips. It shows in the render and as an overlay in the editor preview."
 
 

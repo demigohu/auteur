@@ -1,3 +1,4 @@
+import uuid
 from pathlib import Path
 
 import pytest
@@ -6,9 +7,16 @@ from fastapi.testclient import TestClient
 from auteur.main import app, project_lock
 
 
+def signed_in() -> TestClient:
+    c = TestClient(app)
+    r = c.post("/auth/signup", json={"name": "Ana", "email": f"{uuid.uuid4().hex}@example.com", "password": "correct horse"})
+    assert r.status_code == 200, r.text
+    return c
+
+
 @pytest.fixture
 def client() -> TestClient:
-    return TestClient(app)
+    return signed_in()
 
 
 @pytest.fixture
@@ -91,3 +99,37 @@ def test_run_quota_per_visitor() -> None:
         assert e.value.status_code == 429
     finally:
         object.__setattr__(main.settings, "runs_per_visitor_per_day", 0)
+
+
+def test_projects_need_an_account() -> None:
+    r = TestClient(app).get("/projects")
+    assert r.status_code == 401
+
+
+def test_sign_in_and_out() -> None:
+    c = TestClient(app)
+    email = f"{uuid.uuid4().hex}@example.com"
+    assert c.post("/auth/signup", json={"name": "Bo", "email": email, "password": "long enough"}).status_code == 200
+    assert c.post("/auth/signup", json={"name": "Bo", "email": email, "password": "long enough"}).status_code == 409
+    c.post("/auth/logout")
+    assert c.get("/auth/me").status_code == 401
+    assert c.post("/auth/login", json={"email": email, "password": "wrong password"}).status_code == 401
+    r = c.post("/auth/login", json={"email": email.upper(), "password": "long enough"})
+    assert r.status_code == 200 and c.get("/auth/me").json()["name"] == "Bo"
+
+
+def test_projects_are_private_to_their_owner(client: TestClient) -> None:
+    p = client.post("/projects", json={"name": "Mine", "aspect": "9:16", "fps": 24}).json()
+    assert (p["timeline"]["aspect"], p["timeline"]["fps"]) == ("9:16", 24)
+    other = signed_in()
+    assert other.get(f"/projects/{p['id']}").status_code == 404
+    assert all(s["id"] != p["id"] for s in other.get("/projects").json())
+    [summary] = [s for s in client.get("/projects").json() if s["id"] == p["id"]]
+    assert summary["aspect"] == "9:16" and summary["thumb_url"] is None
+
+
+def test_rename_and_delete(client: TestClient) -> None:
+    pid = client.post("/projects", json={"name": "Draft"}).json()["id"]
+    assert client.patch(f"/projects/{pid}", json={"name": "Final cut"}).json()["name"] == "Final cut"
+    assert client.delete(f"/projects/{pid}").status_code == 200
+    assert client.get(f"/projects/{pid}").status_code == 404

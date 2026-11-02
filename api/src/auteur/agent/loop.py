@@ -132,17 +132,17 @@ async def run_agent(store: Store, project_id: str, run_id: str, instruction: str
                         emit({"type": "tool_result", "tool": call.name, "ok": False, "output": str(e), "step": step})
                     items.append({"type": "function_call_output", "call_id": call.call_id, "output": output})
             else:
-                status, reply = "stopped", "Aku berhenti karena sudah mencapai batas langkah. Cek timeline-nya ya."
+                status, reply = "stopped", "I stopped at the step limit. Have a look at the timeline."
         except StopRun as e:
             status, reply = "failed", (
                 "Aku berhenti karena pemeriksa masih menemukan masalah setelah 3 kali percobaan. "
-                "Bagian yang bermasalah ditandai merah di timeline."
+                "The problem spots are marked red on the timeline."
             )
         except asyncio.CancelledError:
-            status, reply = "cancelled", "Dihentikan."
+            status, reply = "cancelled", "Stopped."
             raise
         except Exception as e:
-            status, reply = "error", f"Terjadi kesalahan: {e}"
+            status, reply = "error", f"Something went wrong: {e}"
         finally:
             p.chat.append(ChatMessage(role="assistant", text=reply or "Selesai.", run_id=run_id, at=datetime.now(UTC)))
             store.save(p)

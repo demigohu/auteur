@@ -30,12 +30,17 @@ export function Editor({ projectId }: { projectId: string }) {
     // minmax(0,1fr) column: a long timeline must scroll inside its panel, not widen the whole editor.
     <div className="grid h-[100dvh] w-full grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)_320px] overflow-hidden">
       <TopBar />
+      {/* Paper chrome around an ink stage and timeline: footage is judged against dark, like a cutting room. */}
       <div className="grid min-h-0 grid-cols-[220px_minmax(0,1fr)_360px]">
         <MediaBin />
-        <Preview />
+        <div className="theme-ink min-w-0">
+          <Preview />
+        </div>
         <SidePanel />
       </div>
-      <TimelinePanel />
+      <div className="theme-ink min-h-0 border-t-2 border-ink">
+        <TimelinePanel />
+      </div>
       <ErrorToast />
     </div>
   );
@@ -63,13 +68,13 @@ function useShortcuts() {
         const { clips } = s.project.timeline;
         const starts = clipStarts(clips);
         const i = clips.findIndex((c, k) => s.time > starts[k] + 0.1 && s.time < starts[k] + clipDuration(c) - 0.1);
-        if (i >= 0) s.applyOps("Potong klip di playhead", [{ op: "split", clip_id: clips[i].id, at: Number(s.time.toFixed(3)) }]);
+        if (i >= 0) s.applyOps("Split clip at playhead", [{ op: "split", clip_id: clips[i].id, at: Number(s.time.toFixed(3)) }]);
       } else if (mod && e.key.toLowerCase() === "d" && s.selectedClipId) {
         e.preventDefault();
-        s.applyOps("Duplikat klip", [{ op: "duplicate_clip", clip_id: s.selectedClipId }]);
+        s.applyOps("Duplicate clip", [{ op: "duplicate_clip", clip_id: s.selectedClipId }]);
       } else if (e.key.toLowerCase() === "t" && !mod) {
         const t = Number(s.time.toFixed(2));
-        s.applyOps("Tambah teks", [{ op: "add_text", text: "Judul", start: t, end: Number((t + 2).toFixed(2)), style: "title", y: 0.2 }]);
+        s.applyOps("Add text", [{ op: "add_text", text: "Title", start: t, end: Number((t + 2).toFixed(2)), style: "title", y: 0.2 }]);
       } else if (e.key === "Escape") {
         s.select({});
       }
@@ -90,11 +95,11 @@ function ErrorToast() {
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 12 }}
-          className="fixed bottom-[336px] left-1/2 z-50 flex max-w-lg -translate-x-1/2 items-start gap-2 rounded-md border border-danger/40 bg-panel-2 px-3 py-2 text-sm text-text shadow-xl"
+          className="fixed bottom-[336px] left-1/2 z-50 flex max-w-lg -translate-x-1/2 items-start gap-2 rounded-[10px] border-2 border-ink bg-sun px-3 py-2 text-sm text-ink shadow-[0_4px_0_0_var(--ink)]"
         >
-          <Warning size={16} weight="fill" className="mt-0.5 shrink-0 text-danger" />
+          <Warning size={16} weight="fill" className="mt-0.5 shrink-0 text-tomato" />
           <span className="leading-snug">{error}</span>
-          <button type="button" aria-label="Tutup" onClick={clear} className="ml-2 shrink-0 text-muted hover:text-text">
+          <button type="button" aria-label="Close" onClick={clear} className="ml-2 shrink-0 text-ink/60 hover:text-ink">
             <X size={14} />
           </button>
         </motion.div>
@@ -105,7 +110,7 @@ function ErrorToast() {
 
 export function EditorSkeleton() {
   return (
-    <div className="grid h-[100dvh] w-full grid-cols-[minmax(0,1fr)] grid-rows-[48px_minmax(0,1fr)_320px] overflow-hidden">
+    <div className="grid h-[100dvh] w-full grid-cols-[minmax(0,1fr)] grid-rows-[56px_minmax(0,1fr)_320px] overflow-hidden">
       <div className="border-b border-line bg-panel" />
       <div className="grid grid-cols-[220px_minmax(0,1fr)_360px]">
         <div className="space-y-2 border-r border-line bg-panel p-3">
@@ -127,8 +132,8 @@ function LoadError({ message }: { message: string }) {
   return (
     <div className="grid min-h-[100dvh] place-items-center p-6">
       <div className="max-w-sm">
-        <p className="text-sm text-text">Proyek tidak bisa dibuka</p>
-        <p className="mt-1 text-sm leading-relaxed text-muted">{message}. Pastikan server API berjalan di port 8000.</p>
+        <p className="text-sm text-text">This project couldn&apos;t be opened</p>
+        <p className="mt-1 text-sm leading-relaxed text-muted">{message}. Make sure the API server is running on port 8000.</p>
       </div>
     </div>
   );

@@ -15,29 +15,76 @@
 }
 
 /*
- * Auteur Labs is dark-only on purpose: like every grading and editing suite, a neutral dark
- * surround keeps the footage's colors readable. One accent (amber) marks the playhead,
- * selection and the agent's activity; green/red only mean pass/fail.
+ * Tokens from docs/DESIGN.md. Brand colors are fixed; the semantic tokens (--bg, --panel, --text,
+ * --accent...) describe the paper theme and are redefined by .theme-ink for the dark areas that sit
+ * around footage (preview stage, timeline), so components work unchanged on either.
  */
 :root {
-  --bg: #0b0b0d;
-  --panel: #121215;
-  --panel-2: #18181c;
-  --raised: #202026;
-  --line: #26262d;
-  --line-strong: #34343d;
-  --text: #ececef;
-  --muted: #8c8c97;
-  --faint: #5d5d67;
-  --accent: #eea53f;
-  --accent-soft: rgb(238 165 63 / 0.14);
-  --accent-ink: #1c1306;
-  --ok: #5fc58f;
-  --danger: #ef6a5d;
+  --ink: #121110;
+  --ink-2: #1d1c1a;
+  --ink-3: #2a2825;
+  --paper: #f2eee3;
+  --paper-2: #e6dfcd;
+  --lime: #c8f53c;
+  --forest: #0e3a22;
+  --tomato: #ff4f1f;
+  --blue: #2e3bff;
+  --pink: #ff8fcf;
+  --sun: #ffc22e;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-back: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --gutter: clamp(16px, 2.4vw, 40px);
+
+  --bg: var(--paper);
+  --panel: var(--paper);
+  --panel-2: #ebe6d8;
+  --raised: var(--paper-2);
+  --line: rgb(18 17 16 / 0.16);
+  --line-strong: var(--ink);
+  --text: var(--ink);
+  --muted: rgb(18 17 16 / 0.66);
+  --faint: rgb(18 17 16 / 0.45);
+  --accent: var(--tomato);
+  --accent-soft: rgb(255 79 31 / 0.14);
+  --accent-ink: var(--ink);
+  --ok: #1f7a3f;
+  --danger: #e2380b;
+  color-scheme: light;
+}
+
+/* Dark surround for footage: the preview stage and the timeline. */
+.theme-ink {
+  --bg: var(--ink);
+  --panel: var(--ink);
+  --panel-2: var(--ink-2);
+  --raised: var(--ink-3);
+  --line: rgb(242 238 227 / 0.12);
+  --line-strong: rgb(242 238 227 / 0.32);
+  --text: var(--paper);
+  --muted: rgb(242 238 227 / 0.66);
+  --faint: rgb(242 238 227 / 0.42);
+  --accent: var(--lime);
+  --accent-soft: rgb(200 245 60 / 0.16);
+  --accent-ink: var(--forest);
+  --ok: var(--lime);
+  --danger: var(--tomato);
   color-scheme: dark;
+  color: var(--text);
 }
 
 @theme inline {
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-paper: var(--paper);
+  --color-paper-2: var(--paper-2);
+  --color-lime: var(--lime);
+  --color-forest: var(--forest);
+  --color-tomato: var(--tomato);
+  --color-blue: var(--blue);
+  --color-pink: var(--pink);
+  --color-sun: var(--sun);
+
   --color-bg: var(--bg);
   --color-panel: var(--panel);
   --color-panel-2: var(--panel-2);
@@ -52,22 +99,33 @@
   --color-accent-ink: var(--accent-ink);
   --color-ok: var(--ok);
   --color-danger: var(--danger);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+
+  --font-sans: var(--font-inter-tight), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-display: var(--font-anton), Impact, "Arial Narrow", sans-serif;
+  --font-serif: var(--font-instrument), Georgia, serif;
+  --font-hand: var(--font-caveat), "Comic Sans MS", cursive;
+
+  --shadow-hard: 0 4px 0 0 var(--ink);
+  --shadow-hard-sm: 0 2px 0 0 var(--ink);
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 html,
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-family: var(--font-inter-tight), system-ui, sans-serif;
 }
 
 ::selection {
-  background: var(--accent-soft);
+  background: var(--lime);
+  color: var(--forest);
 }
 
-/* Thin scrollbars that match the panels. */
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--line-strong) transparent;
@@ -77,11 +135,89 @@ input[type="range"] {
   accent-color: var(--accent);
 }
 
+/* Display type: Anton, always uppercase, tight. */
+.display {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  line-height: 0.86;
+  letter-spacing: -0.004em;
+}
+
+/* Mono kicker label. */
+.label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* The hard, blurless shadow and its pressed state. */
+.hard {
+  border: 2px solid var(--ink);
+  box-shadow: var(--shadow-hard);
+  transition: transform 0.15s var(--ease-out), box-shadow 0.15s var(--ease-out);
+}
+.hard:active:not(:disabled) {
+  transform: translateY(2px);
+  box-shadow: var(--shadow-hard-sm);
+}
+
+/* Embossed paper (public/assets/paper-texture.png, a tileable grey height-lit tile). Overlay blending
+   lets one tile texture every section color: paper, lime, tomato, pink. */
+.paper-texture {
+  position: relative;
+  isolation: isolate;
+}
+.paper-texture::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: inherit;
+  opacity: var(--texture-strength, 0.55);
+  mix-blend-mode: overlay;
+  background-image: url("/assets/paper-texture.png");
+  background-size: 512px 512px;
+}
+.grain {
+  position: fixed;
+  inset: -50%;
+  z-index: 60;
+  pointer-events: none;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Cutting-mat grid behind footage. */
+.mat {
+  background-color: var(--ink);
+  background-image:
+    linear-gradient(rgb(242 238 227 / 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(242 238 227 / 0.045) 1px, transparent 1px);
+  background-size: 64px 64px;
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+@keyframes spin-slow {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
 }

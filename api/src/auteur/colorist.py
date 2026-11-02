@@ -120,8 +120,8 @@ def match(grades: list[Grade], frames: list[np.ndarray]) -> list[Grade]:
 
 
 LOOK_LABELS = {
-    "hangat": "Hangat", "cinematic": "Cinematic", "film": "Film", "moody": "Moody",
-    "vintage": "Vintage", "hitam_putih": "Hitam putih", "cerah": "Cerah", "dingin": "Dingin",
+    "hangat": "Warm", "cinematic": "Cinematic", "film": "Film", "moody": "Moody",
+    "vintage": "Vintage", "hitam_putih": "Black & white", "cerah": "Bright", "dingin": "Cool",
 }
 
 FrameCache = dict[tuple[str, float, float], np.ndarray]

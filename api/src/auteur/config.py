@@ -16,6 +16,8 @@ class Settings:
     max_file_seconds: float = float(os.getenv("MAX_FILE_SECONDS", "0"))
     runs_per_visitor_per_day: int = int(os.getenv("RUNS_PER_VISITOR_PER_DAY", "0"))
     spend_cap_usd: float = float(os.getenv("SPEND_CAP_USD", "0"))
+    # Session cookies need HTTPS in production; plain http://localhost would drop a Secure cookie.
+    secure_cookies: bool = os.getenv("SECURE_COOKIES", "0") == "1"
     cors_origins: list[str] = field(
         default_factory=lambda: os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
     )

@@ -8,20 +8,20 @@ import type { AudioItem, Clip, CropKey, Overlay, Transition, VolumeKey } from "@
 
 const SPEEDS = [0.25, 0.5, 0.75, 1, 1.5, 2, 4];
 const TRANSITIONS: { id: Transition["kind"] | "potong"; label: string }[] = [
-  { id: "potong", label: "Potong" },
+  { id: "potong", label: "Cut" },
   { id: "crossfade", label: "Crossfade" },
-  { id: "hitam", label: "Hitam" },
-  { id: "putih", label: "Putih" },
+  { id: "hitam", label: "Black" },
+  { id: "putih", label: "White" },
 ];
 const LAYOUTS: { id: Overlay["layout"]; label: string }[] = [
-  { id: "full", label: "Penuh" },
-  { id: "kiri_atas", label: "Kiri atas" },
-  { id: "kanan_atas", label: "Kanan atas" },
-  { id: "kiri_bawah", label: "Kiri bawah" },
-  { id: "kanan_bawah", label: "Kanan bawah" },
+  { id: "full", label: "Full" },
+  { id: "kiri_atas", label: "Top left" },
+  { id: "kanan_atas", label: "Top right" },
+  { id: "kiri_bawah", label: "Bottom left" },
+  { id: "kanan_bawah", label: "Bottom right" },
 ];
 const LETTERBOX: { value: number | null; label: string }[] = [
-  { value: null, label: "Tanpa" },
+  { value: null, label: "None" },
   { value: 1.85, label: "1.85" },
   { value: 2.39, label: "2.39" },
 ];
@@ -38,8 +38,8 @@ function Segmented<T extends string | number | null>(props: {
           key={String(o.value)}
           type="button"
           onClick={() => o.value !== props.value && props.onChange(o.value)}
-          className={`rounded-md border px-2 py-1 text-[11px] transition active:scale-[0.97] ${
-            o.value === props.value ? "border-accent text-text" : "border-line text-muted hover:border-line-strong hover:text-text"
+          className={`rounded-full border-2 px-2.5 py-0.5 font-mono text-[11px] transition active:scale-[0.97] ${
+            o.value === props.value ? "border-ink bg-ink text-paper" : "border-ink/20 text-muted hover:border-ink hover:text-text"
           }`}
         >
           {o.label}
@@ -79,18 +79,18 @@ export function ClipMotion({ clip, isFirst, locked }: { clip: Clip; isFirst: boo
   const kind = clip.transition?.kind ?? "potong";
   return (
     <fieldset disabled={locked} className="space-y-4 disabled:opacity-50">
-      <legend className="mb-2 text-xs font-medium text-muted">Gerak dan transisi</legend>
+      <legend className="display mb-2.5 text-[19px] text-text">Motion and transitions</legend>
       <div className="space-y-1.5">
-        <p className="text-xs text-text">Kecepatan</p>
+        <p className="text-xs text-text">Speed</p>
         <Segmented
           options={SPEEDS.map((v) => ({ value: v, label: `${v}x` }))}
           value={clip.speed}
-          onChange={(v) => applyOps(`Kecepatan ${v}x`, [{ op: "set_speed", clip_id: clip.id, speed: v }])}
+          onChange={(v) => applyOps(`Speed ${v}x`, [{ op: "set_speed", clip_id: clip.id, speed: v }])}
         />
-        {clip.speed !== 1 && <p className="text-[11px] text-faint">Suara klip dimatikan saat kecepatannya diubah.</p>}
+        {clip.speed !== 1 && <p className="text-[11px] text-faint">Clip audio is muted while its speed is changed.</p>}
       </div>
       <div className="space-y-1.5">
-        <p className="text-xs text-text">Transisi masuk</p>
+        <p className="text-xs text-text">Transition in</p>
         <Segmented
           options={TRANSITIONS.filter((t) => !(isFirst && t.id === "crossfade")).map((t) => ({ value: t.id, label: t.label }))}
           value={kind}
@@ -107,29 +107,29 @@ export function ClipMotion({ clip, isFirst, locked }: { clip: Clip; isFirst: boo
         {clip.transition && (
           <Slider
             id="transition-duration"
-            label="Durasi transisi"
+            label="Transition length"
             value={clip.transition.duration}
             min={0.1}
             max={2}
             step={0.05}
             format={(v) => `${v.toFixed(2)}s`}
             onCommit={(v) =>
-              applyOps("Durasi transisi", [{ op: "set_transition", clip_id: clip.id, transition: { ...clip.transition!, duration: v } }])
+              applyOps("Transition length", [{ op: "set_transition", clip_id: clip.id, transition: { ...clip.transition!, duration: v } }])
             }
           />
         )}
       </div>
       <div className="space-y-1.5">
-        <p className="text-xs text-text">Zoom pelan</p>
+        <p className="text-xs text-text">Slow zoom</p>
         <Segmented
           options={[
-            { value: "none", label: "Tanpa" },
-            { value: "in", label: "Masuk" },
-            { value: "out", label: "Keluar" },
+            { value: "none", label: "None" },
+            { value: "in", label: "In" },
+            { value: "out", label: "Out" },
           ]}
           value={!clip.zoom ? "none" : clip.zoom.end >= clip.zoom.start ? "in" : "out"}
           onChange={(v) =>
-            applyOps("Zoom pelan", [
+            applyOps("Slow zoom", [
               {
                 op: "set_zoom",
                 clip_id: clip.id,
@@ -141,22 +141,22 @@ export function ClipMotion({ clip, isFirst, locked }: { clip: Clip; isFirst: boo
       </div>
       <Slider
         id="clip-volume"
-        label="Volume klip"
+        label="Clip volume"
         value={clip.volume}
         min={0}
         max={2}
         step={0.05}
         format={(v) => `${Math.round(v * 100)}%`}
-        onCommit={(v) => applyOps("Volume klip", [{ op: "set_volume", clip_id: clip.id, volume: v }])}
+        onCommit={(v) => applyOps("Clip volume", [{ op: "set_volume", clip_id: clip.id, volume: v }])}
       />
       <VolumeKeys clip={clip} />
       <div className="space-y-1.5">
-        <p className="text-xs text-text">Speed ramp di playhead</p>
+        <p className="text-xs text-text">Speed ramp at playhead</p>
         <div className="flex gap-1.5">
           {[
-            { to: 0.5, label: "Ke slow-mo" },
-            { to: 1, label: "Ke normal" },
-            { to: 2, label: "Ke cepat" },
+            { to: 0.5, label: "To slow-mo" },
+            { to: 1, label: "To normal" },
+            { to: 2, label: "To fast" },
           ].map((r) => (
             <button
               key={r.to}
@@ -166,15 +166,15 @@ export function ClipMotion({ clip, isFirst, locked }: { clip: Clip; isFirst: boo
                 const at = playheadIn(clip);
                 const start = at === null ? null : useEditor.getState().time;
                 if (start !== null)
-                  applyOps(`Speed ramp ke ${r.to}x`, [{ op: "speed_ramp", clip_id: clip.id, at: Number(start.toFixed(3)), to_speed: r.to }]);
+                  applyOps(`Speed ramp to ${r.to}x`, [{ op: "speed_ramp", clip_id: clip.id, at: Number(start.toFixed(3)), to_speed: r.to }]);
               }}
-              className="rounded-md border border-line px-2 py-1 text-[11px] text-muted transition hover:border-line-strong hover:text-text active:scale-[0.97] disabled:opacity-35"
+              className="rounded-[10px] border border-line px-2 py-1 text-[11px] text-muted transition hover:border-line-strong hover:text-text active:scale-[0.97] disabled:opacity-35"
             >
               {r.label}
             </button>
           ))}
         </div>
-        <p className="text-[11px] text-faint">Taruh playhead di dalam klip ini dulu.</p>
+        <p className="text-[11px] text-faint">Put the playhead inside this clip first.</p>
       </div>
     </fieldset>
   );
@@ -189,26 +189,26 @@ export function OverlayInspector({ item, locked }: { item: Overlay; locked: bool
       <div>
         <p className="truncate text-sm font-medium text-text">B-roll: {media?.name}</p>
         <p className="mt-0.5 font-mono text-[11px] text-faint">
-          {item.start.toFixed(2)}s, {(item.src_out - item.src_in).toFixed(2)} detik, tanpa suara
+          {item.start.toFixed(2)}s, {(item.src_out - item.src_in).toFixed(2)}s long, no sound
         </p>
       </div>
       <div className="space-y-1.5">
-        <p className="text-xs text-text">Posisi</p>
+        <p className="text-xs text-text">Position</p>
         <Segmented
           options={LAYOUTS.map((l) => ({ value: l.id, label: l.label }))}
           value={item.layout}
-          onChange={(v) => applyOps("Posisi B-roll", [{ op: "update_overlay", overlay_id: item.id, layout: v }])}
+          onChange={(v) => applyOps("B-roll position", [{ op: "update_overlay", overlay_id: item.id, layout: v }])}
         />
       </div>
       <button
         type="button"
         onClick={() => {
-          applyOps("Hapus B-roll", [{ op: "delete_overlay", overlay_id: item.id }]);
+          applyOps("Delete B-roll", [{ op: "delete_overlay", overlay_id: item.id }]);
           select({});
         }}
         className="flex items-center gap-1.5 text-xs text-muted transition hover:text-danger"
       >
-        <Trash size={13} /> Hapus B-roll
+        <Trash size={13} /> Delete B-roll
       </button>
     </fieldset>
   );
@@ -224,25 +224,25 @@ export function MusicInspector({ item, locked }: { item: AudioItem; locked: bool
     <fieldset disabled={locked} className="space-y-4 disabled:opacity-50">
       <div>
         <p className="truncate text-sm font-medium text-text">Musik: {media?.name}</p>
-        <p className="mt-0.5 font-mono text-[11px] text-faint">{bpm ? `${bpm} BPM` : "tempo tidak terdeteksi"}</p>
+        <p className="mt-0.5 font-mono text-[11px] text-faint">{bpm ? `${bpm} BPM` : "no tempo detected"}</p>
       </div>
-      <Slider id="music-volume" label="Volume" value={item.volume} min={0} max={2} step={0.05} format={(v) => `${Math.round(v * 100)}%`} onCommit={(v) => update({ volume: v }, "Volume musik")} />
-      <Slider id="music-in" label="Mulai dari detik lagu" value={item.src_in} min={0} max={Math.max(0, (media?.duration ?? 0) - 1)} step={0.5} format={(v) => `${v.toFixed(1)}s`} onCommit={(v) => update({ src_in: v, src_out: Math.min(media?.duration ?? v + 1, v + (item.src_out - item.src_in)) }, "Geser lagu")} />
-      <Slider id="music-fade-in" label="Fade in" value={item.fade_in} min={0} max={5} step={0.1} format={(v) => `${v.toFixed(1)}s`} onCommit={(v) => update({ fade_in: v }, "Fade in musik")} />
-      <Slider id="music-fade-out" label="Fade out" value={item.fade_out} min={0} max={8} step={0.1} format={(v) => `${v.toFixed(1)}s`} onCommit={(v) => update({ fade_out: v }, "Fade out musik")} />
+      <Slider id="music-volume" label="Volume" value={item.volume} min={0} max={2} step={0.05} format={(v) => `${Math.round(v * 100)}%`} onCommit={(v) => update({ volume: v }, "Music volume")} />
+      <Slider id="music-in" label="Start from song time" value={item.src_in} min={0} max={Math.max(0, (media?.duration ?? 0) - 1)} step={0.5} format={(v) => `${v.toFixed(1)}s`} onCommit={(v) => update({ src_in: v, src_out: Math.min(media?.duration ?? v + 1, v + (item.src_out - item.src_in)) }, "Shift song")} />
+      <Slider id="music-fade-in" label="Fade in" value={item.fade_in} min={0} max={5} step={0.1} format={(v) => `${v.toFixed(1)}s`} onCommit={(v) => update({ fade_in: v }, "Music fade in")} />
+      <Slider id="music-fade-out" label="Fade out" value={item.fade_out} min={0} max={8} step={0.1} format={(v) => `${v.toFixed(1)}s`} onCommit={(v) => update({ fade_out: v }, "Music fade out")} />
       <label className="flex items-center gap-2 text-xs text-text">
-        <input type="checkbox" checked={item.duck} onChange={(e) => update({ duck: e.target.checked }, "Ducking musik")} />
-        Kecilkan musik saat ada yang bicara
+        <input type="checkbox" checked={item.duck} onChange={(e) => update({ duck: e.target.checked }, "Music ducking")} />
+        Lower the music when someone speaks
       </label>
       <button
         type="button"
         onClick={() => {
-          applyOps("Hapus musik", [{ op: "delete_audio", audio_id: item.id }]);
+          applyOps("Delete music", [{ op: "delete_audio", audio_id: item.id }]);
           select({});
         }}
         className="flex items-center gap-1.5 text-xs text-muted transition hover:text-danger"
       >
-        <Trash size={13} /> Hapus musik
+        <Trash size={13} /> Delete music
       </button>
     </fieldset>
   );
@@ -261,7 +261,7 @@ function VolumeKeys({ clip }: { clip: Clip }) {
   const add = (v: number | null) => {
     const at = playheadIn(clip);
     if (at === null) return;
-    commit(upsertKey(keys, { t: at, v: v ?? volumeAt(keys, at) }), "Keyframe volume");
+    commit(upsertKey(keys, { t: at, v: v ?? volumeAt(keys, at) }), "Volume keyframes");
   };
   return (
     <div className="space-y-1.5">
@@ -269,18 +269,18 @@ function VolumeKeys({ clip }: { clip: Clip }) {
         keys={keys}
         format={(k) => `${Math.round(k.v * 100)}%`}
         onSeek={(k) => seek(clipStart + k.t)}
-        onRemove={(k) => commit(keys.filter((x) => x !== k), "Hapus keyframe volume")}
+        onRemove={(k) => commit(keys.filter((x) => x !== k), "Delete volume keyframe")}
       />
       <div className="flex gap-3 text-[11px] text-muted">
         <button type="button" onClick={() => add(null)} className="transition hover:text-text">
-          ◆ Keyframe volume
+          ◆ Volume keyframes
         </button>
         <button type="button" onClick={() => add(0)} className="transition hover:text-text">
-          ◆ Senyap di playhead
+          ◆ Silence at playhead
         </button>
         {keys.length > 0 && (
-          <button type="button" onClick={() => commit([], "Hapus keyframe volume")} className="transition hover:text-danger">
-            Hapus semua
+          <button type="button" onClick={() => commit([], "Delete volume keyframe")} className="transition hover:text-danger">
+            Clear all
           </button>
         )}
       </div>
@@ -295,9 +295,9 @@ export function FinishPanel({ locked }: { locked: boolean }) {
   if (!finish) return null;
   return (
     <fieldset disabled={locked} className="space-y-4 border-t border-line pt-5 disabled:opacity-50">
-      <legend className="mb-2 text-xs font-medium text-muted">Finishing video</legend>
+      <legend className="display mb-2.5 text-[19px] text-text">Finishing</legend>
       <div className="space-y-1.5">
-        <p className="text-xs text-text">Letterbox sinematik</p>
+        <p className="text-xs text-text">Cinematic letterbox</p>
         <Segmented
           options={LETTERBOX}
           value={finish.letterbox}
@@ -337,11 +337,11 @@ function KeyList<K extends { t: number }>(props: { keys: K[]; format: (k: K) => 
   return (
     <div className="flex flex-wrap gap-1">
       {props.keys.map((k) => (
-        <span key={k.t} className="flex items-center gap-1 rounded-md border border-line bg-panel-2 px-1.5 py-0.5 font-mono text-[10px] text-text">
-          <button type="button" onClick={() => props.onSeek(k)} title="Ke keyframe ini" className="hover:text-accent">
+        <span key={k.t} className="flex items-center gap-1 rounded-[10px] border-2 border-ink/20 bg-panel-2 px-1.5 py-0.5 font-mono text-[10px] text-text">
+          <button type="button" onClick={() => props.onSeek(k)} title="Go to this keyframe" className="hover:text-accent">
             ◆ {k.t.toFixed(2)}s {props.format(k)}
           </button>
-          <button type="button" aria-label="Hapus keyframe" onClick={() => props.onRemove(k)} className="text-muted hover:text-danger">
+          <button type="button" aria-label="Delete keyframe" onClick={() => props.onRemove(k)} className="text-muted hover:text-danger">
             <Trash size={10} />
           </button>
         </span>
@@ -371,7 +371,7 @@ export function FramePosition({ clip, locked }: { clip: Clip; locked: boolean })
   if (Math.abs(srcRatio - outRatio) < 0.01) return null;
   const horizontal = srcRatio > outRatio;
   const keys = clip.crop;
-  const commit = (next: CropKey[], label = "Posisi bingkai") => applyOps(label, [{ op: "set_crop", clip_id: clip.id, keys: next, follow: null }]);
+  const commit = (next: CropKey[], label = "Frame position") => applyOps(label, [{ op: "set_crop", clip_id: clip.id, keys: next, follow: null }]);
   const withValue = (at: number, v: number): CropKey => {
     const cur = cropAt(keys, at);
     return { t: at, cx: horizontal ? v : cur.cx, cy: horizontal ? cur.cy : v };
@@ -387,20 +387,20 @@ export function FramePosition({ clip, locked }: { clip: Clip; locked: boolean })
     if (at === null) return;
     const cur = cropAt(keys, at);
     const base = keys.length ? keys : [{ t: 0, cx: cur.cx, cy: cur.cy }];
-    commit(upsertKey(base, { t: at, cx: cur.cx, cy: cur.cy }), "Keyframe bingkai");
+    commit(upsertKey(base, { t: at, cx: cur.cx, cy: cur.cy }), "Frame keyframe");
   };
   const first = keys[0] ?? { t: 0, cx: 0.5, cy: 0.5 };
   return (
     <fieldset disabled={locked} className="space-y-2 disabled:opacity-50">
-      <legend className="mb-2 text-xs font-medium text-muted">Bingkai {aspect}</legend>
+      <legend className="display mb-2.5 text-[19px] text-text">Frame {aspect}</legend>
       {clip.follow ? (
         <p className="text-[11px] leading-relaxed text-faint">
-          Bingkai mengikuti subjek otomatis. Mengubahnya di sini menggantinya dengan posisi manual.
+          The frame follows the subject automatically. Changing it here replaces that with a manual position.
         </p>
       ) : null}
       <Slider
         id="frame-pos"
-        label={`${horizontal ? "Posisi kiri-kanan" : "Posisi atas-bawah"}${keys.length >= 2 ? " (di playhead)" : ""}`}
+        label={`${horizontal ? "Left-right position" : "Up-down position"}${keys.length >= 2 ? " (at playhead)" : ""}`}
         value={horizontal ? first.cx : first.cy}
         min={0}
         max={1}
@@ -412,10 +412,10 @@ export function FramePosition({ clip, locked }: { clip: Clip; locked: boolean })
         keys={keys}
         format={(k) => `${Math.round((horizontal ? k.cx : k.cy) * 100)}%`}
         onSeek={(k) => seek(clipStart + k.t)}
-        onRemove={(k) => commit(keys.filter((x) => x !== k), "Hapus keyframe bingkai")}
+        onRemove={(k) => commit(keys.filter((x) => x !== k), "Delete frame keyframe")}
       />
       <button type="button" onClick={addKey} className="text-[11px] text-muted transition hover:text-text">
-        ◆ Tambah keyframe di playhead
+        ◆ Add keyframe at playhead
       </button>
     </fieldset>
   );

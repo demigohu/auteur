@@ -39,7 +39,7 @@ export function HistoryTab() {
           type="button"
           onClick={undo}
           disabled={locked || !project.can_undo}
-          className="flex items-center gap-1.5 rounded-md border border-line-strong px-2.5 py-1.5 text-xs text-text transition hover:bg-raised active:scale-[0.98] disabled:opacity-35"
+          className="flex items-center gap-1.5 rounded-full border-2 border-ink px-2.5 py-1.5 text-xs font-semibold text-text transition hover:bg-raised active:scale-[0.98] disabled:opacity-35"
         >
           <ArrowArcLeft size={13} /> Undo
         </button>
@@ -47,7 +47,7 @@ export function HistoryTab() {
           type="button"
           onClick={redo}
           disabled={locked || !project.can_redo}
-          className="flex items-center gap-1.5 rounded-md border border-line-strong px-2.5 py-1.5 text-xs text-text transition hover:bg-raised active:scale-[0.98] disabled:opacity-35"
+          className="flex items-center gap-1.5 rounded-full border-2 border-ink px-2.5 py-1.5 text-xs font-semibold text-text transition hover:bg-raised active:scale-[0.98] disabled:opacity-35"
         >
           <ArrowArcRight size={13} /> Redo
         </button>
@@ -56,7 +56,7 @@ export function HistoryTab() {
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
         {groups.length === 0 ? (
           <p className="pt-1 text-sm leading-relaxed text-muted">
-            Belum ada perubahan. Setiap edit dari agen maupun dari kamu akan tercatat di sini dan bisa dibatalkan.
+            No changes yet. Every edit, from the agent or from you, shows up here and can be undone.
           </p>
         ) : (
           <ol className="space-y-2">
@@ -64,7 +64,7 @@ export function HistoryTab() {
               <motion.li
                 key={g.commits[0].id}
                 layout={reduce ? false : "position"}
-                className="rounded-md border border-line bg-panel-2 p-3"
+                className="rounded-[10px] border-2 border-ink/20 bg-panel-2 p-3"
               >
                 <div className="flex items-start gap-2">
                   {g.author === "agent" ? (
@@ -74,10 +74,10 @@ export function HistoryTab() {
                   )}
                   <div className="min-w-0 flex-1">
                     <p className="text-[13px] leading-snug text-text">
-                      {g.runId ? (instruction(g.runId) ?? "Arahan agen") : g.commits[0].label}
+                      {g.runId ? (instruction(g.runId) ?? "Agent instruction") : g.commits[0].label}
                     </p>
                     <p className="mt-0.5 text-[11px] text-faint">
-                      {g.author === "agent" ? "Agen" : "Kamu"}, {clock(g.commits[0].at)}
+                      {g.author === "agent" ? "Agent" : "You"}, {clock(g.commits[0].at)}
                     </p>
                   </div>
                   {i === 0 && g.runId && (
@@ -85,8 +85,8 @@ export function HistoryTab() {
                       type="button"
                       onClick={() => undoRun(g.runId!)}
                       disabled={locked}
-                      title="Batalkan semua edit dari arahan ini"
-                      className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] text-muted transition hover:bg-raised hover:text-text disabled:opacity-35"
+                      title="Undo every edit from this instruction"
+                      className="flex shrink-0 items-center gap-1 rounded-[10px] px-2 py-1 text-[11px] text-muted transition hover:bg-raised hover:text-text disabled:opacity-35"
                     >
                       <ArrowCounterClockwise size={12} /> Batalkan
                     </button>

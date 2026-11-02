@@ -37,9 +37,9 @@ export function InspectorTab() {
       ) : (
         <div className="space-y-5 pt-2">
           <div>
-            <p className="text-sm text-text">Belum ada yang dipilih</p>
+            <p className="text-sm text-text">Nothing selected</p>
             <p className="mt-1 text-sm leading-relaxed text-muted">
-              Klik klip, teks, B-roll, atau musik di timeline untuk mengaturnya.
+              Click a clip, text, B-roll or music on the timeline to adjust it.
             </p>
           </div>
           <FinishPanel key={version} locked={locked} />
@@ -58,32 +58,32 @@ function ClipInspector({ clip, locked }: { clip: Clip; locked: boolean }) {
     <div className="space-y-6">
       <div>
         <p className="truncate text-sm font-medium text-text">{media?.name ?? clip.media_id}</p>
-        <p className="mt-0.5 font-mono text-[11px] text-faint">{clipDuration(clip).toFixed(2)} detik di timeline</p>
+        <p className="mt-0.5 font-mono text-[11px] text-faint">{clipDuration(clip).toFixed(2)}s on the timeline</p>
       </div>
 
       <fieldset disabled={locked} className="space-y-3 disabled:opacity-50">
-        <legend className="mb-2 text-xs font-medium text-muted">Potongan sumber</legend>
+        <legend className="display mb-2.5 text-[19px] text-text">Source trim</legend>
         <div className="grid grid-cols-2 gap-3">
           <NumberField
             key={`in-${clip.src_in}`}
-            label="Masuk (dtk)"
+            label="In (s)"
             value={clip.src_in}
-            onCommit={(v) => applyOps("Trim klip", [{ op: "trim", clip_id: clip.id, src_in: v }])}
+            onCommit={(v) => applyOps("Trim clip", [{ op: "trim", clip_id: clip.id, src_in: v }])}
           />
           <NumberField
             key={`out-${clip.src_out}`}
-            label="Keluar (dtk)"
+            label="Out (s)"
             value={clip.src_out}
-            onCommit={(v) => applyOps("Trim klip", [{ op: "trim", clip_id: clip.id, src_out: v }])}
+            onCommit={(v) => applyOps("Trim clip", [{ op: "trim", clip_id: clip.id, src_out: v }])}
           />
         </div>
         <button
           type="button"
-          onClick={() => applyOps(clip.muted ? "Nyalakan suara klip" : "Bisukan klip", [{ op: "set_muted", clip_id: clip.id, muted: !clip.muted }])}
-          className="flex items-center gap-2 rounded-md border border-line-strong px-2.5 py-1.5 text-xs text-text transition hover:bg-raised active:scale-[0.98]"
+          onClick={() => applyOps(clip.muted ? "Unmute clip" : "Mute clip", [{ op: "set_muted", clip_id: clip.id, muted: !clip.muted }])}
+          className="flex items-center gap-2 rounded-full border-2 border-ink px-2.5 py-1.5 text-xs font-semibold text-text transition hover:bg-raised active:scale-[0.98]"
         >
           {clip.muted ? <SpeakerSimpleSlash size={14} /> : <SpeakerSimpleHigh size={14} />}
-          {clip.muted ? "Suara dibisukan" : "Suara aktif"}
+          {clip.muted ? "Muted" : "Sound on"}
         </button>
       </fieldset>
 
@@ -106,9 +106,9 @@ function TrackingInfo({ clip, locked }: { clip: Clip; locked: boolean }) {
   const prompt = (id: string) => tracks.find((t) => t.id === id)?.prompt ?? id;
   return (
     <div className="space-y-2">
-      <p className="text-xs font-medium text-muted">Pelacakan</p>
+      <p className="label text-[10px] text-muted">Tracking</p>
       {clip.follow && (
-        <div className="flex items-center gap-2 rounded-md border border-line bg-panel-2 px-2.5 py-2 text-xs text-text">
+        <div className="flex items-center gap-2 rounded-[10px] border-2 border-ink/20 bg-panel-2 px-2.5 py-2 text-xs text-text">
           <Crosshair size={14} className="shrink-0 text-accent" />
           <span className="min-w-0 flex-1 truncate">
             Crop mengikuti {prompt(clip.follow.track_id)} {clip.follow.object_id}
@@ -116,8 +116,8 @@ function TrackingInfo({ clip, locked }: { clip: Clip; locked: boolean }) {
           <button
             type="button"
             disabled={locked}
-            aria-label="Kembalikan ke crop tengah"
-            onClick={() => applyOps("Hapus reframe", [{ op: "set_crop", clip_id: clip.id, keys: [], follow: null }])}
+            aria-label="Back to center crop"
+            onClick={() => applyOps("Remove reframe", [{ op: "set_crop", clip_id: clip.id, keys: [], follow: null }])}
             className="shrink-0 text-muted hover:text-text disabled:opacity-40"
           >
             <X size={13} />
@@ -125,18 +125,18 @@ function TrackingInfo({ clip, locked }: { clip: Clip; locked: boolean }) {
         </div>
       )}
       {clip.effects.map((e, i) => (
-        <div key={i} className="flex items-center gap-2 rounded-md border border-line bg-panel-2 px-2.5 py-2 text-xs text-text">
+        <div key={i} className="flex items-center gap-2 rounded-[10px] border-2 border-ink/20 bg-panel-2 px-2.5 py-2 text-xs text-text">
           <span className="min-w-0 flex-1 truncate">
-            {e.kind === "blur" ? "Blur" : "Sorot"} {prompt(e.track_id)}
-            {e.object_ids ? ` (${e.object_ids.length} objek)` : " (semua)"}
-            {e.kind === "blur" && e.exclude_ids.length > 0 ? `, kecuali ${e.exclude_ids.join(", ")}` : ""}
+            {e.kind === "blur" ? "Blur" : "Highlight"} {prompt(e.track_id)}
+            {e.object_ids ? ` (${e.object_ids.length} objects)` : " (all)"}
+            {e.kind === "blur" && e.exclude_ids.length > 0 ? `, except ${e.exclude_ids.join(", ")}` : ""}
           </span>
           <button
             type="button"
             disabled={locked}
-            aria-label="Hapus efek"
+            aria-label="Remove effect"
             onClick={() =>
-              applyOps("Hapus efek", [{ op: "set_effects", clip_id: clip.id, effects: clip.effects.filter((_, k) => k !== i) }])
+              applyOps("Remove effect", [{ op: "set_effects", clip_id: clip.id, effects: clip.effects.filter((_, k) => k !== i) }])
             }
             className="shrink-0 text-muted hover:text-text disabled:opacity-40"
           >
@@ -150,10 +150,10 @@ function TrackingInfo({ clip, locked }: { clip: Clip; locked: boolean }) {
 
 const TEXT_LOOKS: { id: TextItem["look"]; label: string }[] = [
   { id: "karaoke", label: "Karaoke" },
-  { id: "kotak", label: "Kotak" },
-  { id: "tebal", label: "Tebal" },
+  { id: "kotak", label: "Box" },
+  { id: "tebal", label: "Bold" },
   { id: "pop", label: "Pop" },
-  { id: "bersih", label: "Bersih" },
+  { id: "bersih", label: "Clean" },
 ];
 const ACCENTS = ["#FFD43B", "#7CFC6A", "#FF5FA2", "#3DD6FF", "#FF8A3D", "#FFFFFF"];
 
@@ -165,7 +165,7 @@ function TextInspector({ item, locked }: { item: TextItem; locked: boolean }) {
   const subtitles = (texts ?? []).filter((t) => t.style === "subtitle");
   const [text, setText] = useState(item.text);
   const [everywhere, setEverywhere] = useState(item.style === "subtitle");
-  const update = (patch: Partial<TextItem>, label = "Ubah teks") =>
+  const update = (patch: Partial<TextItem>, label = "Edit text") =>
     applyOps(label, [{ op: "update_text", text_id: item.id, ...patch }]);
   // Style changes apply to every subtitle by default, like a caption preset in CapCut.
   const restyle = (patch: { look?: TextItem["look"]; color?: string }, label: string) =>
@@ -177,7 +177,7 @@ function TextInspector({ item, locked }: { item: TextItem; locked: boolean }) {
   return (
     <fieldset disabled={locked} className="space-y-5 disabled:opacity-50">
       <div className="space-y-1.5">
-        <label htmlFor="text-body" className="text-xs font-medium text-muted">
+        <label htmlFor="text-body" className="label text-[10px] text-muted">
           Teks ({item.style})
         </label>
         <textarea
@@ -186,20 +186,20 @@ function TextInspector({ item, locked }: { item: TextItem; locked: boolean }) {
           rows={3}
           onChange={(e) => setText(e.target.value)}
           onBlur={() => text.trim() && text !== item.text && update({ text: text.trim() })}
-          className="block w-full resize-none rounded-md border border-line-strong bg-panel-2 px-3 py-2 text-sm text-text focus:border-accent/60 focus:outline-none"
+          className="block w-full resize-none rounded-[10px] border-2 border-ink bg-paper px-3 py-2 text-sm text-text focus:border-tomato focus:outline-none"
         />
       </div>
       {item.style === "subtitle" && (
         <div className="space-y-3">
-          <p className="text-xs font-medium text-muted">Gaya subtitle</p>
+          <p className="label text-[10px] text-muted">Subtitle style</p>
           <div className="grid grid-cols-5 gap-1.5">
             {TEXT_LOOKS.map((l) => (
               <button
                 key={l.id}
                 type="button"
-                onClick={() => restyle({ look: l.id }, `Gaya subtitle ${l.label}`)}
-                className={`rounded-md border px-1 py-1.5 text-[11px] transition active:scale-[0.97] ${
-                  item.look === l.id ? "border-accent text-text" : "border-line text-muted hover:border-line-strong hover:text-text"
+                onClick={() => restyle({ look: l.id }, `Subtitle style ${l.label}`)}
+                className={`rounded-[10px] border px-1 py-1.5 text-[11px] transition active:scale-[0.97] ${
+                  item.look === l.id ? "border-2 border-ink bg-ink text-paper" : "border-2 border-ink/20 text-muted hover:border-line-strong hover:text-text"
                 }`}
               >
                 {l.label}
@@ -207,13 +207,13 @@ function TextInspector({ item, locked }: { item: TextItem; locked: boolean }) {
             ))}
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-text">Warna sorot</span>
+            <span className="text-xs text-text">Highlight color</span>
             {ACCENTS.map((c) => (
               <button
                 key={c}
                 type="button"
-                aria-label={`Warna ${c}`}
-                onClick={() => restyle({ color: c }, "Warna subtitle")}
+                aria-label={`Color ${c}`}
+                onClick={() => restyle({ color: c }, "Subtitle color")}
                 className={`size-5 rounded-full border-2 transition active:scale-90 ${
                   item.color.toUpperCase() === c ? "border-text" : "border-transparent"
                 }`}
@@ -223,17 +223,17 @@ function TextInspector({ item, locked }: { item: TextItem; locked: boolean }) {
           </div>
           <label className="flex items-center gap-2 text-xs text-text">
             <input type="checkbox" checked={everywhere} onChange={(e) => setEverywhere(e.target.checked)} />
-            Terapkan ke semua subtitle ({subtitles.length})
+            Apply to all subtitles ({subtitles.length})
           </label>
         </div>
       )}
       <div className="grid grid-cols-2 gap-3">
-        <NumberField key={`s-${item.start}`} label="Mulai (dtk)" value={item.start} onCommit={(v) => update({ start: v }, "Geser teks")} />
-        <NumberField key={`e-${item.end}`} label="Selesai (dtk)" value={item.end} onCommit={(v) => update({ end: v }, "Geser teks")} />
+        <NumberField key={`s-${item.start}`} label="Start (s)" value={item.start} onCommit={(v) => update({ start: v }, "Move text")} />
+        <NumberField key={`e-${item.end}`} label="End (s)" value={item.end} onCommit={(v) => update({ end: v }, "Move text")} />
       </div>
       <div className="space-y-1">
         <label htmlFor="text-y" className="text-xs text-text">
-          Posisi vertikal
+          Vertical position
         </label>
         <input
           id="text-y"
@@ -242,7 +242,7 @@ function TextInspector({ item, locked }: { item: TextItem; locked: boolean }) {
           max={0.95}
           step={0.01}
           defaultValue={item.y}
-          onPointerUp={(e) => update({ y: Number((e.target as HTMLInputElement).value) }, "Pindah posisi teks")}
+          onPointerUp={(e) => update({ y: Number((e.target as HTMLInputElement).value) }, "Move text position")}
           className="w-full"
         />
       </div>
@@ -270,7 +270,7 @@ function NumberField({ label, value, onCommit }: { label: string; value: number;
         onChange={(e) => setDraft(e.target.value)}
         onBlur={commit}
         onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-        className="block w-full rounded-md border border-line-strong bg-panel-2 px-2.5 py-1.5 font-mono text-xs tabular-nums text-text focus:border-accent/60 focus:outline-none"
+        className="block w-full rounded-[10px] border-2 border-ink bg-paper px-2.5 py-1.5 font-mono text-xs tabular-nums text-text focus:border-tomato focus:outline-none"
       />
     </div>
   );

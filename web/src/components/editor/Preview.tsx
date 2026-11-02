@@ -73,11 +73,11 @@ export function Preview() {
   }, []);
 
   return (
-    <section className="flex min-h-0 flex-col bg-bg">
-      <div className="relative flex min-h-0 flex-1 items-center justify-center p-4">
+    <section className="flex h-full min-h-0 flex-col bg-bg">
+      <div className="mat relative flex min-h-0 flex-1 items-center justify-center p-5">
         {before && (
-          <span className="pointer-events-none absolute top-6 left-1/2 z-10 -translate-x-1/2 rounded-md bg-bg/85 px-2.5 py-1 text-xs text-text backdrop-blur">
-            Sebelum diedit
+          <span className="label pointer-events-none absolute top-6 left-1/2 z-10 -translate-x-1/2 -rotate-2 rounded-full border-2 border-ink bg-sun px-3 py-1 text-ink">
+            Before edits
           </span>
         )}
         {timeline && hasPlayer ? (
@@ -92,27 +92,27 @@ export function Preview() {
             acknowledgeRemotionLicense
             clickToPlay
             style={{ width: "100%", height: "100%" }}
-            className="[&>div]:rounded-md"
+            className="[&>div]:rounded-[10px]"
           />
         ) : (
           <EmptyPreview hasMedia={(project?.media.length ?? 0) > 0} />
         )}
       </div>
-      <div className="flex h-11 shrink-0 items-center gap-3 border-t border-line px-4">
+      <div className="flex h-12 shrink-0 items-center gap-3 border-t-2 border-ink px-4">
         <button
           type="button"
-          aria-label="Ke awal"
+          aria-label="To start"
           onClick={() => player.current?.seekTo(0)}
-          className="rounded-md p-1.5 text-muted transition-colors hover:bg-raised hover:text-text"
+          className="rounded-full p-1.5 text-muted transition-colors hover:bg-raised hover:text-text"
         >
           <SkipBack size={16} weight="fill" />
         </button>
         <button
           type="button"
-          aria-label={playing ? "Jeda" : "Putar"}
+          aria-label={playing ? "Pause" : "Play"}
           disabled={duration === 0}
           onClick={() => player.current?.toggle()}
-          className="grid size-8 place-items-center rounded-md bg-raised text-text transition hover:bg-line-strong active:scale-[0.96] disabled:opacity-40"
+          className="grid size-9 place-items-center rounded-full bg-accent text-accent-ink transition hover:brightness-105 active:scale-[0.94] disabled:opacity-40"
         >
           {playing ? <Pause size={15} weight="fill" /> : <Play size={15} weight="fill" />}
         </button>
@@ -126,24 +126,24 @@ export function Preview() {
           onPointerLeave={() => setBefore(false)}
           onKeyDown={(e) => e.key === "Enter" && setBefore(true)}
           onKeyUp={() => setBefore(false)}
-          title="Tahan untuk melihat footage sebelum diedit"
-          className={`ml-auto flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] transition-colors select-none disabled:opacity-40 ${
+          title="Hold to see the footage before edits"
+          className={`ml-auto flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] transition-colors select-none disabled:opacity-40 ${
             before ? "bg-accent-soft text-accent" : "text-muted hover:bg-raised hover:text-text"
           }`}
         >
-          <ImageSquare size={14} /> Sebelum
+          <ImageSquare size={14} /> Before
         </button>
         {Object.keys(tracks).length > 0 && (
           <button
             type="button"
             aria-pressed={showTracks}
             onClick={() => setShowTracks(!showTracks)}
-            title="Tampilkan kotak pelacakan SAM"
-            className={`flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] transition-colors ${
+            title="Show SAM tracking boxes"
+            className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] transition-colors ${
               showTracks ? "bg-accent-soft text-accent" : "text-muted hover:bg-raised hover:text-text"
             }`}
           >
-            <BoundingBox size={14} /> Kotak lacak
+            <BoundingBox size={14} /> Tracking boxes
           </button>
         )}
         <span className="font-mono text-[11px] text-faint">
@@ -157,11 +157,11 @@ export function Preview() {
 function EmptyPreview({ hasMedia }: { hasMedia: boolean }) {
   return (
     <div className="max-w-sm text-center">
-      <p className="text-sm text-text">Timeline masih kosong</p>
+      <p className="text-sm text-text">The timeline is empty</p>
       <p className="mt-1.5 text-sm leading-relaxed text-muted">
         {hasMedia
-          ? "Minta agen menyusun video di panel kanan, atau tambahkan klip dari media bin."
-          : "Unggah footage di media bin, lalu beri arahan ke agen seperti ke editor manusia."}
+          ? "Ask the agent to build the video in the right panel, or add clips from the media bin."
+          : "Upload footage to the media bin, then direct the agent like a human editor."}
       </p>
     </div>
   );

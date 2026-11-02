@@ -37,7 +37,21 @@ export type ProjectView = {
   busy: boolean;
 };
 
-export type ProjectSummary = { id: string; name: string; updated_at: string };
+export type ProjectSummary = {
+  id: string;
+  name: string;
+  updated_at: string;
+  thumb_url: string | null;
+  duration: number;
+  aspect: Timeline["aspect"];
+  fps: number;
+  clips: number;
+  media: number;
+};
+
+export type User = { id: string; email: string; name: string };
+
+export type NewProject = { name: string; aspect: Timeline["aspect"]; fps: 24 | 30 | 60 };
 
 export type Op = Schema["op"];
 
@@ -51,7 +65,16 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, init);
+  // The session lives in an httpOnly cookie set by the API, so every call carries credentials.
+  const res = await fetch(`${API_URL}${path}`, { ...init, credentials: "include" });
+  if (res.status === 401 && typeof window !== "undefined" && !path.startsWith("/auth/")) {
+    // Clear the stale cookie first, or the proxy would bounce /login straight back here.
+    await fetch(`${API_URL}/auth/logout`, { method: "POST", credentials: "include" }).catch(() => {});
+    // A hard navigation on purpose: the proxy must see the cleared cookie. Not a router call, since
+    // this module runs outside React.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.assign(`/login?next=${encodeURIComponent(window.location.pathname)}`);
+  }
   if (!res.ok) {
     let detail = res.statusText;
     try {
@@ -63,8 +86,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-const json = (body: unknown): RequestInit => ({
-  method: "POST",
+const json = (body: unknown, method = "POST"): RequestInit => ({
+  method,
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify(body),
 });
@@ -72,8 +95,14 @@ const json = (body: unknown): RequestInit => ({
 export const fileUrl = (path: string) => `${API_URL}${path}`;
 
 export const api = {
+  me: () => request<User>("/auth/me"),
+  signUp: (body: { name: string; email: string; password: string }) => request<User>("/auth/signup", json(body)),
+  signIn: (body: { email: string; password: string }) => request<User>("/auth/login", json(body)),
+  signOut: () => request<{ status: string }>("/auth/logout", { method: "POST" }),
   listProjects: () => request<ProjectSummary[]>("/projects"),
-  createProject: (name: string) => request<ProjectView>("/projects", json({ name })),
+  createProject: (body: NewProject) => request<ProjectView>("/projects", json(body)),
+  renameProject: (id: string, name: string) => request<ProjectView>(`/projects/${id}`, json({ name }, "PATCH")),
+  deleteProject: (id: string) => request<{ status: string }>(`/projects/${id}`, { method: "DELETE" }),
   getProject: (id: string) => request<ProjectView>(`/projects/${id}`),
   upload: (id: string, file: File) => {
     const form = new FormData();

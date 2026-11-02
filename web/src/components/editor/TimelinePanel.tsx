@@ -137,7 +137,7 @@ export function TimelinePanel() {
     // Read the playhead on demand; subscribing would re-render the whole timeline every frame.
     const time = useEditor.getState().time;
     const i = starts.findIndex((s, k) => time > s + MIN_CLIP && time < s + clipDuration(shown[k]) - MIN_CLIP);
-    if (i >= 0) applyOps("Potong klip di playhead", [{ op: "split", clip_id: clips[i].id, at: Number(time.toFixed(3)) }]);
+    if (i >= 0) applyOps("Split clip at playhead", [{ op: "split", clip_id: clips[i].id, at: Number(time.toFixed(3)) }]);
   };
   const deleteSelected = () => useEditor.getState().deleteSelection();
   // The track row under the pointer, for dragging items between V1 and V2.
@@ -145,9 +145,9 @@ export function TimelinePanel() {
     document.elementFromPoint(e.clientX, e.clientY)?.closest("[data-track]")?.getAttribute("data-track");
   const addText = () => {
     const t = Number(useEditor.getState().time.toFixed(2));
-    applyOps("Tambah teks", [{ op: "add_text", text: "Judul", start: t, end: Number((t + 2).toFixed(2)), style: "title", y: 0.2 }]);
+    applyOps("Add text", [{ op: "add_text", text: "Title", start: t, end: Number((t + 2).toFixed(2)), style: "title", y: 0.2 }]);
   };
-  const duplicate = () => selectedClipId && applyOps("Duplikat klip", [{ op: "duplicate_clip", clip_id: selectedClipId }]);
+  const duplicate = () => selectedClipId && applyOps("Duplicate clip", [{ op: "duplicate_clip", clip_id: selectedClipId }]);
   const fit = () => setZoom((viewW - TRACK_LABEL_W - 40) / Math.max(duration, 1));
 
   // Ctrl/⌘ + wheel zooms around the cursor, like a pro editor.
@@ -231,21 +231,21 @@ export function TimelinePanel() {
         const o = overlays.find((x) => x.id === drag.id)!;
         const t = o.start + drag.dt;
         const index = clips.filter((c, k) => starts[k] + clipDuration(c) / 2 < t).length;
-        applyOps("B-roll ke track utama", [
+        applyOps("B-roll to main track", [
           { op: "delete_overlay", overlay_id: o.id },
           { op: "add_clip", media_id: o.media_id, src_in: o.src_in, src_out: o.src_out, index },
         ]);
         return;
       }
-      const label = { text: "Geser teks", overlay: "Geser B-roll", audio: "Geser musik" }[drag.span];
-      applyOps(drag.edge === "move" ? label : label.replace("Geser", "Trim"), spanOps(drag));
+      const label = { text: "Move text", overlay: "Move B-roll", audio: "Move music" }[drag.span];
+      applyOps(drag.edge === "move" ? label : label.replace("Move", "Trim"), spanOps(drag));
       return;
     }
     const i = clips.findIndex((c) => c.id === drag.id);
     if (drag.kind === "clip-trim") {
       const c = clips[i];
       if (Math.abs(drag.src_in - c.src_in) > 0.01 || Math.abs(drag.src_out - c.src_out) > 0.01) {
-        applyOps("Trim klip", [
+        applyOps("Trim clip", [
           { op: "trim", clip_id: c.id, src_in: Number(drag.src_in.toFixed(3)), src_out: Number(drag.src_out.toFixed(3)) },
         ]);
       }
@@ -259,7 +259,7 @@ export function TimelinePanel() {
     if (trackAt(e) === "V2") {
       // A clip dragged up onto V2 becomes B-roll at the same moment.
       const c = clips[i];
-      applyOps("Klip jadi B-roll", [
+      applyOps("Clip to B-roll", [
         { op: "delete", clip_id: c.id },
         { op: "add_overlay", media_id: c.media_id, src_in: c.src_in, src_out: c.src_out, start: Number(Math.max(0, starts[i] + drag.dx / px).toFixed(3)) },
       ]);
@@ -267,7 +267,7 @@ export function TimelinePanel() {
     }
     const center = starts[i] + clipDuration(clips[i]) / 2 + drag.dx / px;
     const index = clips.filter((c, k) => k !== i && starts[k] + clipDuration(c) / 2 < center).length;
-    if (index !== i) applyOps("Geser klip", [{ op: "move", clip_id: drag.id, index }]);
+    if (index !== i) applyOps("Move clip", [{ op: "move", clip_id: drag.id, index }]);
   }
 
   // Dropping media from the bin: video on V1 inserts a clip, on V2 adds B-roll; audio adds music.
@@ -283,38 +283,38 @@ export function TimelinePanel() {
     if (!m || locked) return;
     e.preventDefault();
     if (m.kind === "audio") {
-      applyOps(`Musik ${m.name}`, [{ op: "add_audio", media_id: m.id, start: t }]);
+      applyOps(`Music: ${m.name}`, [{ op: "add_audio", media_id: m.id, start: t }]);
     } else if (track === "V2") {
       applyOps(`B-roll ${m.name}`, [{ op: "add_overlay", media_id: m.id, src_in: 0, src_out: Number(Math.min(m.duration, 4).toFixed(3)), start: t }]);
     } else {
       const index = clips.filter((c, k) => starts[k] + clipDuration(c) / 2 < t).length;
-      applyOps(`Tambah ${m.name}`, [{ op: "add_clip", media_id: m.id, src_in: 0, src_out: Number(m.duration.toFixed(3)), index }]);
+      applyOps(`Add ${m.name}`, [{ op: "add_clip", media_id: m.id, src_in: 0, src_out: Number(m.duration.toFixed(3)), index }]);
     }
   }
 
   const spanDraft = (kind: SpanKind, id: string) => (drag?.kind === "span" && drag.span === kind && drag.id === id ? drag : null);
 
   return (
-    <section className="relative flex h-full min-h-0 min-w-0 flex-col border-t border-line bg-panel">
-      <div className="flex h-9 shrink-0 items-center gap-1 border-b border-line px-2">
-        <ToolButton label="Potong di playhead (S)" onClick={splitAtPlayhead} disabled={locked}>
+    <section className="relative flex h-full min-h-0 min-w-0 flex-col bg-panel">
+      <div className="flex h-10 shrink-0 items-center gap-1 border-b border-line px-2">
+        <ToolButton label="Split at playhead (S)" onClick={splitAtPlayhead} disabled={locked}>
           <Scissors size={15} />
         </ToolButton>
-        <ToolButton label="Duplikat klip (⌘D)" onClick={duplicate} disabled={locked || !selectedClipId}>
+        <ToolButton label="Duplicate clip (⌘D)" onClick={duplicate} disabled={locked || !selectedClipId}>
           <Copy size={15} />
         </ToolButton>
-        <ToolButton label="Tambah teks di playhead (T)" onClick={addText} disabled={locked}>
+        <ToolButton label="Add text at playhead (T)" onClick={addText} disabled={locked}>
           <TextT size={15} />
         </ToolButton>
         <ToolButton
-          label="Hapus (Delete)"
+          label="Delete (Del)"
           onClick={deleteSelected}
           disabled={locked || (!selectedClipId && !selectedTextId && !selectedOverlayId && !selectedAudioId)}
         >
           <Trash size={15} />
         </ToolButton>
         <ToolButton
-          label="Salin klip (⌘C), tempel di playhead (⌘V)"
+          label="Copy clip (⌘C), paste at playhead (⌘V)"
           onClick={() => {
             useEditor.getState().copyClips();
             useEditor.getState().pasteClips();
@@ -335,20 +335,20 @@ export function TimelinePanel() {
             type="button"
             aria-pressed={snap}
             onClick={() => setSnap((v) => !v)}
-            title="Snap ke playhead, ujung klip, dan beat musik"
+            title="Snap to playhead, clip edges and music beats"
             className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] transition-colors ${
               snap ? "bg-accent-soft text-accent" : "text-muted hover:bg-raised hover:text-text"
             }`}
           >
             <MagnetStraight size={14} /> Snap
           </button>
-          <ToolButton label="Pas layar" onClick={fit}>
+          <ToolButton label="Fit to view" onClick={fit}>
             <ArrowsInLineHorizontal size={15} />
           </ToolButton>
-          <ToolButton label="Perkecil (⌘ + scroll)" onClick={() => setZoom(px / 1.5)}>
+          <ToolButton label="Zoom out (⌘ + scroll)" onClick={() => setZoom(px / 1.5)}>
             <MagnifyingGlassMinus size={15} />
           </ToolButton>
-          <ToolButton label="Perbesar (⌘ + scroll)" onClick={() => setZoom(px * 1.5)}>
+          <ToolButton label="Zoom in (⌘ + scroll)" onClick={() => setZoom(px * 1.5)}>
             <MagnifyingGlassPlus size={15} />
           </ToolButton>
         </div>
@@ -365,7 +365,7 @@ export function TimelinePanel() {
         <div className="relative min-h-full" style={{ width: contentW + TRACK_LABEL_W }}>
           <Ruler px={px} width={contentW} end={duration} onSeek={(x) => seek(Math.min(timeAt(x), duration))} />
 
-          <Track label="V2" height={34} onDragOver={(e) => onMediaDragOver("V2", e)} onDragLeave={() => setDropAt(null)} onDrop={(e) => onMediaDrop("V2", e)} hint={!overlays.length ? "Tarik video ke sini untuk B-roll" : undefined}>
+          <Track label="V2" height={34} onDragOver={(e) => onMediaDragOver("V2", e)} onDragLeave={() => setDropAt(null)} onDrop={(e) => onMediaDrop("V2", e)} hint={!overlays.length ? "Drag video here for B-roll" : undefined}>
             {overlays.map((o) => (
               <SpanBlock
                 key={o.id}
@@ -405,7 +405,7 @@ export function TimelinePanel() {
             {dropAt?.track === "V1" && <DropLine t={dropAt.t} px={px} />}
           </Track>
 
-          <Track label="T1" height={laneCount * LANE_H} hint={!texts.length ? "Teks dan subtitle" : undefined}>
+          <Track label="T1" height={laneCount * LANE_H} hint={!texts.length ? "Text and subtitles" : undefined}>
             {texts.map((t, i) => (
               <SpanBlock
                 key={t.id}
@@ -427,7 +427,7 @@ export function TimelinePanel() {
             ))}
           </Track>
 
-          <Track label="A1" height={40} onDragOver={(e) => onMediaDragOver("A1", e)} onDragLeave={() => setDropAt(null)} onDrop={(e) => onMediaDrop("A1", e)} hint={!audio.length ? "Tarik musik ke sini" : undefined}>
+          <Track label="A1" height={40} onDragOver={(e) => onMediaDragOver("A1", e)} onDragLeave={() => setDropAt(null)} onDrop={(e) => onMediaDrop("A1", e)} hint={!audio.length ? "Drag music here" : undefined}>
             {audio.map((a) => (
               <SpanBlock
                 key={a.id}
@@ -648,7 +648,7 @@ function ClipBlock(props: {
       <div className="absolute inset-x-0 top-0 flex items-center gap-1.5 bg-gradient-to-b from-black/70 to-transparent px-2 pt-1 pb-3">
         <span className="truncate text-[11px] font-medium text-text">{media?.name ?? clip.media_id}</span>
         <span className="shrink-0 font-mono text-[10px] text-text/70">{clipDuration(clip).toFixed(1)}s</span>
-        {graded && <span className="ml-auto size-1.5 shrink-0 rounded-full bg-accent" title="Ada grading warna" />}
+        {graded && <span className="ml-auto size-1.5 shrink-0 rounded-full bg-accent" title="Color graded" />}
       </div>
       {(["in", "out"] as const).map((edge) => (
         <div
@@ -784,7 +784,7 @@ function LockedBanner() {
       className="pointer-events-none absolute right-3 bottom-3 z-50 flex items-center gap-2 rounded-md border border-accent/40 bg-panel-2/95 px-3 py-1.5 text-xs text-text shadow-lg"
     >
       <Robot size={14} className="text-accent" />
-      Agen sedang mengedit. Timeline dikunci sampai selesai.
+      The agent is editing. The timeline is locked until it finishes.
     </motion.div>
   );
 }

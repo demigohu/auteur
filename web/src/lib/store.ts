@@ -49,7 +49,7 @@ type EditorState = {
   tracks: Record<string, TrackData>;
   showTracks: boolean;
   marks: CheckMark[];
-  /** While true the preview shows the untouched footage (held "Sebelum" button). */
+  /** While true the preview shows the untouched footage (held "Before" button). */
   before: boolean;
 
   load: (id: string) => Promise<void>;
@@ -224,7 +224,7 @@ export const useEditor = create<EditorState>((set, get) => {
     },
 
     connect: (id) => {
-      const source = new EventSource(`${API_URL}/projects/${id}/events`);
+      const source = new EventSource(`${API_URL}/projects/${id}/events`, { withCredentials: true });
       const types = ["run_started", "plan", "thought", "tool_call", "tool_result", "progress", "check", "timeline", "track", "cost", "message", "run_finished"];
       const handler = (msg: MessageEvent) => onEvent(JSON.parse(msg.data));
       types.forEach((t) => source.addEventListener(t, handler));
@@ -247,7 +247,7 @@ export const useEditor = create<EditorState>((set, get) => {
       const id = get().project?.id;
       if (!id) return;
       for (const f of files) {
-        if (!(await act(`Mengunggah ${f.name}`, () => api.upload(id, f)))) break;
+        if (!(await act(`Uploading ${f.name}`, () => api.upload(id, f)))) break;
       }
     },
     startRun: async (instruction) => {
@@ -269,11 +269,11 @@ export const useEditor = create<EditorState>((set, get) => {
     },
     undoRun: async (runId) => {
       const id = get().project?.id;
-      if (id) await act("Membatalkan arahan", () => api.undoRun(id, runId));
+      if (id) await act("Undoing instruction", () => api.undoRun(id, runId));
     },
     exportVideo: async () => {
       const id = get().project?.id;
-      if (id) await act("Mengekspor video", () => api.render(id, true));
+      if (id) await act("Exporting video", () => api.render(id, true));
     },
 
     select: ({ clip, text, overlay, audio }) =>
@@ -308,7 +308,7 @@ export const useEditor = create<EditorState>((set, get) => {
       const i = clips.findIndex((c, k) => s.time >= starts[k] && s.time < starts[k] + clipDuration(c));
       const index = i < 0 ? clips.length : i + 1;
       const [first, ...rest] = s.clipboard;
-      s.applyOps(`Tempel ${s.clipboard.length} klip`, [{ op: "paste_clips", index, clips: [first, ...rest] }]);
+      s.applyOps(`Paste ${s.clipboard.length} clips`, [{ op: "paste_clips", index, clips: [first, ...rest] }]);
     },
     deleteSelection: () => {
       const s = get();
@@ -317,14 +317,14 @@ export const useEditor = create<EditorState>((set, get) => {
       if (s.selectedTextId) ops.push({ op: "delete_text", text_id: s.selectedTextId });
       if (s.selectedOverlayId) ops.push({ op: "delete_overlay", overlay_id: s.selectedOverlayId });
       if (s.selectedAudioId) ops.push({ op: "delete_audio", audio_id: s.selectedAudioId });
-      if (ops.length) s.applyOps(clipIds.length > 1 ? `Hapus ${clipIds.length} klip` : "Hapus", ops);
+      if (ops.length) s.applyOps(clipIds.length > 1 ? `Delete ${clipIds.length} clips` : "Delete", ops);
       s.select({});
     },
     setShowTracks: (on) => set({ showTracks: on }),
     setBefore: (on) => set({ before: on }),
     applyLook: async ({ clipIds, look, intensity, auto, match }) => {
       const id = get().project?.id;
-      if (id) await act("Menerapkan warna", () => api.grade(id, { clip_ids: clipIds, look, intensity, auto, match }));
+      if (id) await act("Applying color", () => api.grade(id, { clip_ids: clipIds, look, intensity, auto, match }));
     },
     previewGrade: (clipId, grade) => {
       const project = get().project;

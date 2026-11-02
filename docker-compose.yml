@@ -8,6 +8,8 @@ services:
       # These win over api/.env, whose values are meant for local development.
       CORS_ORIGINS: https://${DOMAIN}
       AUTEUR_DATA_DIR: /data
+      # Session cookies only travel over HTTPS in production.
+      SECURE_COOKIES: "1"
     volumes:
       - auteur-data:/data
     restart: unless-stopped

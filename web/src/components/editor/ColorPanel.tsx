@@ -9,35 +9,35 @@ import type { Clip, Grade } from "@/lib/timeline";
 
 // Mirrors colorist.LOOK_LABELS on the API; the grade itself is always computed server-side.
 const LOOKS = [
-  { id: "hangat", label: "Hangat", swatch: "linear-gradient(135deg,#f2b36b,#c8784a)" },
+  { id: "hangat", label: "Warm", swatch: "linear-gradient(135deg,#f2b36b,#c8784a)" },
   { id: "cinematic", label: "Cinematic", swatch: "linear-gradient(135deg,#1f6f7a,#e39a55)" },
   { id: "film", label: "Film", swatch: "linear-gradient(135deg,#8c8a74,#d9c8a0)" },
   { id: "moody", label: "Moody", swatch: "linear-gradient(135deg,#1c2533,#4a5566)" },
   { id: "vintage", label: "Vintage", swatch: "linear-gradient(135deg,#b59a6d,#e2cfa2)" },
-  { id: "hitam_putih", label: "Hitam putih", swatch: "linear-gradient(135deg,#111,#ddd)" },
-  { id: "cerah", label: "Cerah", swatch: "linear-gradient(135deg,#ffd166,#4cc9f0)" },
-  { id: "dingin", label: "Dingin", swatch: "linear-gradient(135deg,#4a7fbf,#a9cbe8)" },
+  { id: "hitam_putih", label: "Black & white", swatch: "linear-gradient(135deg,#111,#ddd)" },
+  { id: "cerah", label: "Bright", swatch: "linear-gradient(135deg,#ffd166,#4cc9f0)" },
+  { id: "dingin", label: "Cool", swatch: "linear-gradient(135deg,#4a7fbf,#a9cbe8)" },
 ] as const;
 
 type Field = { key: keyof Grade; label: string; min: number; max: number; step?: number };
 
 const BASIC: Field[] = [
   { key: "exposure", label: "Exposure", min: -2, max: 2 },
-  { key: "contrast", label: "Kontras", min: -1, max: 1 },
+  { key: "contrast", label: "Contrast", min: -1, max: 1 },
   { key: "highlights", label: "Highlights", min: -1, max: 1 },
   { key: "shadows", label: "Shadows", min: -1, max: 1 },
-  { key: "saturation", label: "Saturasi", min: -1, max: 1 },
-  { key: "temperature", label: "Temperatur", min: -1, max: 1 },
+  { key: "saturation", label: "Saturation", min: -1, max: 1 },
+  { key: "temperature", label: "Temperature", min: -1, max: 1 },
   { key: "tint", label: "Tint", min: -1, max: 1 },
 ];
 
 const ADVANCED: Field[] = [
   { key: "fade", label: "Fade", min: 0, max: 1 },
   { key: "vignette", label: "Vignette", min: 0, max: 1 },
-  { key: "shadow_tone", label: "Warna bayangan", min: 0, max: 1 },
-  { key: "shadow_hue", label: "Hue bayangan", min: 0, max: 360, step: 1 },
-  { key: "highlight_tone", label: "Warna terang", min: 0, max: 1 },
-  { key: "highlight_hue", label: "Hue terang", min: 0, max: 360, step: 1 },
+  { key: "shadow_tone", label: "Shadow color", min: 0, max: 1 },
+  { key: "shadow_hue", label: "Shadow hue", min: 0, max: 360, step: 1 },
+  { key: "highlight_tone", label: "Highlight color", min: 0, max: 1 },
+  { key: "highlight_hue", label: "Highlight hue", min: 0, max: 360, step: 1 },
 ];
 
 const HUE_TRACK = "linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)";
@@ -57,7 +57,7 @@ export function ColorPanel({ clip, locked }: { clip: Clip; locked: boolean }) {
     setGradeState(g);
     previewGrade(clip.id, g);
   };
-  const commit = (g: Grade) => applyOps("Ubah warna klip", [{ op: "set_grade", clip_ids: [clip.id], grade: { ...g, look: null } }]);
+  const commit = (g: Grade) => applyOps("Adjust clip color", [{ op: "set_grade", clip_ids: [clip.id], grade: { ...g, look: null } }]);
   const look = (id: string | null, k = intensity) =>
     applyLook({ clipIds: allClips ? null : [clip.id], look: id, intensity: k, auto, match: allClips });
 
@@ -98,8 +98,8 @@ export function ColorPanel({ clip, locked }: { clip: Clip; locked: boolean }) {
 
   return (
     <fieldset disabled={locked} className="space-y-4 disabled:opacity-50">
-      <legend className="mb-2 flex w-full items-center justify-between text-xs font-medium text-muted">
-        Warna
+      <legend className="display mb-2.5 flex w-full items-center justify-between text-[19px] text-text">
+        Color
         {grade.look && <span className="font-normal text-faint">Look: {LOOKS.find((l) => l.id === grade.look)?.label}</span>}
       </legend>
 
@@ -109,8 +109,8 @@ export function ColorPanel({ clip, locked }: { clip: Clip; locked: boolean }) {
             key={l.id}
             type="button"
             onClick={() => look(l.id)}
-            className={`group overflow-hidden rounded-md border text-left transition active:scale-[0.97] ${
-              grade.look === l.id ? "border-accent" : "border-line hover:border-line-strong"
+            className={`group overflow-hidden rounded-[10px] border text-left transition active:scale-[0.97] ${
+              grade.look === l.id ? "border-ink ring-2 ring-ink" : "border-ink/20 hover:border-ink"
             }`}
           >
             <span className="block h-7" style={{ background: l.swatch }} />
@@ -122,7 +122,7 @@ export function ColorPanel({ clip, locked }: { clip: Clip; locked: boolean }) {
       <div className="space-y-1">
         <div className="flex items-center justify-between">
           <label htmlFor="look-intensity" className="text-xs text-text">
-            Intensitas look
+            Look strength
           </label>
           <span className="font-mono text-[11px] tabular-nums text-muted">{Math.round(intensity * 100)}%</span>
         </div>
@@ -142,18 +142,18 @@ export function ColorPanel({ clip, locked }: { clip: Clip; locked: boolean }) {
       <div className="space-y-1.5 text-xs text-text">
         <label className="flex items-center gap-2">
           <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} />
-          Koreksi exposure dan white balance otomatis
+          Auto-correct exposure and white balance
         </label>
         <label className="flex items-center gap-2">
           <input type="checkbox" checked={allClips} onChange={(e) => setAllClips(e.target.checked)} />
-          Semua klip, warnanya disamakan
+          All clips, matched to each other
         </label>
       </div>
 
       <button
         type="button"
         onClick={() => look(null)}
-        className="flex items-center gap-1.5 rounded-md border border-line-strong px-2.5 py-1.5 text-xs text-text transition hover:bg-raised active:scale-[0.98]"
+        className="flex items-center gap-1.5 rounded-full border-2 border-ink px-2.5 py-1.5 text-xs font-semibold text-text transition hover:bg-raised active:scale-[0.98]"
       >
         <MagicWand size={13} /> Koreksi saja
       </button>
@@ -190,7 +190,7 @@ export function ColorPanel({ clip, locked }: { clip: Clip; locked: boolean }) {
         }}
         className="text-xs text-muted transition hover:text-text"
       >
-        Reset warna klip ini
+        Reset this clip&apos;s color
       </button>
     </fieldset>
   );

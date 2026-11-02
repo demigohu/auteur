@@ -13,28 +13,29 @@ import {
 } from "@phosphor-icons/react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
+import { briefKey } from "@/components/studio/CreateProjectDialog";
 import { fileUrl } from "@/lib/api";
 import { type LogItem, type RunState, type StepStatus, useEditor } from "@/lib/store";
 
 const SUGGESTIONS = [
-  "Jadikan video 9:16 sekitar 30 detik, buka dengan momen paling seru, kasih subtitle.",
-  "Buang 'eh', 'hmm', dan jeda yang kelamaan.",
-  "Warnanya bikin hangat cinematic, jangan berlebihan.",
+  "Make a 9:16 video around 30 seconds, open with the best moment, add subtitles.",
+  "Remove the ums, uhs and long pauses.",
+  "Give it a warm cinematic grade, nothing over the top.",
 ];
 
 // Human labels for the agent's tools, shown in the log instead of function names.
 const TOOL_LABEL: Record<string, string> = {
-  rencana: "Menyusun rencana",
-  dengar: "Mendengarkan footage",
-  tonton: "Menonton footage",
-  lacak: "Melacak objek dengan SAM 3.1",
-  reframe: "Reframe mengikuti subjek",
-  efek: "Menerapkan efek",
-  susun: "Menyusun timeline",
-  ubah_timeline: "Mengubah timeline",
-  buang_filler: "Membuang filler dan jeda",
-  subtitle: "Membuat subtitle",
-  render: "Merender",
+  rencana: "Planning",
+  dengar: "Listening to footage",
+  tonton: "Watching footage",
+  lacak: "Tracking with SAM 3.1",
+  reframe: "Reframing to the subject",
+  efek: "Applying effects",
+  susun: "Building the timeline",
+  ubah_timeline: "Editing the timeline",
+  buang_filler: "Removing fillers and pauses",
+  subtitle: "Writing subtitles",
+  render: "Rendering",
 };
 
 export function AgentTab() {
@@ -42,7 +43,14 @@ export function AgentTab() {
   const run = useEditor((s) => s.run);
   const startRun = useEditor((s) => s.startRun);
   const stopRun = useEditor((s) => s.stopRun);
-  const [draft, setDraft] = useState("");
+  // A brief written in New project waits in sessionStorage until the editor opens.
+  const [draft, setDraft] = useState(() => {
+    try {
+      return sessionStorage.getItem(briefKey(useEditor.getState().project?.id ?? "")) ?? "";
+    } catch {
+      return "";
+    }
+  });
   const scroller = useRef<HTMLDivElement>(null);
   const running = run?.status === "running" || (project?.busy ?? false);
 
@@ -59,6 +67,9 @@ export function AgentTab() {
     const t = text.trim();
     if (!t || running) return;
     setDraft("");
+    try {
+      sessionStorage.removeItem(briefKey(project?.id ?? ""));
+    } catch {}
     await startRun(t);
   };
 
@@ -79,15 +90,15 @@ export function AgentTab() {
       </div>
 
       <form
-        className="shrink-0 border-t border-line p-3"
+        className="shrink-0 border-t-2 border-ink p-3"
         onSubmit={(e) => {
           e.preventDefault();
           send(draft);
         }}
       >
-        <div className="rounded-md border border-line-strong bg-panel-2 focus-within:border-accent/60">
+        <div className="rounded-[14px] border-2 border-ink bg-paper shadow-[0_3px_0_0_var(--ink)] transition-shadow focus-within:shadow-[0_4px_0_0_var(--tomato)]">
           <label htmlFor="instruction" className="sr-only">
-            Arahan untuk agen
+            Instruction for the agent
           </label>
           <textarea
             id="instruction"
@@ -100,26 +111,26 @@ export function AgentTab() {
               }
             }}
             rows={3}
-            placeholder={running ? "Agen sedang bekerja..." : "Arahkan seperti ke editor manusia"}
+            placeholder={running ? "The agent is working..." : "Direct it like a human editor"}
             disabled={running}
             className="block w-full resize-none bg-transparent px-3 pt-2.5 text-sm text-text placeholder:text-faint focus:outline-none disabled:opacity-60"
           />
           <div className="flex items-center justify-between px-2 pb-2">
-            <span className="pl-1 text-[11px] text-faint">Enter untuk kirim</span>
+            <span className="label pl-1 text-[10px] text-faint">Enter to send</span>
             {running ? (
               <button
                 type="button"
                 onClick={stopRun}
-                className="flex items-center gap-1.5 rounded-md border border-line-strong px-2.5 py-1 text-xs text-text transition hover:bg-raised active:scale-[0.97]"
+                className="flex items-center gap-1.5 rounded-full border-2 border-ink px-3 py-1 text-xs font-semibold text-text transition hover:bg-raised active:scale-[0.97]"
               >
-                <Stop size={12} weight="fill" /> Hentikan
+                <Stop size={12} weight="fill" /> Stop
               </button>
             ) : (
               <button
                 type="submit"
-                aria-label="Kirim arahan"
+                aria-label="Send instruction"
                 disabled={!draft.trim()}
-                className="grid size-7 place-items-center rounded-md bg-accent text-accent-ink transition hover:brightness-110 active:scale-[0.95] disabled:opacity-30"
+                className="grid size-9 place-items-center rounded-full border-2 border-ink bg-pink text-ink transition hover:bg-lime active:scale-[0.94] disabled:opacity-30"
               >
                 <ArrowUp size={14} weight="bold" />
               </button>
@@ -134,7 +145,7 @@ export function AgentTab() {
 function ChatLine({ role, text }: { role: "user" | "assistant"; text: string }) {
   if (role === "user") {
     return (
-      <div className="ml-6 rounded-md bg-raised px-3 py-2 text-sm leading-relaxed text-text">{text}</div>
+      <div className="ml-6 rounded-[14px] rounded-br-[4px] border-2 border-ink bg-paper px-3 py-2 text-sm leading-relaxed text-ink">{text}</div>
     );
   }
   return <div className="whitespace-pre-wrap text-sm leading-relaxed text-text/90">{text}</div>;
@@ -143,9 +154,9 @@ function ChatLine({ role, text }: { role: "user" | "assistant"; text: string }) 
 function Suggestions({ onPick, disabled }: { onPick: (t: string) => void; disabled: boolean }) {
   return (
     <div className="pt-2">
-      <p className="text-sm text-text">Apa yang mau diedit?</p>
+      <p className="display text-[34px] text-text">What are we editing?</p>
       <p className="mt-1 text-sm leading-relaxed text-muted">
-        {disabled ? "Unggah footage dulu di media bin." : "Agen melihat dan mendengar footage-mu. Coba salah satu:"}
+        {disabled ? "Upload footage to the media bin first." : "The agent watches and listens to your footage. Try one:"}
       </p>
       <div className="mt-3 space-y-1.5">
         {SUGGESTIONS.map((s) => (
@@ -154,7 +165,7 @@ function Suggestions({ onPick, disabled }: { onPick: (t: string) => void; disabl
             type="button"
             disabled={disabled}
             onClick={() => onPick(s)}
-            className="block w-full rounded-md border border-line px-3 py-2 text-left text-[13px] leading-snug text-muted transition hover:border-line-strong hover:text-text active:scale-[0.99] disabled:pointer-events-none disabled:opacity-40"
+            className="block w-full rounded-[14px] border-2 border-ink/25 px-3 py-2 text-left text-[13px] leading-snug text-muted transition hover:border-ink hover:bg-paper hover:text-text active:scale-[0.99] disabled:pointer-events-none disabled:opacity-40"
           >
             {s}
           </button>
@@ -168,11 +179,12 @@ function RunView({ run }: { run: RunState }) {
   return (
     <div className="space-y-3">
       {run.plan.length > 0 && (
-        <div className="rounded-md border border-line bg-panel-2 p-3">
-          <p className="mb-2 text-xs font-medium text-muted">Rencana edit</p>
+        <div className="rounded-[14px] border-2 border-ink bg-paper p-3 shadow-[0_3px_0_0_var(--ink)]">
+          <p className="label mb-2.5 text-ink/60">⁞ Edit plan</p>
           <ol className="space-y-1.5">
             {run.plan.map((p, i) => (
               <li key={i} className="flex items-start gap-2 text-[13px] leading-snug">
+                <span className="w-5 shrink-0 pt-px font-mono text-[11px] text-faint">{String(i + 1).padStart(2, "0")}</span>
                 <StepIcon status={p.status} />
                 <span className={p.status === "done" ? "text-muted" : "text-text"}>{p.text}</span>
               </li>
@@ -188,7 +200,7 @@ function RunView({ run }: { run: RunState }) {
         </AnimatePresence>
       </div>
       {run.status !== "running" && run.status !== "done" && (
-        <p className="text-xs text-danger">Run berhenti ({run.status}).</p>
+        <p className="text-xs text-danger">Run ended ({run.status}).</p>
       )}
     </div>
   );
@@ -220,24 +232,24 @@ function LogRow({ item, progress }: { item: LogItem; progress: number | null }) 
       <motion.div
         initial={enter}
         animate={{ opacity: 1, y: 0 }}
-        className={`rounded-md border px-3 py-2 text-[13px] ${
-          item.passed ? "border-ok/30 bg-ok/5" : "border-danger/40 bg-danger/5"
+        className={`rounded-[10px] border-2 px-3 py-2 text-[13px] ${
+          item.passed ? "border-ink bg-lime text-forest" : "border-tomato bg-tomato/10"
         }`}
       >
         <div className="flex items-center gap-2">
           {item.passed ? (
-            <ShieldCheck size={15} weight="fill" className="text-ok" />
+            <ShieldCheck size={15} weight="fill" className="text-forest" />
           ) : (
             <ShieldWarning size={15} weight="fill" className="text-danger" />
           )}
-          <span className="text-text">{item.passed ? "Pemeriksa: lolos" : "Pemeriksa menemukan masalah"}</span>
+          <span className="text-text">{item.passed ? "Checker: passed" : "Checker found problems"}</span>
           <a
             href={fileUrl(`/files/${useEditor.getState().project?.id}/${item.render}`)}
             target="_blank"
             rel="noreferrer"
             className="ml-auto text-xs text-muted underline-offset-2 hover:text-text hover:underline"
           >
-            Lihat render
+            View render
           </a>
         </div>
         {item.issues.length > 0 && (
@@ -281,7 +293,7 @@ function LogRow({ item, progress }: { item: LogItem; progress: number | null }) 
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            className="mx-1.5 mt-1 max-h-56 overflow-auto rounded-md bg-bg p-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-muted"
+            className="mx-1.5 mt-1 max-h-56 overflow-auto rounded-[10px] bg-ink p-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-paper/75"
           >
             {`${JSON.stringify(item.args, null, 2)}\n\n${item.output ?? "..."}`}
           </motion.pre>
@@ -292,12 +304,12 @@ function LogRow({ item, progress }: { item: LogItem; progress: number | null }) 
 }
 
 function argSummary(args: Record<string, unknown>): string {
-  if (Array.isArray(args.clips)) return `${args.clips.length} klip`;
+  if (Array.isArray(args.clips)) return `${args.clips.length} clips`;
   if (Array.isArray(args.ops)) return (args.ops as { op: string }[]).map((o) => o.op).join(", ");
   if (typeof args.label === "string") return args.label;
   if (typeof args.prompt === "string") return `"${args.prompt}"`;
   if (typeof args.jenis === "string") return args.jenis;
-  if (typeof args.halus === "number") return `halus ${args.halus}s`;
+  if (typeof args.halus === "number") return `smooth ${args.halus}s`;
   if (typeof args.fokus === "string") return args.fokus;
   if (args.final === true) return "final";
   return "";

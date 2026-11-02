@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 import shutil
 from datetime import date
 import tempfile
@@ -7,10 +8,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException, Request, UploadFile
+from fastapi import FastAPI, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from starlette.types import ASGIApp, Receive, Scope, Send
 from sse_starlette.sse import EventSourceResponse
 
 from auteur import colorist
@@ -19,22 +22,56 @@ from auteur.config import settings
 from auteur.events import bus
 from auteur.media import MAX_TOTAL_SECONDS, MediaError, ingest
 from auteur.render import RenderError, render
-from auteur.store import NotFound, Store
+from auteur.store import EmailTaken, NotFound, Store, User
 from auteur.timeline import Media, Op, OpError, Project, Timeline
 from auteur.timeline.history import ChatMessage
 from auteur.tracking import load_track
+from auteur.timeline.models import Aspect
 from auteur.timeline.ops import SetGrade, new_id
 
-app = FastAPI(title="Auteur Labs API")
+SESSION_COOKIE = "auteur_session"
+# Everything else needs a signed-in account. Media files stay public: their project ids are unguessable
+# and <video> elements cannot attach credentials cross-origin anyway.
+PUBLIC_PATHS = ("/health", "/auth/", "/files/", "/looks", "/docs", "/openapi.json")
 
+app = FastAPI(title="Auteur Labs API")
+store = Store(settings.data_dir)
+
+
+class RequireAccount:
+    """Plain ASGI middleware (not BaseHTTPMiddleware, which buffers the agent's event stream): every
+    non-public request needs a session, and /projects/{id}/... must belong to that session's user."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or scope["method"] == "OPTIONS" or scope["path"].startswith(PUBLIC_PATHS):
+            return await self.app(scope, receive, send)
+        user = store.session_user(Request(scope).cookies.get(SESSION_COOKIE))
+        if user is None:
+            return await JSONResponse({"detail": "Sign in to continue"}, 401)(scope, receive, send)
+        if m := re.match(r"^/projects/([^/]+)", scope["path"]):
+            try:
+                owner = store.owner(m[1])
+            except NotFound:
+                owner = None
+            if owner != user.id:
+                return await JSONResponse({"detail": f"Project {m[1]} not found"}, 404)(scope, receive, send)
+        scope.setdefault("state", {})["user"] = user
+        await self.app(scope, receive, send)
+
+
+# Added before CORS so CORS wraps it and even a 401 carries the headers the browser needs to read it.
+app.add_middleware(RequireAccount)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-store = Store(settings.data_dir)
 (settings.data_dir / "projects").mkdir(parents=True, exist_ok=True)
 app.mount("/files", StaticFiles(directory=settings.data_dir / "projects"), name="files")
 
@@ -47,12 +84,12 @@ _visitor_runs: dict[tuple[str, date], int] = {}
 def check_run_quota(request: Request) -> None:
     """Public-demo guards (off unless configured): a global spend cap and runs per visitor per day."""
     if settings.spend_cap_usd and store.total_spent() >= settings.spend_cap_usd:
-        raise HTTPException(429, "Kuota demo hari ini sudah habis. Coba lagi nanti atau jalankan Auteur secara lokal.")
+        raise HTTPException(429, "Today's demo budget is used up. Try again tomorrow, or run Auteur locally.")
     if settings.runs_per_visitor_per_day:
         key = (request.client.host if request.client else "unknown", date.today())
         if _visitor_runs.get(key, 0) >= settings.runs_per_visitor_per_day:
             raise HTTPException(
-                429, f"Batas demo {settings.runs_per_visitor_per_day} arahan per hari tercapai. Terima kasih sudah mencoba!"
+                429, f"The demo allows {settings.runs_per_visitor_per_day} instructions per day. Thanks for trying Auteur."
             )
         _visitor_runs[key] = _visitor_runs.get(key, 0) + 1
 
@@ -162,6 +199,63 @@ class ProjectView(BaseModel):
 
 class CreateProject(BaseModel):
     name: str = Field(min_length=1, max_length=100)
+    aspect: Aspect = "16:9"
+    fps: Literal[24, 30, 60] = 30
+
+
+class RenameProject(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+
+
+class ProjectSummary(BaseModel):
+    """A dashboard card: enough to recognize a project without loading its timeline."""
+
+    id: str
+    name: str
+    updated_at: str
+    thumb_url: str | None
+    duration: float
+    aspect: Aspect
+    fps: float
+    clips: int
+    media: int
+
+    @classmethod
+    def of(cls, p: Project, updated_at: str) -> "ProjectSummary":
+        first = next((c.media_id for c in p.timeline.clips), None) or next(
+            (m.id for m in p.media.values() if m.kind == "video"), None
+        )
+        return cls(
+            id=p.id,
+            name=p.name,
+            updated_at=updated_at,
+            thumb_url=f"/files/{p.id}/media/{first}/thumb.jpg" if first else None,
+            duration=round(p.timeline.duration, 2),
+            aspect=p.timeline.aspect,
+            fps=p.timeline.fps,
+            clips=len(p.timeline.clips),
+            media=len(p.media),
+        )
+
+
+EMAIL = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
+
+
+class SignUp(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    email: str = Field(pattern=EMAIL, max_length=200)
+    password: str = Field(min_length=8, max_length=200)
+
+
+class SignIn(BaseModel):
+    email: str = Field(pattern=EMAIL, max_length=200)
+    password: str = Field(min_length=1, max_length=200)
+
+
+class UserView(BaseModel):
+    id: str
+    email: str
+    name: str
 
 
 class GradeRequest(BaseModel):
@@ -204,14 +298,81 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+def start_session(response: Response, user: User) -> UserView:
+    response.set_cookie(
+        SESSION_COOKIE,
+        store.new_session(user),
+        max_age=60 * 60 * 24 * 30,
+        httponly=True,
+        samesite="lax",
+        secure=settings.secure_cookies,
+    )
+    return UserView(id=user.id, email=user.email, name=user.name)
+
+
+@app.post("/auth/signup")
+def sign_up(body: SignUp, response: Response) -> UserView:
+    try:
+        user = store.create_user(body.email, body.name, body.password)
+    except EmailTaken:
+        raise HTTPException(409, "An account with that email already exists. Sign in instead.") from None
+    return start_session(response, user)
+
+
+@app.post("/auth/login")
+def sign_in(body: SignIn, response: Response) -> UserView:
+    user = store.authenticate(body.email, body.password)
+    if user is None:
+        raise HTTPException(401, "That email and password don't match an account.")
+    return start_session(response, user)
+
+
+@app.post("/auth/logout")
+def sign_out(request: Request, response: Response) -> dict[str, str]:
+    if token := request.cookies.get(SESSION_COOKIE):
+        store.end_session(token)
+    response.delete_cookie(SESSION_COOKIE)
+    return {"status": "ok"}
+
+
+@app.get("/auth/me")
+def me(request: Request) -> UserView:
+    user = store.session_user(request.cookies.get(SESSION_COOKIE))
+    if user is None:
+        raise HTTPException(401, "Sign in to continue")
+    return UserView(id=user.id, email=user.email, name=user.name)
+
+
 @app.get("/projects")
-def list_projects() -> list[dict[str, str]]:
-    return store.list()
+def list_projects(request: Request) -> list[ProjectSummary]:
+    return [ProjectSummary.of(p, at) for p, at in store.list(request.state.user.id)]
 
 
 @app.post("/projects")
-def create_project(body: CreateProject) -> ProjectView:
-    return ProjectView.of(store.create(body.name))
+def create_project(body: CreateProject, request: Request) -> ProjectView:
+    p = store.create(body.name, owner_id=request.state.user.id)
+    p.timeline = p.timeline.model_copy(update={"aspect": body.aspect, "fps": body.fps})
+    store.save(p)
+    return ProjectView.of(p)
+
+
+@app.patch("/projects/{project_id}")
+async def rename_project(project_id: str, body: RenameProject) -> ProjectView:
+    async with ensure_idle(project_id):
+        p = load(project_id)
+        p.name = body.name.strip()
+        store.save(p)
+        return ProjectView.of(p, busy=False)
+
+
+@app.delete("/projects/{project_id}")
+async def delete_project(project_id: str) -> dict[str, str]:
+    async with ensure_idle(project_id):
+        load(project_id)
+        store.delete(project_id)
+        shutil.rmtree(store.project_dir(project_id), ignore_errors=True)
+    _locks.pop(project_id, None)
+    return {"status": "deleted"}
 
 
 @app.get("/projects/{project_id}")
@@ -357,7 +518,7 @@ async def grade_project(project_id: str, body: GradeRequest) -> ProjectView:
         )
         label = colorist.LOOK_LABELS.get(body.look or "", "Koreksi warna")
         try:
-            p.commit("user", f"Warna: {label}", [SetGrade(clip_ids=[cid], grade=g) for cid, g, _, _ in results])
+            p.commit("user", f"Color: {label}", [SetGrade(clip_ids=[cid], grade=g) for cid, g, _, _ in results])
         except OpError as e:
             raise HTTPException(400, str(e)) from None
         store.save(p)

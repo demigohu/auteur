@@ -221,3 +221,69 @@ input[type="range"] {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Landing: the ring cursor replaces the native one on fine pointers (experience.tsx). */
+html.has-cursor,
+html.has-cursor * {
+  cursor: none !important;
+}
+
+/* Lenis smooth scroll. */
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+.lenis.lenis-stopped {
+  overflow: clip;
+}
+
+/* The hero tile: three cards that take turns (6s loop), and a heart that beats. */
+.tile-slide {
+  opacity: 0;
+  animation: tile 6s infinite;
+}
+/* The first card is the base layer the others fade over. */
+.tile-slide:first-child {
+  opacity: 1 !important;
+  transform: none !important;
+}
+@keyframes tile {
+  0% {
+    opacity: 0;
+    transform: scale(1.18);
+  }
+  3%,
+  33% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  37%,
+  100% {
+    opacity: 0;
+    transform: scale(1);
+  }
+}
+.beat {
+  animation: beat 1.2s infinite;
+  transform-origin: center;
+}
+@keyframes beat {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  15% {
+    transform: scale(1.35);
+  }
+  30% {
+    transform: scale(1);
+  }
+}
+
+/* Soft lift under stickers (they are paper on paper, not buttons). */
+.sticker {
+  filter: drop-shadow(0 10px 14px rgb(18 17 16 / 0.18));
+}

@@ -1,9 +1,14 @@
 "use client";
 
 import { SpeakerHigh, SpeakerSlash } from "@phosphor-icons/react";
+import { gsap } from "gsap";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
+import Lenis from "lenis";
 import { AnimatePresence, animate, motion, useMotionValue, useReducedMotion, useSpring } from "motion/react";
 import Image from "next/image";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+
+gsap.registerPlugin(ScrollTrigger);
 
 /*
  * The landing page's "experience" layer, after the reference: an intro gate with a counter, opt-in
@@ -58,6 +63,29 @@ export function ExperienceProvider({ children }: { children: React.ReactNode }) 
   const [intro, setIntro] = useState(true);
   const [sound, setSoundState] = useState(false);
   const audio = useRef<AudioContext | null>(null);
+  const lenis = useRef<Lenis | null>(null);
+
+  // Smooth, weighted scrolling (Lenis) driving GSAP's ScrollTrigger from one ticker, as the reference does.
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const l = new Lenis({ lerp: 0.1 });
+    lenis.current = l;
+    l.on("scroll", ScrollTrigger.update);
+    const tick = (t: number) => l.raf(t * 1000);
+    gsap.ticker.add(tick);
+    gsap.ticker.lagSmoothing(0);
+    return () => {
+      gsap.ticker.remove(tick);
+      l.destroy();
+      lenis.current = null;
+    };
+  }, []);
+
+  // No scrolling behind the intro gate.
+  useEffect(() => {
+    if (intro) lenis.current?.stop();
+    else lenis.current?.start();
+  }, [intro]);
 
   // The gate shows once per browser session; later visits go straight in.
   useEffect(() => {
@@ -95,7 +123,8 @@ export function ExperienceProvider({ children }: { children: React.ReactNode }) 
       sessionStorage.setItem(INTRO_KEY, "1");
     } catch {}
     setIntro(false);
-    setTimeout(() => setEntered(true), 350);
+    // The hero starts once the reveal circle has opened most of the way.
+    setTimeout(() => setEntered(true), 700);
   };
 
   return (
@@ -125,10 +154,16 @@ function Preloader({ onEnter }: { onEnter: (sound: boolean) => void }) {
       aria-modal="true"
       aria-label="Welcome to Auteur"
       className="mat fixed inset-0 z-[70] flex flex-col px-[var(--gutter)] py-5 text-paper"
-      initial={{ clipPath: "inset(0 0 0 0)" }}
-      exit={{ clipPath: "inset(0 0 100% 0)" }}
-      transition={{ duration: 0.9, ease: [0.76, 0, 0.24, 1] }}
+      // A hole opens in the middle and grows until the page shows through, like an iris wipe.
+      style={{
+        WebkitMaskImage: "radial-gradient(circle at 50% 50%, transparent var(--hole), #000 calc(var(--hole) + 1px))",
+        maskImage: "radial-gradient(circle at 50% 50%, transparent var(--hole), #000 calc(var(--hole) + 1px))",
+      }}
+      initial={{ "--hole": "0vmax" } as never}
+      exit={{ "--hole": "120vmax" } as never}
+      transition={{ duration: 1.1, delay: 0.25, ease: [0.76, 0, 0.24, 1] }}
     >
+      <motion.div className="flex flex-1 flex-col" exit={{ opacity: 0 }} transition={{ duration: 0.25 }}>
       <div className="flex items-start justify-between">
         <p className="label text-[10px] text-paper/50">Auteur® / AI video editor</p>
         <p className="label text-right text-[10px] leading-relaxed text-paper/50">
@@ -172,49 +207,60 @@ function Preloader({ onEnter }: { onEnter: (sound: boolean) => void }) {
           Good.
         </p>
       </div>
+      </motion.div>
     </motion.div>
   );
 }
 
-/** A ring with a dot that trails the pointer and swells over anything clickable. Fine pointers only. */
+/**
+ * The reference's cursor: an ink ring with a paper halo that trails the pointer. Over links it grows
+ * and fills lime; over anything marked data-cursor="drag" (stickers) it grows into a lime disc that
+ * reads DRAG. Fine pointers only.
+ */
 function RingCursor() {
   const x = useMotionValue(-100);
   const y = useMotionValue(-100);
-  const sx = useSpring(x, { stiffness: 500, damping: 40, mass: 0.4 });
-  const sy = useSpring(y, { stiffness: 500, damping: 40, mass: 0.4 });
-  const [hover, setHover] = useState(false);
+  const sx = useSpring(x, { stiffness: 600, damping: 45, mass: 0.35 });
+  const sy = useSpring(y, { stiffness: 600, damping: 45, mass: 0.35 });
+  const [state, setState] = useState<"idle" | "hover" | "label">("idle");
   const [on, setOn] = useState(false);
 
   useEffect(() => {
-    const fine = window.matchMedia("(pointer: fine)");
-    if (!fine.matches || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (!window.matchMedia("(pointer: fine)").matches || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    document.documentElement.classList.add("has-cursor");
     const move = (e: PointerEvent) => {
       x.set(e.clientX);
       y.set(e.clientY);
       setOn(true);
-      setHover(Boolean((e.target as HTMLElement).closest("a, button, [data-cursor]")));
+      const t = e.target as HTMLElement;
+      setState(t.closest("[data-cursor='drag']") ? "label" : t.closest("a, button, [data-cursor]") ? "hover" : "idle");
     };
     const leave = () => setOn(false);
     window.addEventListener("pointermove", move);
     document.documentElement.addEventListener("pointerleave", leave);
     return () => {
+      document.documentElement.classList.remove("has-cursor");
       window.removeEventListener("pointermove", move);
       document.documentElement.removeEventListener("pointerleave", leave);
     };
   }, [x, y]);
 
+  const scale = state === "label" ? 1 : state === "hover" ? 0.62 : 0.36;
   return (
-    <motion.div
-      aria-hidden
-      className="pointer-events-none fixed top-0 left-0 z-[80] hidden mix-blend-difference [@media(pointer:fine)]:block"
-      style={{ x: sx, y: sy, opacity: on ? 1 : 0 }}
-    >
+    <motion.div aria-hidden className="pointer-events-none fixed top-0 left-0 z-[95] hidden [@media(pointer:fine)]:block" style={{ x: sx, y: sy, opacity: on ? 1 : 0 }}>
       <motion.div
-        className="-translate-x-1/2 -translate-y-1/2 rounded-full border-[1.5px] border-paper"
-        animate={{ width: hover ? 56 : 30, height: hover ? 56 : 30 }}
-        transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-      />
-      <div className="absolute top-0 left-0 size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-paper" />
+        className="grid size-[84px] -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-4 border-ink shadow-[0_0_0_3px_rgba(242,238,227,0.75)]"
+        animate={{ scale, backgroundColor: state === "label" ? "rgba(200,245,60,1)" : state === "hover" ? "rgba(200,245,60,0.45)" : "rgba(200,245,60,0)" }}
+        transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+      >
+        <motion.span
+          className="text-[11px] font-semibold tracking-[0.08em] text-ink uppercase"
+          animate={{ opacity: state === "label" ? 1 : 0, scale: state === "label" ? 1 : 0.6 }}
+          transition={{ duration: 0.3, ease: [0.34, 1.56, 0.64, 1] }}
+        >
+          drag
+        </motion.span>
+      </motion.div>
     </motion.div>
   );
 }

@@ -4,7 +4,7 @@ import { Header } from "@/components/landing/Header";
 import { Hero } from "@/components/landing/Hero";
 import { AgentSection, EditorSection, StackTape } from "@/components/landing/Product";
 import { Process, Receipts, Toolkit } from "@/components/landing/Proof";
-import { Statement } from "@/components/landing/Statement";
+import { Ribbons, Statement } from "@/components/landing/Statement";
 import { ThreeWords } from "@/components/landing/ThreeWords";
 import { DiveIn, Work } from "@/components/landing/Work";
 
@@ -17,8 +17,8 @@ export default function Page() {
       <div className="grain" aria-hidden />
       <Header />
       <main id="main" className="overflow-x-clip">
-        <span id="top" />
         <Hero />
+        <Ribbons />
         <Statement />
         <ThreeWords />
         <StackTape />

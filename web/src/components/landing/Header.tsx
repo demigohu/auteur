@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowUpRight } from "@phosphor-icons/react";
-import { motion, useMotionValueEvent, useReducedMotion, useScroll } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -15,21 +15,23 @@ const NAV = [
   { href: "#faq", label: "FAQ" },
 ];
 
+const EASE_OUT = [0.16, 1, 0.3, 1] as const;
+
 export function Header() {
-  const { scrollY } = useScroll();
-  const [top, setTop] = useState(true);
-  const { play } = useExperience();
-  useMotionValueEvent(scrollY, "change", (y) => setTop(y < 40));
+  const { play, entered } = useExperience();
+  const reduce = useReducedMotion();
+  // Logo, nav and CTA drop in once the intro has opened (the reference's "nav-in").
+  const drop = (d: number) =>
+    reduce ? {} : { initial: { y: -40, opacity: 0 }, animate: entered ? { y: 0, opacity: 1 } : undefined, transition: { delay: d, duration: 0.8, ease: EASE_OUT } };
 
   return (
     <header className="pointer-events-none fixed inset-x-0 top-0 z-50 px-[var(--gutter)] pt-4">
       <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-4">
-        <div className="pointer-events-auto">
+        <motion.div {...drop(0.2)} className="pointer-events-auto">
           <Logo />
-          <p className={`label mt-3 text-[10px] text-ink/60 transition-opacity duration-300 ${top ? "opacity-100" : "opacity-0"}`}>(01) AI video editor</p>
-        </div>
+        </motion.div>
 
-        <nav aria-label="Main" className="pointer-events-auto hidden rounded-full border-2 border-ink bg-paper px-2 py-1.5 shadow-[0_3px_0_0_var(--ink)] md:block">
+        <motion.nav {...drop(0.3)} aria-label="Main" className="pointer-events-auto hidden rounded-full border-2 border-ink bg-paper px-2 py-1.5 shadow-[0_3px_0_0_var(--ink)] md:block">
           <ul className="flex items-center">
             {NAV.map((n) => (
               <li key={n.href}>
@@ -43,9 +45,9 @@ export function Header() {
               </li>
             ))}
           </ul>
-        </nav>
+        </motion.nav>
 
-        <div className="pointer-events-auto flex items-start justify-end gap-4">
+        <motion.div {...drop(0.4)} className="pointer-events-auto flex items-start justify-end gap-4">
           <div className="flex flex-col items-end">
             <Link
               href="/signup"
@@ -54,12 +56,9 @@ export function Header() {
             >
               Start editing <ArrowUpRight size={15} weight="bold" />
             </Link>
-            <p className={`label mt-3 hidden text-right text-[10px] text-ink/60 transition-opacity duration-300 lg:block ${top ? "opacity-100" : "opacity-0"}`}>
-              Muse Spark + SAM 3.1 + Voice / built on Meta
-            </p>
           </div>
           <PullTag />
-        </div>
+        </motion.div>
       </div>
     </header>
   );

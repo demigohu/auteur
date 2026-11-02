@@ -1,120 +1,144 @@
 "use client";
 
-import { Heart, Microphone, Sparkle } from "@phosphor-icons/react";
+import { Heart, Microphone } from "@phosphor-icons/react";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useReducedMotion } from "motion/react";
-import Image from "next/image";
 import { useEffect, useRef } from "react";
 import { Kicker } from "./primitives";
 
 gsap.registerPlugin(ScrollTrigger);
 
-const TRANSCRIPT = ["so", "um", "today", "we're", "walking", "uh", "to", "the", "night", "market"];
-const FILLERS = new Set(["um", "uh"]);
+const FEED = [
+  { label: "KEEPER", bg: "var(--tomato)" },
+  { lines: true, bg: "var(--paper)" },
+  { label: "BEST TAKE", bg: "var(--blue)" },
+  { lines: true, bg: "var(--paper)" },
+  { label: "ON BEAT", bg: "var(--pink)" },
+  { lines: true, bg: "var(--sun)" },
+];
 
-/** The whole job in three words, pinned and panned sideways with props between the words. */
+/**
+ * The whole job in three words, pinned and panned sideways (sizes in em of one giant font size, as in
+ * the reference): a phone whose feed scrolls while you do, a transcript pill with the fillers struck,
+ * and props floating at their own speed.
+ */
 export function ThreeWords() {
-  const wrap = useRef<HTMLElement>(null);
+  const pin = useRef<HTMLDivElement>(null);
   const track = useRef<HTMLDivElement>(null);
   const reduce = useReducedMotion();
 
   useEffect(() => {
-    if (reduce || !wrap.current || !track.current) return;
+    if (reduce || !pin.current || !track.current) return;
     const ctx = gsap.context(() => {
       const distance = () => track.current!.scrollWidth - window.innerWidth;
-      const pan = gsap.to(track.current, {
-        x: () => -distance(),
-        ease: "none",
-        scrollTrigger: { trigger: wrap.current, start: "top top", end: () => `+=${distance()}`, pin: true, scrub: 1, invalidateOnRefresh: true },
+      const st = { trigger: pin.current, start: "top top", end: () => `+=${distance()}`, scrub: 1, invalidateOnRefresh: true };
+      const pan = gsap.to(track.current, { x: () => -distance(), ease: "none", scrollTrigger: { ...st, pin: true } });
+      gsap.to("[data-feed]", { yPercent: -50, ease: "none", scrollTrigger: st });
+      gsap.utils.toArray<HTMLElement>("[data-float]").forEach((el) => {
+        gsap.to(el, { x: () => -distance() * Number(el.dataset.float), ease: "none", scrollTrigger: st });
       });
-      // Fillers get struck through as the transcript pill crosses the middle of the screen.
       gsap.to("[data-filler]", {
         "--strike": 1,
-        stagger: 0.2,
+        stagger: 0.3,
         ease: "none",
-        scrollTrigger: { trigger: "[data-transcript]", containerAnimation: pan, start: "left 70%", end: "center 40%", scrub: true },
+        scrollTrigger: { trigger: "[data-transcript]", containerAnimation: pan, start: "left 75%", end: "right 60%", scrub: true },
       });
-    }, wrap);
+    }, pin);
     return () => ctx.revert();
   }, [reduce]);
 
   return (
-    <section ref={wrap} className="paper-texture relative overflow-hidden bg-lime text-forest [--texture-strength:0.7]">
-      <div className="absolute top-28 left-[var(--gutter)] z-10">
-        <Kicker>The whole job, in three words</Kicker>
-      </div>
-      <div
-        ref={track}
-        className={`flex h-[100dvh] items-center gap-[5vw] pr-[12vw] pl-[var(--gutter)] ${reduce ? "flex-wrap py-40" : "w-max"}`}
-      >
-        <Word>Watch</Word>
-
-        {/* A phone mid-scroll: the frames the agent looked at. */}
-        <div className="relative shrink-0">
-          <span className="absolute -top-20 left-1/2 grid size-16 -translate-x-1/2 place-items-center rounded-full border-2 border-forest bg-pink">
-            <Heart size={26} weight="fill" className="text-tomato" />
-          </span>
-          <div className="w-[170px] rotate-[8deg] rounded-[26px] border-[3px] border-forest bg-forest p-2 shadow-[8px_10px_0_0_rgba(14,58,34,0.35)]">
-            <div className="overflow-hidden rounded-[18px] bg-paper">
-              <div className="relative h-[110px]">
-                <Image src="/assets/phone-reel.jpg" alt="" fill sizes="170px" className="object-cover" />
-                <span className="display absolute top-2 left-2 rounded-[4px] bg-tomato px-1.5 text-[20px] text-ink">Keeper</span>
-              </div>
-              <div className="space-y-1.5 p-3">
-                <div className="h-2 w-3/4 rounded-full bg-forest/20" />
-                <div className="h-2 w-1/2 rounded-full bg-forest/20" />
-              </div>
-              <div className="display bg-blue px-3 py-3 text-[22px] text-paper">Best take</div>
-            </div>
-          </div>
+    <section className="paper-texture relative bg-lime text-forest [--texture-strength:0.7]">
+      <div ref={pin} className={`relative overflow-hidden ${reduce ? "py-32" : "h-[100svh]"}`}>
+        <div className="absolute top-[var(--gutter)] left-[var(--gutter)] z-10 mt-16">
+          <Kicker>The whole job, in three words</Kicker>
         </div>
 
-        <Word>Listen</Word>
+        <div
+          ref={track}
+          className={`display flex items-center gap-[5vw] pl-[8vw] text-[clamp(150px,27vw,520px)] leading-[0.8] whitespace-nowrap will-change-transform ${
+            reduce ? "flex-wrap pt-24" : "absolute top-1/2 left-0 -translate-y-1/2"
+          }`}
+        >
+          <span>Watch</span>
 
-        {/* The transcript pill: what the agent heard, fillers struck out. */}
-        <div data-transcript className="relative shrink-0">
-          <div className="flex -rotate-3 items-center gap-4 rounded-full border-[3px] border-forest bg-paper py-5 pr-8 pl-6 font-mono text-[clamp(20px,2.2vw,34px)] text-ink">
-            <Microphone size={34} weight="bold" className="shrink-0 text-blue" />
-            <span className="whitespace-nowrap">
-              {TRANSCRIPT.map((w, i) =>
-                FILLERS.has(w) ? (
-                  <span
-                    key={i}
-                    data-filler
-                    className="relative mx-1 text-tomato [--strike:0] after:absolute after:top-1/2 after:left-0 after:h-[3px] after:w-full after:origin-left after:scale-x-[var(--strike)] after:bg-tomato"
-                  >
-                    {w}
-                  </span>
-                ) : (
-                  <span key={i} className="mx-1">
-                    {w}
-                  </span>
-                ),
-              )}
+          <span className="relative inline-block h-[0.86em] w-[0.46em] shrink-0 rotate-[-6deg] overflow-hidden rounded-[0.06em] border-[5px] border-forest bg-forest">
+            <span data-feed className="absolute inset-x-0 top-0 flex flex-col gap-[0.02em] p-[0.025em]">
+              {[...FEED, ...FEED].map((f, i) => (
+                <span key={i} className="relative flex h-[0.3em] shrink-0 items-center justify-center rounded-[0.02em] text-ink" style={{ background: f.bg }}>
+                  {f.label ? (
+                    <span className="text-[0.075em] tracking-[0.02em]">{f.label}</span>
+                  ) : (
+                    <span className="flex w-full flex-col gap-[0.025em] px-[0.04em]">
+                      <i className="h-[0.03em] w-3/4 rounded-full bg-ink/15" />
+                      <i className="h-[0.03em] w-1/2 rounded-full bg-ink/10" />
+                    </span>
+                  )}
+                </span>
+              ))}
             </span>
-            <span className="h-9 w-[3px] animate-pulse bg-blue" />
-          </div>
-          <span className="absolute -bottom-16 left-24 rotate-[-8deg] rounded-full border-2 border-forest bg-paper px-4 py-2 text-[14px] font-semibold text-ink">
-            −2 fillers
+            <span className="absolute top-[0.02em] left-1/2 h-[0.03em] w-[0.14em] -translate-x-1/2 rounded-full bg-forest" />
           </span>
-        </div>
 
-        <Word>Cut.</Word>
+          <span>listen</span>
 
-        <div className="flex shrink-0 flex-col gap-6">
-          <Sparkle size={44} weight="fill" className="text-tomato" />
-          <p className="font-serif text-[clamp(56px,8vw,128px)] leading-[0.95] italic text-forest/90">
+          <span
+            data-transcript
+            className="relative inline-flex h-[0.42em] shrink-0 rotate-[3deg] items-center gap-[0.06em] rounded-full border-[5px] border-forest bg-paper px-[0.1em] text-ink"
+          >
+            <Microphone weight="bold" className="size-[0.18em] text-blue" />
+            <span className="font-mono text-[0.12em] tracking-normal normal-case text-ink/80">
+              so{" "}
+              <span data-filler className="relative text-tomato [--strike:0] after:absolute after:top-1/2 after:left-0 after:h-[0.08em] after:w-full after:origin-left after:scale-x-[var(--strike)] after:bg-tomato">
+                um
+              </span>{" "}
+              today we&apos;re{" "}
+              <span data-filler className="relative text-tomato [--strike:0] after:absolute after:top-1/2 after:left-0 after:h-[0.08em] after:w-full after:origin-left after:scale-x-[var(--strike)] after:bg-tomato">
+                uh
+              </span>{" "}
+              walking to the market
+            </span>
+            <span className="ml-[0.04em] inline-block h-[0.16em] w-[3px] animate-pulse bg-blue" />
+          </span>
+
+          <span className="relative">
+            cut.
+            <span className="absolute -bottom-[0.32em] left-[0.4em] flex items-start gap-2 text-forest">
+              <svg className="h-[70px] w-[120px] rotate-[200deg] -scale-x-100" viewBox="0 0 160 90" fill="none" aria-hidden>
+                <path d="M4 70 C 40 20, 100 10, 150 40" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                <path d="M136 26 L151 41 L131 47" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <span className="mt-6 font-hand text-[clamp(20px,2vw,30px)] leading-none tracking-normal whitespace-nowrap normal-case">
+                every keeper
+                <br />
+                starts with a look.
+              </span>
+            </span>
+          </span>
+
+          <span className="pr-[12vw] font-serif text-[0.34em] leading-[1] tracking-normal normal-case italic text-forest/80">
             (and then
             <br />a check.)
-          </p>
-          <p className="rotate-[-3deg] font-hand text-[26px] text-forest">every cut is checked before you see it.</p>
+          </span>
         </div>
+
+        {!reduce && (
+          <>
+            <div data-float="0.25" className="pointer-events-none absolute top-[14%] left-[62%]">
+              <div className="grid size-[110px] place-items-center rounded-full border-2 border-forest bg-pink text-ink">
+                <Heart size={44} weight="fill" className="beat text-tomato" />
+              </div>
+            </div>
+            <div data-float="0.6" className="pointer-events-none absolute top-[70%] left-[110%]">
+              <div className="rounded-full border-2 border-forest bg-paper px-5 py-2.5 text-[18px] font-semibold whitespace-nowrap text-ink">+1 keeper</div>
+            </div>
+            <div data-float="0.45" className="pointer-events-none absolute top-[20%] left-[190%]">
+              <div className="rounded-full border-2 border-forest bg-sun px-5 py-2.5 text-[18px] font-semibold whitespace-nowrap text-ink">−2 fillers</div>
+            </div>
+          </>
+        )}
       </div>
     </section>
   );
-}
-
-function Word({ children }: { children: React.ReactNode }) {
-  return <p className="display shrink-0 text-[clamp(140px,26vw,420px)] leading-[0.8]">{children}</p>;
 }

@@ -16,7 +16,7 @@ export function TopBar() {
   const run = useEditor((s) => s.run);
   if (!project) return null;
 
-  const { aspect, clips } = project.timeline;
+  const { aspect, clips, fps } = project.timeline;
   const exporting = pending === "Mengekspor video";
   const locked = project.busy;
 
@@ -55,6 +55,23 @@ export function TopBar() {
               }`}
             >
               {a}
+            </button>
+          ))}
+        </div>
+        <div role="radiogroup" aria-label="Frame rate" className="flex rounded-md border border-line-strong p-0.5">
+          {([24, 30, 60] as const).map((f) => (
+            <button
+              key={f}
+              role="radio"
+              aria-checked={fps === f}
+              disabled={locked}
+              title={f === 24 ? "24 fps: kesan film" : f === 60 ? "60 fps: gerakan halus" : "30 fps: standar media sosial"}
+              onClick={() => fps !== f && applyOps(`${f} fps`, [{ op: "set_fps", fps: f }])}
+              className={`rounded-[4px] px-2 py-1 font-mono text-[11px] transition-colors disabled:opacity-50 ${
+                fps === f ? "bg-raised text-text" : "text-muted hover:text-text"
+              }`}
+            >
+              {f}
             </button>
           ))}
         </div>

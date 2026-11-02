@@ -34,7 +34,9 @@ export interface Schema {
     | AddAudio
     | UpdateAudio
     | DeleteAudio
-    | SetFinish;
+    | SetFinish
+    | SetFps
+    | DuplicateClip;
 }
 /**
  * This interface was referenced by `Schema`'s JSON-Schema
@@ -390,6 +392,8 @@ export interface Commit {
     | UpdateAudio
     | DeleteAudio
     | SetFinish
+    | SetFps
+    | DuplicateClip
   )[];
   run_id: string | null;
   at: string;
@@ -679,6 +683,23 @@ export interface SetFinish {
    */
   letterbox: number | null;
   grain: number;
+}
+/**
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "SetFps".
+ */
+export interface SetFps {
+  op: "set_fps";
+  fps: 24 | 25 | 30 | 60;
+}
+/**
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "DuplicateClip".
+ */
+export interface DuplicateClip {
+  op: "duplicate_clip";
+  clip_id: string;
+  new_clip_id: string | null;
 }
 /**
  * This interface was referenced by `Schema`'s JSON-Schema

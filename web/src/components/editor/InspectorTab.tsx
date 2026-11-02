@@ -6,7 +6,7 @@ import { useEditor } from "@/lib/store";
 import { clipDuration } from "@/lib/time";
 import type { Clip, TextItem } from "@/lib/timeline";
 import { ColorPanel } from "./ColorPanel";
-import { ClipMotion, FinishPanel, MusicInspector, OverlayInspector } from "./MontagePanels";
+import { ClipMotion, FinishPanel, FramePosition, MusicInspector, OverlayInspector } from "./MontagePanels";
 
 
 export function InspectorTab() {
@@ -86,6 +86,8 @@ function ClipInspector({ clip, locked }: { clip: Clip; locked: boolean }) {
           {clip.muted ? "Suara dibisukan" : "Suara aktif"}
         </button>
       </fieldset>
+
+      <FramePosition clip={clip} locked={locked} />
 
       <ClipMotion clip={clip} isFirst={isFirst} locked={locked} />
 

@@ -577,11 +577,13 @@
                 "delete_audio": "#/$defs/DeleteAudio",
                 "delete_overlay": "#/$defs/DeleteOverlay",
                 "delete_text": "#/$defs/DeleteText",
+                "duplicate_clip": "#/$defs/DuplicateClip",
                 "move": "#/$defs/Move",
                 "set_aspect": "#/$defs/SetAspect",
                 "set_crop": "#/$defs/SetCrop",
                 "set_effects": "#/$defs/SetEffects",
                 "set_finish": "#/$defs/SetFinish",
+                "set_fps": "#/$defs/SetFps",
                 "set_grade": "#/$defs/SetGrade",
                 "set_muted": "#/$defs/SetMuted",
                 "set_speed": "#/$defs/SetSpeed",
@@ -668,6 +670,12 @@
               },
               {
                 "$ref": "#/$defs/SetFinish"
+              },
+              {
+                "$ref": "#/$defs/SetFps"
+              },
+              {
+                "$ref": "#/$defs/DuplicateClip"
               }
             ]
           },
@@ -805,6 +813,37 @@
         "text_id"
       ],
       "title": "DeleteText",
+      "type": "object"
+    },
+    "DuplicateClip": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "duplicate_clip",
+          "default": "duplicate_clip",
+          "type": "string"
+        },
+        "clip_id": {
+          "type": "string"
+        },
+        "new_clip_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "op",
+        "clip_id",
+        "new_clip_id"
+      ],
+      "title": "DuplicateClip",
       "type": "object"
     },
     "Finish": {
@@ -1385,6 +1424,31 @@
         "grain"
       ],
       "title": "SetFinish",
+      "type": "object"
+    },
+    "SetFps": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "set_fps",
+          "default": "set_fps",
+          "type": "string"
+        },
+        "fps": {
+          "enum": [
+            24,
+            25,
+            30,
+            60
+          ],
+          "type": "integer"
+        }
+      },
+      "required": [
+        "op",
+        "fps"
+      ],
+      "title": "SetFps",
       "type": "object"
     },
     "SetGrade": {
@@ -2219,11 +2283,13 @@
           "delete_audio": "#/$defs/DeleteAudio",
           "delete_overlay": "#/$defs/DeleteOverlay",
           "delete_text": "#/$defs/DeleteText",
+          "duplicate_clip": "#/$defs/DuplicateClip",
           "move": "#/$defs/Move",
           "set_aspect": "#/$defs/SetAspect",
           "set_crop": "#/$defs/SetCrop",
           "set_effects": "#/$defs/SetEffects",
           "set_finish": "#/$defs/SetFinish",
+          "set_fps": "#/$defs/SetFps",
           "set_grade": "#/$defs/SetGrade",
           "set_muted": "#/$defs/SetMuted",
           "set_speed": "#/$defs/SetSpeed",
@@ -2310,6 +2376,12 @@
         },
         {
           "$ref": "#/$defs/SetFinish"
+        },
+        {
+          "$ref": "#/$defs/SetFps"
+        },
+        {
+          "$ref": "#/$defs/DuplicateClip"
         }
       ]
     }

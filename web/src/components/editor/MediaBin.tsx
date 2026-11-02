@@ -5,6 +5,7 @@ import { motion, useReducedMotion } from "motion/react";
 import { useRef, useState } from "react";
 import { fileUrl, type MediaView } from "@/lib/api";
 import { useEditor } from "@/lib/store";
+import { MEDIA_DRAG_TYPE } from "./TimelinePanel";
 
 export function MediaBin() {
   const project = useEditor((s) => s.project);
@@ -90,6 +91,16 @@ function MediaCard({ media, locked, onAdd }: { media: MediaView; locked: boolean
       animate={{ opacity: 1, y: 0 }}
       className="group overflow-hidden rounded-md border border-line bg-panel-2"
     >
+      {/* Plain div for HTML5 drag: motion.div reserves onDragStart for its own gestures. */}
+      <div
+        draggable={!locked}
+        onDragStart={(e) => {
+          e.dataTransfer.setData(MEDIA_DRAG_TYPE, media.id);
+          e.dataTransfer.effectAllowed = "copy";
+        }}
+        title="Tarik ke timeline"
+        className="cursor-grab active:cursor-grabbing"
+      >
       <div className={`relative overflow-hidden bg-bg ${audio ? "h-12" : "aspect-video"}`}>
         {/* eslint-disable-next-line @next/next/no-img-element -- thumbnails come from the API host */}
         <img
@@ -110,6 +121,7 @@ function MediaCard({ media, locked, onAdd }: { media: MediaView; locked: boolean
       <div className="flex items-center gap-2 px-2.5 py-2">
         <span className="truncate text-xs text-text">{media.name}</span>
         <span className="ml-auto shrink-0 font-mono text-[10px] text-faint">{media.duration.toFixed(1)}s</span>
+      </div>
       </div>
     </motion.div>
   );

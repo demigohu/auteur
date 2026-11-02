@@ -248,3 +248,44 @@ export function FinishPanel({ locked }: { locked: boolean }) {
     </fieldset>
   );
 }
+
+/**
+ * Manual framing: where the output-aspect window sits in the source (one crop key). Only the axis
+ * that has room to move is shown; a subject-following reframe is replaced when you set it by hand.
+ */
+export function FramePosition({ clip, locked }: { clip: Clip; locked: boolean }) {
+  const applyOps = useEditor((s) => s.applyOps);
+  const media = useEditor((s) => s.project?.media.find((m) => m.id === clip.media_id));
+  const aspect = useEditor((s) => s.project?.timeline.aspect ?? "16:9");
+  if (!media || !media.width) return null;
+  const [ow, oh] = aspect === "16:9" ? [16, 9] : aspect === "9:16" ? [9, 16] : [1, 1];
+  const srcRatio = media.width / media.height;
+  const outRatio = ow / oh;
+  if (Math.abs(srcRatio - outRatio) < 0.01) return null;
+  const horizontal = srcRatio > outRatio;
+  const key = clip.crop[0] ?? { t: 0, cx: 0.5, cy: 0.5 };
+  const set = (v: number) =>
+    applyOps("Posisi bingkai", [
+      { op: "set_crop", clip_id: clip.id, keys: [{ t: 0, cx: horizontal ? v : key.cx, cy: horizontal ? key.cy : v }], follow: null },
+    ]);
+  return (
+    <fieldset disabled={locked} className="space-y-2 disabled:opacity-50">
+      <legend className="mb-2 text-xs font-medium text-muted">Bingkai {aspect}</legend>
+      {clip.follow ? (
+        <p className="text-[11px] leading-relaxed text-faint">
+          Bingkai mengikuti subjek otomatis. Menggeser slider di bawah menggantinya dengan posisi tetap.
+        </p>
+      ) : null}
+      <Slider
+        id="frame-pos"
+        label={horizontal ? "Posisi kiri-kanan" : "Posisi atas-bawah"}
+        value={horizontal ? key.cx : key.cy}
+        min={0}
+        max={1}
+        step={0.01}
+        format={(v) => `${Math.round(v * 100)}%`}
+        onCommit={set}
+      />
+    </fieldset>
+  );
+}

@@ -200,6 +200,17 @@ class DeleteAudio(Model):
     audio_id: str
 
 
+class SetFps(Model):
+    op: Literal["set_fps"] = "set_fps"
+    fps: Literal[24, 25, 30, 60]
+
+
+class DuplicateClip(Model):
+    op: Literal["duplicate_clip"] = "duplicate_clip"
+    clip_id: str
+    new_clip_id: str | None = None
+
+
 class SetFinish(Model):
     op: Literal["set_finish"] = "set_finish"
     letterbox: float | None = Field(None, ge=1.5, le=3, description="Cinema bars to this ratio (2.39 = scope); null removes")
@@ -210,7 +221,8 @@ Op = Annotated[
     AddClip | Split | Trim | Move | Delete | AddText | UpdateText | DeleteText
     | SetGrade | SetCrop | SetEffects | SetMuted | SetAspect
     | SetSpeed | SetTransition | SetZoom | SetVolume
-    | AddOverlay | UpdateOverlay | DeleteOverlay | AddAudio | UpdateAudio | DeleteAudio | SetFinish,
+    | AddOverlay | UpdateOverlay | DeleteOverlay | AddAudio | UpdateAudio | DeleteAudio | SetFinish
+    | SetFps | DuplicateClip,
     Field(discriminator="op"),
 ]
 op_adapter: TypeAdapter[Op] = TypeAdapter(Op)
@@ -442,6 +454,17 @@ def apply(tl: Timeline, op: Op, media: dict[str, Media]) -> Timeline:
 
         case DeleteAudio():
             tl.audio.pop(_index(tl.audio, op.audio_id, "Music"))
+
+        case SetFps():
+            tl.fps = op.fps
+
+        case DuplicateClip():
+            i = _clip_index(tl, op.clip_id)
+            _check_new_id(tl, op.new_clip_id)
+            # The copy goes right after the original and starts with a plain cut.
+            tl.clips.insert(i + 1, tl.clips[i].model_copy(
+                deep=True, update={"id": op.new_clip_id or new_id("clip"), "transition": None}
+            ))
 
         case SetFinish():
             tl.finish = tl.finish.model_copy(update={"letterbox": op.letterbox, "grain": op.grain})

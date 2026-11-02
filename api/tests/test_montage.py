@@ -94,3 +94,13 @@ def test_full_render_with_every_feature(tmp_path: Path, sample_video: Path) -> N
     ).stdout)
     assert abs(float(info["format"]["duration"]) - p.timeline.duration) < 0.1
     assert {s["codec_type"] for s in info["streams"]} == {"video", "audio"}
+
+
+def test_fps_and_duplicate(project: Project) -> None:
+    from auteur.timeline.ops import DuplicateClip, SetFps
+
+    project.commit("user", "x", [SetFps(fps=24), DuplicateClip(clip_id="c2", new_clip_id="c2copy")])
+    tl = project.timeline
+    assert tl.fps == 24
+    assert [c.id for c in tl.clips] == ["c1", "c2", "c2copy", "c3"]
+    assert (tl.clips[2].src_in, tl.clips[2].src_out) == (10, 14)

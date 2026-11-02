@@ -28,7 +28,7 @@ export function Editor({ projectId }: { projectId: string }) {
 
   return (
     // minmax(0,1fr) column: a long timeline must scroll inside its panel, not widen the whole editor.
-    <div className="grid h-[100dvh] w-full grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)_260px] overflow-hidden">
+    <div className="grid h-[100dvh] w-full grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)_320px] overflow-hidden">
       <TopBar />
       <div className="grid min-h-0 grid-cols-[220px_minmax(0,1fr)_360px]">
         <MediaBin />
@@ -63,6 +63,12 @@ function useShortcuts() {
         const starts = clipStarts(clips);
         const i = clips.findIndex((c, k) => s.time > starts[k] + 0.1 && s.time < starts[k] + clipDuration(c) - 0.1);
         if (i >= 0) s.applyOps("Potong klip di playhead", [{ op: "split", clip_id: clips[i].id, at: Number(s.time.toFixed(3)) }]);
+      } else if (mod && e.key.toLowerCase() === "d" && s.selectedClipId) {
+        e.preventDefault();
+        s.applyOps("Duplikat klip", [{ op: "duplicate_clip", clip_id: s.selectedClipId }]);
+      } else if (e.key.toLowerCase() === "t" && !mod) {
+        const t = Number(s.time.toFixed(2));
+        s.applyOps("Tambah teks", [{ op: "add_text", text: "Judul", start: t, end: Number((t + 2).toFixed(2)), style: "title", y: 0.2 }]);
       } else if (e.key === "Escape") {
         s.select({});
       }
@@ -83,7 +89,7 @@ function ErrorToast() {
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 12 }}
-          className="fixed bottom-[276px] left-1/2 z-50 flex max-w-lg -translate-x-1/2 items-start gap-2 rounded-md border border-danger/40 bg-panel-2 px-3 py-2 text-sm text-text shadow-xl"
+          className="fixed bottom-[336px] left-1/2 z-50 flex max-w-lg -translate-x-1/2 items-start gap-2 rounded-md border border-danger/40 bg-panel-2 px-3 py-2 text-sm text-text shadow-xl"
         >
           <Warning size={16} weight="fill" className="mt-0.5 shrink-0 text-danger" />
           <span className="leading-snug">{error}</span>
@@ -98,7 +104,7 @@ function ErrorToast() {
 
 export function EditorSkeleton() {
   return (
-    <div className="grid h-[100dvh] w-full grid-cols-[minmax(0,1fr)] grid-rows-[48px_minmax(0,1fr)_260px] overflow-hidden">
+    <div className="grid h-[100dvh] w-full grid-cols-[minmax(0,1fr)] grid-rows-[48px_minmax(0,1fr)_320px] overflow-hidden">
       <div className="border-b border-line bg-panel" />
       <div className="grid grid-cols-[220px_minmax(0,1fr)_360px]">
         <div className="space-y-2 border-r border-line bg-panel p-3">

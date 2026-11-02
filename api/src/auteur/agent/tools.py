@@ -105,7 +105,7 @@ class Tool:
 
 def describe_timeline(p: Project) -> str:
     tl = p.timeline
-    lines = [f"aspect {tl.aspect}, duration {tl.duration:.2f}s, {len(tl.clips)} clips, {len(tl.texts)} texts"]
+    lines = [f"aspect {tl.aspect}, {tl.fps:g}fps, duration {tl.duration:.2f}s, {len(tl.clips)} clips, {len(tl.texts)} texts"]
     for c, start in zip(tl.clips, tl.clip_starts()):
         extras = []
         if c.grade.model_dump(exclude_defaults=True):

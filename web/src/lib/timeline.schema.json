@@ -1,0 +1,1216 @@
+{
+  "$defs": {
+    "AddClip": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "add_clip",
+          "default": "add_clip",
+          "type": "string"
+        },
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Id for the new clip; generated if omitted"
+        },
+        "media_id": {
+          "type": "string"
+        },
+        "src_in": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "src_out": {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Position in the video track; None = append"
+        }
+      },
+      "required": [
+        "op",
+        "id",
+        "media_id",
+        "src_in",
+        "src_out",
+        "index"
+      ],
+      "title": "AddClip",
+      "type": "object"
+    },
+    "AddText": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "add_text",
+          "default": "add_text",
+          "type": "string"
+        },
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "text": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "start": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "end": {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "style": {
+          "default": "subtitle",
+          "enum": [
+            "subtitle",
+            "title",
+            "caption"
+          ],
+          "type": "string"
+        },
+        "x": {
+          "default": 0.5,
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "y": {
+          "default": 0.85,
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "op",
+        "id",
+        "text",
+        "start",
+        "end",
+        "style",
+        "x",
+        "y"
+      ],
+      "title": "AddText",
+      "type": "object"
+    },
+    "Blur": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "blur",
+          "default": "blur",
+          "type": "string"
+        },
+        "track_id": {
+          "description": "Object track produced by the `lacak` tool",
+          "type": "string"
+        },
+        "object_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Objects of the track to blur; None = all"
+        },
+        "exclude_ids": {
+          "description": "Objects never blurred (e.g. the main subject)",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "strength": {
+          "default": 0.5,
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "hold": {
+          "default": 1.0,
+          "description": "Seconds the blur holds across missed detections",
+          "maximum": 4,
+          "minimum": 0.3,
+          "type": "number"
+        }
+      },
+      "required": [
+        "kind",
+        "track_id",
+        "object_ids",
+        "exclude_ids",
+        "strength",
+        "hold"
+      ],
+      "title": "Blur",
+      "type": "object"
+    },
+    "ChatMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+          "enum": [
+            "user",
+            "assistant"
+          ],
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "at": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "text",
+        "run_id",
+        "at"
+      ],
+      "title": "ChatMessage",
+      "type": "object"
+    },
+    "Clip": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "media_id": {
+          "type": "string"
+        },
+        "src_in": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "src_out": {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "grade": {
+          "$ref": "#/$defs/Grade"
+        },
+        "crop": {
+          "description": "Empty = centered crop",
+          "items": {
+            "$ref": "#/$defs/CropKey"
+          },
+          "type": "array"
+        },
+        "follow": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Follow"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "effects": {
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Blur"
+              },
+              {
+                "$ref": "#/$defs/Highlight"
+              }
+            ]
+          },
+          "type": "array"
+        },
+        "muted": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "media_id",
+        "src_in",
+        "src_out",
+        "grade",
+        "crop",
+        "follow",
+        "effects",
+        "muted"
+      ],
+      "title": "Clip",
+      "type": "object"
+    },
+    "Commit": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "author": {
+          "enum": [
+            "agent",
+            "user"
+          ],
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "ops": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "add_clip": "#/$defs/AddClip",
+                "add_text": "#/$defs/AddText",
+                "delete": "#/$defs/Delete",
+                "delete_text": "#/$defs/DeleteText",
+                "move": "#/$defs/Move",
+                "set_aspect": "#/$defs/SetAspect",
+                "set_crop": "#/$defs/SetCrop",
+                "set_effects": "#/$defs/SetEffects",
+                "set_grade": "#/$defs/SetGrade",
+                "set_muted": "#/$defs/SetMuted",
+                "split": "#/$defs/Split",
+                "trim": "#/$defs/Trim",
+                "update_text": "#/$defs/UpdateText"
+              },
+              "propertyName": "op"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/AddClip"
+              },
+              {
+                "$ref": "#/$defs/Split"
+              },
+              {
+                "$ref": "#/$defs/Trim"
+              },
+              {
+                "$ref": "#/$defs/Move"
+              },
+              {
+                "$ref": "#/$defs/Delete"
+              },
+              {
+                "$ref": "#/$defs/AddText"
+              },
+              {
+                "$ref": "#/$defs/UpdateText"
+              },
+              {
+                "$ref": "#/$defs/DeleteText"
+              },
+              {
+                "$ref": "#/$defs/SetGrade"
+              },
+              {
+                "$ref": "#/$defs/SetCrop"
+              },
+              {
+                "$ref": "#/$defs/SetEffects"
+              },
+              {
+                "$ref": "#/$defs/SetMuted"
+              },
+              {
+                "$ref": "#/$defs/SetAspect"
+              }
+            ]
+          },
+          "type": "array"
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "before": {
+          "$ref": "#/$defs/Timeline"
+        }
+      },
+      "required": [
+        "id",
+        "author",
+        "label",
+        "ops",
+        "run_id",
+        "at",
+        "before"
+      ],
+      "title": "Commit",
+      "type": "object"
+    },
+    "CropKey": {
+      "additionalProperties": false,
+      "description": "Crop window center at a clip-local time, normalized to the source frame (0..1).",
+      "properties": {
+        "t": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "cx": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "cy": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "t",
+        "cx",
+        "cy"
+      ],
+      "title": "CropKey",
+      "type": "object"
+    },
+    "Delete": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "delete",
+          "default": "delete",
+          "type": "string"
+        },
+        "clip_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "clip_id"
+      ],
+      "title": "Delete",
+      "type": "object"
+    },
+    "DeleteText": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "delete_text",
+          "default": "delete_text",
+          "type": "string"
+        },
+        "text_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "text_id"
+      ],
+      "title": "DeleteText",
+      "type": "object"
+    },
+    "Follow": {
+      "additionalProperties": false,
+      "description": "The tracked object a clip's crop keys follow; the checker verifies it stays in frame.",
+      "properties": {
+        "track_id": {
+          "type": "string"
+        },
+        "object_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "track_id",
+        "object_id"
+      ],
+      "title": "Follow",
+      "type": "object"
+    },
+    "Grade": {
+      "additionalProperties": false,
+      "description": "Color adjustments, all 0 = untouched. Ranges are the safe bounds the renderer accepts.",
+      "properties": {
+        "exposure": {
+          "default": 0,
+          "description": "Stops",
+          "maximum": 2,
+          "minimum": -2,
+          "type": "number"
+        },
+        "contrast": {
+          "default": 0,
+          "maximum": 1,
+          "minimum": -1,
+          "type": "number"
+        },
+        "saturation": {
+          "default": 0,
+          "maximum": 1,
+          "minimum": -1,
+          "type": "number"
+        },
+        "temperature": {
+          "default": 0,
+          "description": "Negative = cooler, positive = warmer",
+          "maximum": 1,
+          "minimum": -1,
+          "type": "number"
+        },
+        "tint": {
+          "default": 0,
+          "description": "Negative = green, positive = magenta",
+          "maximum": 1,
+          "minimum": -1,
+          "type": "number"
+        }
+      },
+      "required": [
+        "exposure",
+        "contrast",
+        "saturation",
+        "temperature",
+        "tint"
+      ],
+      "title": "Grade",
+      "type": "object"
+    },
+    "Highlight": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "highlight",
+          "default": "highlight",
+          "type": "string"
+        },
+        "track_id": {
+          "type": "string"
+        },
+        "object_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Objects to keep bright; None = all"
+        },
+        "dim_background": {
+          "default": 0.5,
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "kind",
+        "track_id",
+        "object_ids",
+        "dim_background"
+      ],
+      "title": "Highlight",
+      "type": "object"
+    },
+    "Media": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "duration": {
+          "type": "number"
+        },
+        "fps": {
+          "type": "number"
+        },
+        "width": {
+          "type": "integer"
+        },
+        "height": {
+          "type": "integer"
+        },
+        "has_audio": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "path",
+        "duration",
+        "fps",
+        "width",
+        "height",
+        "has_audio"
+      ],
+      "title": "Media",
+      "type": "object"
+    },
+    "Move": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "move",
+          "default": "move",
+          "type": "string"
+        },
+        "clip_id": {
+          "type": "string"
+        },
+        "index": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "op",
+        "clip_id",
+        "index"
+      ],
+      "title": "Move",
+      "type": "object"
+    },
+    "Project": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "media": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Media"
+          },
+          "type": "object"
+        },
+        "timeline": {
+          "$ref": "#/$defs/Timeline"
+        },
+        "history": {
+          "items": {
+            "$ref": "#/$defs/Commit"
+          },
+          "type": "array"
+        },
+        "redo_stack": {
+          "items": {
+            "$ref": "#/$defs/Commit"
+          },
+          "type": "array"
+        },
+        "chat": {
+          "items": {
+            "$ref": "#/$defs/ChatMessage"
+          },
+          "type": "array"
+        },
+        "last_render": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Path of the latest render, relative to the project dir"
+        },
+        "tracks": {
+          "additionalProperties": {
+            "$ref": "#/$defs/TrackInfo"
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "media",
+        "timeline",
+        "history",
+        "redo_stack",
+        "chat",
+        "last_render",
+        "tracks"
+      ],
+      "title": "Project",
+      "type": "object"
+    },
+    "SetAspect": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "set_aspect",
+          "default": "set_aspect",
+          "type": "string"
+        },
+        "aspect": {
+          "enum": [
+            "16:9",
+            "9:16",
+            "1:1"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "aspect"
+      ],
+      "title": "SetAspect",
+      "type": "object"
+    },
+    "SetCrop": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "set_crop",
+          "default": "set_crop",
+          "type": "string"
+        },
+        "clip_id": {
+          "type": "string"
+        },
+        "keys": {
+          "items": {
+            "$ref": "#/$defs/CropKey"
+          },
+          "type": "array"
+        },
+        "follow": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Follow"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Object the keys follow (set by reframe)"
+        }
+      },
+      "required": [
+        "op",
+        "clip_id",
+        "keys",
+        "follow"
+      ],
+      "title": "SetCrop",
+      "type": "object"
+    },
+    "SetEffects": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "set_effects",
+          "default": "set_effects",
+          "type": "string"
+        },
+        "clip_id": {
+          "type": "string"
+        },
+        "effects": {
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Blur"
+              },
+              {
+                "$ref": "#/$defs/Highlight"
+              }
+            ]
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "op",
+        "clip_id",
+        "effects"
+      ],
+      "title": "SetEffects",
+      "type": "object"
+    },
+    "SetGrade": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "set_grade",
+          "default": "set_grade",
+          "type": "string"
+        },
+        "clip_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "None = every clip"
+        },
+        "grade": {
+          "$ref": "#/$defs/Grade"
+        }
+      },
+      "required": [
+        "op",
+        "clip_ids",
+        "grade"
+      ],
+      "title": "SetGrade",
+      "type": "object"
+    },
+    "SetMuted": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "set_muted",
+          "default": "set_muted",
+          "type": "string"
+        },
+        "clip_id": {
+          "type": "string"
+        },
+        "muted": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "op",
+        "clip_id",
+        "muted"
+      ],
+      "title": "SetMuted",
+      "type": "object"
+    },
+    "Split": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "split",
+          "default": "split",
+          "type": "string"
+        },
+        "clip_id": {
+          "type": "string"
+        },
+        "at": {
+          "description": "Timeline time to cut at",
+          "type": "number"
+        },
+        "new_clip_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Id for the right half; generated if omitted"
+        }
+      },
+      "required": [
+        "op",
+        "clip_id",
+        "at",
+        "new_clip_id"
+      ],
+      "title": "Split",
+      "type": "object"
+    },
+    "TextItem": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "start": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "end": {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "style": {
+          "default": "subtitle",
+          "enum": [
+            "subtitle",
+            "title",
+            "caption"
+          ],
+          "type": "string"
+        },
+        "x": {
+          "default": 0.5,
+          "description": "Center, normalized to output frame",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "y": {
+          "default": 0.85,
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "text",
+        "start",
+        "end",
+        "style",
+        "x",
+        "y"
+      ],
+      "title": "TextItem",
+      "type": "object"
+    },
+    "Timeline": {
+      "additionalProperties": false,
+      "properties": {
+        "aspect": {
+          "default": "16:9",
+          "enum": [
+            "16:9",
+            "9:16",
+            "1:1"
+          ],
+          "type": "string"
+        },
+        "fps": {
+          "default": 30,
+          "type": "number"
+        },
+        "clips": {
+          "items": {
+            "$ref": "#/$defs/Clip"
+          },
+          "type": "array"
+        },
+        "texts": {
+          "items": {
+            "$ref": "#/$defs/TextItem"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "aspect",
+        "fps",
+        "clips",
+        "texts"
+      ],
+      "title": "Timeline",
+      "type": "object"
+    },
+    "TrackInfo": {
+      "additionalProperties": false,
+      "description": "Index entry for an object track; the boxes live in <project_dir>/tracks/<id>.json.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "media_id": {
+          "type": "string"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "object_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "media_id",
+        "prompt",
+        "object_ids"
+      ],
+      "title": "TrackInfo",
+      "type": "object"
+    },
+    "Trim": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "trim",
+          "default": "trim",
+          "type": "string"
+        },
+        "clip_id": {
+          "type": "string"
+        },
+        "src_in": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "src_out": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "op",
+        "clip_id",
+        "src_in",
+        "src_out"
+      ],
+      "title": "Trim",
+      "type": "object"
+    },
+    "UpdateText": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "update_text",
+          "default": "update_text",
+          "type": "string"
+        },
+        "text_id": {
+          "type": "string"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "start": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "end": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "x": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "y": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "op",
+        "text_id",
+        "text",
+        "start",
+        "end",
+        "x",
+        "y"
+      ],
+      "title": "UpdateText",
+      "type": "object"
+    }
+  },
+  "description": "Root that pulls every shared type into one schema.",
+  "properties": {
+    "project": {
+      "$ref": "#/$defs/Project"
+    },
+    "op": {
+      "discriminator": {
+        "mapping": {
+          "add_clip": "#/$defs/AddClip",
+          "add_text": "#/$defs/AddText",
+          "delete": "#/$defs/Delete",
+          "delete_text": "#/$defs/DeleteText",
+          "move": "#/$defs/Move",
+          "set_aspect": "#/$defs/SetAspect",
+          "set_crop": "#/$defs/SetCrop",
+          "set_effects": "#/$defs/SetEffects",
+          "set_grade": "#/$defs/SetGrade",
+          "set_muted": "#/$defs/SetMuted",
+          "split": "#/$defs/Split",
+          "trim": "#/$defs/Trim",
+          "update_text": "#/$defs/UpdateText"
+        },
+        "propertyName": "op"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/AddClip"
+        },
+        {
+          "$ref": "#/$defs/Split"
+        },
+        {
+          "$ref": "#/$defs/Trim"
+        },
+        {
+          "$ref": "#/$defs/Move"
+        },
+        {
+          "$ref": "#/$defs/Delete"
+        },
+        {
+          "$ref": "#/$defs/AddText"
+        },
+        {
+          "$ref": "#/$defs/UpdateText"
+        },
+        {
+          "$ref": "#/$defs/DeleteText"
+        },
+        {
+          "$ref": "#/$defs/SetGrade"
+        },
+        {
+          "$ref": "#/$defs/SetCrop"
+        },
+        {
+          "$ref": "#/$defs/SetEffects"
+        },
+        {
+          "$ref": "#/$defs/SetMuted"
+        },
+        {
+          "$ref": "#/$defs/SetAspect"
+        }
+      ]
+    }
+  },
+  "required": [
+    "project",
+    "op"
+  ],
+  "title": "Schema",
+  "type": "object"
+}

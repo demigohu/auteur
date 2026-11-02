@@ -16,8 +16,9 @@ export function MediaBin() {
   if (!project) return null;
 
   const uploading = pending?.startsWith("Mengunggah") ? pending : null;
-  const total = project.media.reduce((s, m) => s + m.duration, 0);
-  const pick = (files: FileList | null) => files && upload(Array.from(files).filter((f) => f.type.startsWith("video/")));
+  const total = project.media.filter((m) => m.kind === "video").reduce((s, m) => s + m.duration, 0);
+  const pick = (files: FileList | null) =>
+    files && upload(Array.from(files).filter((f) => f.type.startsWith("video/") || f.type.startsWith("audio/")));
 
   return (
     <aside
@@ -45,7 +46,9 @@ export function MediaBin() {
             media={m}
             locked={project.busy}
             onAdd={() =>
-              applyOps(`Tambah ${m.name}`, [{ op: "add_clip", media_id: m.id, src_in: 0, src_out: Number(m.duration.toFixed(3)) }])
+              m.kind === "audio"
+                ? applyOps(`Musik ${m.name}`, [{ op: "add_audio", media_id: m.id }])
+                : applyOps(`Tambah ${m.name}`, [{ op: "add_clip", media_id: m.id, src_in: 0, src_out: Number(m.duration.toFixed(3)) }])
             }
           />
         ))}
@@ -58,13 +61,13 @@ export function MediaBin() {
           className="flex w-full flex-col items-center gap-1.5 rounded-md border border-dashed border-line-strong px-3 py-5 text-center transition hover:border-accent/60 hover:bg-raised active:scale-[0.99] disabled:opacity-50"
         >
           <UploadSimple size={18} className="text-muted" />
-          <span className="text-xs text-text">Unggah footage</span>
-          <span className="text-[11px] text-faint">MP4 atau MOV, total maks 5 menit</span>
+          <span className="text-xs text-text">Unggah footage atau musik</span>
+          <span className="text-[11px] text-faint">MP4, MOV, MP3, WAV. Footage total maks 5 menit</span>
         </button>
         <input
           ref={input}
           type="file"
-          accept="video/mp4,video/quicktime"
+          accept="video/mp4,video/quicktime,audio/*"
           multiple
           hidden
           onChange={(e) => {
@@ -80,24 +83,25 @@ export function MediaBin() {
 function MediaCard({ media, locked, onAdd }: { media: MediaView; locked: boolean; onAdd: () => void }) {
   const reduce = useReducedMotion();
   const portrait = media.height > media.width;
+  const audio = media.kind === "audio";
   return (
     <motion.div
       initial={reduce ? false : { opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       className="group overflow-hidden rounded-md border border-line bg-panel-2"
     >
-      <div className="relative aspect-video overflow-hidden bg-bg">
+      <div className={`relative overflow-hidden bg-bg ${audio ? "h-12" : "aspect-video"}`}>
         {/* eslint-disable-next-line @next/next/no-img-element -- thumbnails come from the API host */}
         <img
           src={fileUrl(media.thumb_url)}
           alt={media.name}
-          className={`h-full w-full ${portrait ? "object-contain" : "object-cover"}`}
+          className={`h-full w-full ${portrait || audio ? "object-contain" : "object-cover"}`}
         />
         <button
           type="button"
           onClick={onAdd}
           disabled={locked}
-          aria-label={`Tambah ${media.name} ke timeline`}
+          aria-label={audio ? `Pakai ${media.name} sebagai musik` : `Tambah ${media.name} ke timeline`}
           className="absolute right-1.5 bottom-1.5 grid size-7 place-items-center rounded-md bg-bg/80 text-text opacity-0 backdrop-blur transition group-hover:opacity-100 hover:bg-accent hover:text-accent-ink focus-visible:opacity-100 disabled:hidden"
         >
           <Plus size={14} weight="bold" />

@@ -1,6 +1,6 @@
 "use client";
 
-import { BoundingBox, Pause, Play, SkipBack } from "@phosphor-icons/react";
+import { BoundingBox, ImageSquare, Pause, Play, SkipBack } from "@phosphor-icons/react";
 import { Player, type PlayerRef } from "@remotion/player";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useEditor } from "@/lib/store";
@@ -17,6 +17,8 @@ export function Preview() {
   const tracks = useEditor((s) => s.tracks);
   const showTracks = useEditor((s) => s.showTracks);
   const setShowTracks = useEditor((s) => s.setShowTracks);
+  const before = useEditor((s) => s.before);
+  const setBefore = useEditor((s) => s.setBefore);
   const player = useRef<PlayerRef>(null);
   const [playing, setPlaying] = useState(false);
 
@@ -32,8 +34,10 @@ export function Preview() {
       media: Object.fromEntries((project?.media ?? []).map((m) => [m.id, m])),
       tracks,
       showTracks,
+      raw: before,
+      speech: project?.speech ?? [],
     }),
-    [timeline, project?.media, tracks, showTracks],
+    [timeline, project?.media, project?.speech, tracks, showTracks, before],
   );
 
   useEffect(() => {
@@ -71,6 +75,11 @@ export function Preview() {
   return (
     <section className="flex min-h-0 flex-col bg-bg">
       <div className="relative flex min-h-0 flex-1 items-center justify-center p-4">
+        {before && (
+          <span className="pointer-events-none absolute top-6 left-1/2 z-10 -translate-x-1/2 rounded-md bg-bg/85 px-2.5 py-1 text-xs text-text backdrop-blur">
+            Sebelum diedit
+          </span>
+        )}
         {timeline && hasPlayer ? (
           <Player
             ref={player}
@@ -109,20 +118,35 @@ export function Preview() {
         </button>
         <span className="font-mono text-xs tabular-nums text-text">{timecode(time, fps)}</span>
         <span className="font-mono text-xs tabular-nums text-faint">/ {timecode(duration, fps)}</span>
+        <button
+          type="button"
+          disabled={!hasPlayer}
+          onPointerDown={() => setBefore(true)}
+          onPointerUp={() => setBefore(false)}
+          onPointerLeave={() => setBefore(false)}
+          onKeyDown={(e) => e.key === "Enter" && setBefore(true)}
+          onKeyUp={() => setBefore(false)}
+          title="Tahan untuk melihat footage sebelum diedit"
+          className={`ml-auto flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] transition-colors select-none disabled:opacity-40 ${
+            before ? "bg-accent-soft text-accent" : "text-muted hover:bg-raised hover:text-text"
+          }`}
+        >
+          <ImageSquare size={14} /> Sebelum
+        </button>
         {Object.keys(tracks).length > 0 && (
           <button
             type="button"
             aria-pressed={showTracks}
             onClick={() => setShowTracks(!showTracks)}
             title="Tampilkan kotak pelacakan SAM"
-            className={`ml-auto flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] transition-colors ${
+            className={`flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] transition-colors ${
               showTracks ? "bg-accent-soft text-accent" : "text-muted hover:bg-raised hover:text-text"
             }`}
           >
             <BoundingBox size={14} /> Kotak lacak
           </button>
         )}
-        <span className={`${Object.keys(tracks).length > 0 ? "" : "ml-auto "}font-mono text-[11px] text-faint`}>
+        <span className="font-mono text-[11px] text-faint">
           {w}×{h} · {fps} fps
         </span>
       </div>

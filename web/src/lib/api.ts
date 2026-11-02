@@ -2,7 +2,12 @@ import type { Media, Schema, Timeline } from "./timeline";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-export type MediaView = Media & { preview_url: string; thumb_url: string; filmstrip_url: string | null };
+export type MediaView = Media & {
+  preview_url: string;
+  thumb_url: string;
+  filmstrip_url: string | null;
+  beats: number[] | null;
+};
 
 export type CommitView = {
   id: string;
@@ -24,6 +29,8 @@ export type ProjectView = {
   history: CommitView[];
   chat: ChatMessage[];
   tracks: TrackView[];
+  speech: [number, number][];
+  spent: number;
   last_render_url: string | null;
   can_undo: boolean;
   can_redo: boolean;
@@ -79,5 +86,7 @@ export const api = {
   startRun: (id: string, instruction: string) => request<{ run_id: string }>(`/projects/${id}/runs`, json({ instruction })),
   stopRun: (id: string) => request<{ stopped: boolean }>(`/projects/${id}/runs/stop`, { method: "POST" }),
   undoRun: (id: string, runId: string) => request<ProjectView>(`/projects/${id}/runs/${runId}/undo`, { method: "POST" }),
+  grade: (id: string, body: { clip_ids: string[] | null; look: string | null; intensity: number; auto: boolean; match: boolean }) =>
+    request<ProjectView>(`/projects/${id}/grade`, json(body)),
   render: (id: string, final: boolean) => request<ProjectView>(`/projects/${id}/render`, json({ final })),
 };

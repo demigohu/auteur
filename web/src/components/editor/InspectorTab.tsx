@@ -4,22 +4,21 @@ import { Crosshair, SpeakerSimpleHigh, SpeakerSimpleSlash, X } from "@phosphor-i
 import { useState } from "react";
 import { useEditor } from "@/lib/store";
 import { clipDuration } from "@/lib/time";
-import type { Clip, Grade, TextItem } from "@/lib/timeline";
+import type { Clip, TextItem } from "@/lib/timeline";
+import { ColorPanel } from "./ColorPanel";
+import { ClipMotion, FinishPanel, MusicInspector, OverlayInspector } from "./MontagePanels";
 
-const GRADE_FIELDS: { key: keyof Grade; label: string; min: number; max: number }[] = [
-  { key: "exposure", label: "Exposure", min: -2, max: 2 },
-  { key: "contrast", label: "Kontras", min: -1, max: 1 },
-  { key: "saturation", label: "Saturasi", min: -1, max: 1 },
-  { key: "temperature", label: "Temperatur", min: -1, max: 1 },
-  { key: "tint", label: "Tint", min: -1, max: 1 },
-];
 
 export function InspectorTab() {
   const project = useEditor((s) => s.project);
   const clipId = useEditor((s) => s.selectedClipId);
   const textId = useEditor((s) => s.selectedTextId);
+  const overlayId = useEditor((s) => s.selectedOverlayId);
+  const audioId = useEditor((s) => s.selectedAudioId);
   const clip = project?.timeline.clips.find((c) => c.id === clipId);
   const text = project?.timeline.texts.find((t) => t.id === textId);
+  const overlay = project?.timeline.overlays.find((o) => o.id === overlayId);
+  const music = project?.timeline.audio.find((a) => a.id === audioId);
   const locked = project?.busy ?? false;
   // Remount the form whenever a committed edit lands (user, agent, or undo) but not while a
   // slider only previews locally, so sliders keep their drag state.
@@ -31,12 +30,19 @@ export function InspectorTab() {
         <ClipInspector key={`${clip.id}:${version}`} clip={clip} locked={locked} />
       ) : text ? (
         <TextInspector key={`${text.id}:${version}`} item={text} locked={locked} />
+      ) : overlay ? (
+        <OverlayInspector key={`${overlay.id}:${version}`} item={overlay} locked={locked} />
+      ) : music ? (
+        <MusicInspector key={`${music.id}:${version}`} item={music} locked={locked} />
       ) : (
-        <div className="pt-2">
-          <p className="text-sm text-text">Belum ada yang dipilih</p>
-          <p className="mt-1 text-sm leading-relaxed text-muted">
-            Klik klip atau teks di timeline untuk mengatur potongan, warna, dan teksnya.
-          </p>
+        <div className="space-y-5 pt-2">
+          <div>
+            <p className="text-sm text-text">Belum ada yang dipilih</p>
+            <p className="mt-1 text-sm leading-relaxed text-muted">
+              Klik klip, teks, B-roll, atau musik di timeline untuk mengaturnya.
+            </p>
+          </div>
+          <FinishPanel key={version} locked={locked} />
         </div>
       )}
     </div>
@@ -45,18 +51,8 @@ export function InspectorTab() {
 
 function ClipInspector({ clip, locked }: { clip: Clip; locked: boolean }) {
   const applyOps = useEditor((s) => s.applyOps);
-  const previewGrade = useEditor((s) => s.previewGrade);
   const media = useEditor((s) => s.project?.media.find((m) => m.id === clip.media_id));
-  const [grade, setGradeState] = useState<Grade>(clip.grade);
-  const setGrade = (g: Grade) => {
-    setGradeState(g);
-    previewGrade(clip.id, g);
-  };
-
-  const commitGrade = (g: Grade, allClips = false) =>
-    applyOps(allClips ? "Warna untuk semua klip" : "Ubah warna klip", [
-      { op: "set_grade", clip_ids: allClips ? null : [clip.id], grade: g },
-    ]);
+  const isFirst = useEditor((s) => s.project?.timeline.clips[0]?.id === clip.id);
 
   return (
     <div className="space-y-6">
@@ -91,64 +87,13 @@ function ClipInspector({ clip, locked }: { clip: Clip; locked: boolean }) {
         </button>
       </fieldset>
 
+      <ClipMotion clip={clip} isFirst={isFirst} locked={locked} />
+
       {(clip.follow || clip.effects.length > 0) && (
         <TrackingInfo clip={clip} locked={locked} />
       )}
 
-      <fieldset disabled={locked} className="space-y-3 disabled:opacity-50">
-        <legend className="mb-2 text-xs font-medium text-muted">Warna</legend>
-        {GRADE_FIELDS.map((f) => (
-          <div key={f.key} className="space-y-1">
-            <div className="flex items-center justify-between">
-              <label htmlFor={`grade-${f.key}`} className="text-xs text-text">
-                {f.label}
-              </label>
-              <span className="font-mono text-[11px] tabular-nums text-muted">
-                {grade[f.key] > 0 ? "+" : ""}
-                {grade[f.key].toFixed(2)}
-              </span>
-            </div>
-            <input
-              id={`grade-${f.key}`}
-              type="range"
-              min={f.min}
-              max={f.max}
-              step={0.01}
-              value={grade[f.key]}
-              onChange={(e) => setGrade({ ...grade, [f.key]: Number(e.target.value) })}
-              onPointerUp={() => commitGrade(grade)}
-              onKeyUp={() => commitGrade(grade)}
-              onDoubleClick={() => {
-                const g = { ...grade, [f.key]: 0 };
-                setGrade(g);
-                commitGrade(g);
-              }}
-              className="w-full"
-            />
-          </div>
-        ))}
-        <div className="flex gap-2 pt-1">
-          <button
-            type="button"
-            onClick={() => commitGrade(grade, true)}
-            className="rounded-md border border-line-strong px-2.5 py-1.5 text-xs text-text transition hover:bg-raised active:scale-[0.98]"
-          >
-            Terapkan ke semua klip
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              const zero = { exposure: 0, contrast: 0, saturation: 0, temperature: 0, tint: 0 };
-              setGrade(zero);
-              commitGrade(zero);
-            }}
-            className="rounded-md px-2.5 py-1.5 text-xs text-muted transition hover:text-text"
-          >
-            Reset
-          </button>
-        </div>
-        <p className="text-[11px] leading-relaxed text-faint">Preview warna adalah perkiraan. Hasil export memakai grading ffmpeg.</p>
-      </fieldset>
+      <ColorPanel clip={clip} locked={locked} />
     </div>
   );
 }
@@ -201,11 +146,31 @@ function TrackingInfo({ clip, locked }: { clip: Clip; locked: boolean }) {
   );
 }
 
+const TEXT_LOOKS: { id: TextItem["look"]; label: string }[] = [
+  { id: "karaoke", label: "Karaoke" },
+  { id: "kotak", label: "Kotak" },
+  { id: "tebal", label: "Tebal" },
+  { id: "pop", label: "Pop" },
+  { id: "bersih", label: "Bersih" },
+];
+const ACCENTS = ["#FFD43B", "#7CFC6A", "#FF5FA2", "#3DD6FF", "#FF8A3D", "#FFFFFF"];
+
 function TextInspector({ item, locked }: { item: TextItem; locked: boolean }) {
   const applyOps = useEditor((s) => s.applyOps);
+  // Select the stable array and filter outside the selector: a filtered array is new on every call,
+  // which makes the store subscription loop forever.
+  const texts = useEditor((s) => s.project?.timeline.texts);
+  const subtitles = (texts ?? []).filter((t) => t.style === "subtitle");
   const [text, setText] = useState(item.text);
+  const [everywhere, setEverywhere] = useState(item.style === "subtitle");
   const update = (patch: Partial<TextItem>, label = "Ubah teks") =>
     applyOps(label, [{ op: "update_text", text_id: item.id, ...patch }]);
+  // Style changes apply to every subtitle by default, like a caption preset in CapCut.
+  const restyle = (patch: { look?: TextItem["look"]; color?: string }, label: string) =>
+    applyOps(
+      label,
+      (everywhere ? subtitles : [item]).map((t) => ({ op: "update_text" as const, text_id: t.id, ...patch })),
+    );
 
   return (
     <fieldset disabled={locked} className="space-y-5 disabled:opacity-50">
@@ -222,6 +187,44 @@ function TextInspector({ item, locked }: { item: TextItem; locked: boolean }) {
           className="block w-full resize-none rounded-md border border-line-strong bg-panel-2 px-3 py-2 text-sm text-text focus:border-accent/60 focus:outline-none"
         />
       </div>
+      {item.style === "subtitle" && (
+        <div className="space-y-3">
+          <p className="text-xs font-medium text-muted">Gaya subtitle</p>
+          <div className="grid grid-cols-5 gap-1.5">
+            {TEXT_LOOKS.map((l) => (
+              <button
+                key={l.id}
+                type="button"
+                onClick={() => restyle({ look: l.id }, `Gaya subtitle ${l.label}`)}
+                className={`rounded-md border px-1 py-1.5 text-[11px] transition active:scale-[0.97] ${
+                  item.look === l.id ? "border-accent text-text" : "border-line text-muted hover:border-line-strong hover:text-text"
+                }`}
+              >
+                {l.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-text">Warna sorot</span>
+            {ACCENTS.map((c) => (
+              <button
+                key={c}
+                type="button"
+                aria-label={`Warna ${c}`}
+                onClick={() => restyle({ color: c }, "Warna subtitle")}
+                className={`size-5 rounded-full border-2 transition active:scale-90 ${
+                  item.color.toUpperCase() === c ? "border-text" : "border-transparent"
+                }`}
+                style={{ background: c }}
+              />
+            ))}
+          </div>
+          <label className="flex items-center gap-2 text-xs text-text">
+            <input type="checkbox" checked={everywhere} onChange={(e) => setEverywhere(e.target.checked)} />
+            Terapkan ke semua subtitle ({subtitles.length})
+          </label>
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3">
         <NumberField key={`s-${item.start}`} label="Mulai (dtk)" value={item.start} onCommit={(v) => update({ start: v }, "Geser teks")} />
         <NumberField key={`e-${item.end}`} label="Selesai (dtk)" value={item.end} onCommit={(v) => update({ end: v }, "Geser teks")} />

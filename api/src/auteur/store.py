@@ -45,6 +45,11 @@ class Store:
                 (p.id, p.name, p.model_dump_json(), datetime.now(UTC).isoformat()),
             )
 
+    def total_spent(self) -> float:
+        with self._lock:
+            rows = self._db.execute("SELECT json_extract(data, '$.spent') FROM projects").fetchall()
+        return sum(r[0] or 0 for r in rows)
+
     def list(self) -> list[dict[str, str]]:
         with self._lock:
             rows = self._db.execute("SELECT id, name, updated_at FROM projects ORDER BY updated_at DESC").fetchall()

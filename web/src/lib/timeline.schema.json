@@ -1,5 +1,88 @@
 {
   "$defs": {
+    "AddAudio": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "add_audio",
+          "default": "add_audio",
+          "type": "string"
+        },
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "media_id": {
+          "type": "string"
+        },
+        "src_in": {
+          "default": 0,
+          "minimum": 0,
+          "type": "number"
+        },
+        "src_out": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Defaults to the end of the music or of the video"
+        },
+        "start": {
+          "default": 0,
+          "minimum": 0,
+          "type": "number"
+        },
+        "volume": {
+          "default": 0.8,
+          "maximum": 2,
+          "minimum": 0,
+          "type": "number"
+        },
+        "fade_in": {
+          "default": 0.5,
+          "maximum": 10,
+          "minimum": 0,
+          "type": "number"
+        },
+        "fade_out": {
+          "default": 1.5,
+          "maximum": 10,
+          "minimum": 0,
+          "type": "number"
+        },
+        "duck": {
+          "default": true,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "op",
+        "id",
+        "media_id",
+        "src_in",
+        "src_out",
+        "start",
+        "volume",
+        "fade_in",
+        "fade_out",
+        "duck"
+      ],
+      "title": "AddAudio",
+      "type": "object"
+    },
     "AddClip": {
       "additionalProperties": false,
       "properties": {
@@ -55,6 +138,65 @@
       "title": "AddClip",
       "type": "object"
     },
+    "AddOverlay": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "add_overlay",
+          "default": "add_overlay",
+          "type": "string"
+        },
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "media_id": {
+          "type": "string"
+        },
+        "src_in": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "src_out": {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "start": {
+          "description": "Timeline time the B-roll appears",
+          "minimum": 0,
+          "type": "number"
+        },
+        "layout": {
+          "default": "full",
+          "enum": [
+            "full",
+            "kanan_atas",
+            "kiri_atas",
+            "kanan_bawah",
+            "kiri_bawah"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "id",
+        "media_id",
+        "src_in",
+        "src_out",
+        "start",
+        "layout"
+      ],
+      "title": "AddOverlay",
+      "type": "object"
+    },
     "AddText": {
       "additionalProperties": false,
       "properties": {
@@ -95,6 +237,28 @@
           ],
           "type": "string"
         },
+        "look": {
+          "default": "bersih",
+          "enum": [
+            "bersih",
+            "tebal",
+            "karaoke",
+            "kotak",
+            "pop"
+          ],
+          "type": "string"
+        },
+        "color": {
+          "default": "#FFD43B",
+          "pattern": "^#[0-9a-fA-F]{6}$",
+          "type": "string"
+        },
+        "words": {
+          "items": {
+            "$ref": "#/$defs/TextWord"
+          },
+          "type": "array"
+        },
         "x": {
           "default": 0.5,
           "maximum": 1,
@@ -115,10 +279,75 @@
         "start",
         "end",
         "style",
+        "look",
+        "color",
+        "words",
         "x",
         "y"
       ],
       "title": "AddText",
+      "type": "object"
+    },
+    "AudioItem": {
+      "additionalProperties": false,
+      "description": "Music on the audio track, at an absolute timeline time.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "media_id": {
+          "type": "string"
+        },
+        "src_in": {
+          "default": 0,
+          "minimum": 0,
+          "type": "number"
+        },
+        "src_out": {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "start": {
+          "default": 0,
+          "minimum": 0,
+          "type": "number"
+        },
+        "volume": {
+          "default": 0.8,
+          "maximum": 2,
+          "minimum": 0,
+          "type": "number"
+        },
+        "fade_in": {
+          "default": 0.5,
+          "maximum": 10,
+          "minimum": 0,
+          "type": "number"
+        },
+        "fade_out": {
+          "default": 1.5,
+          "maximum": 10,
+          "minimum": 0,
+          "type": "number"
+        },
+        "duck": {
+          "default": true,
+          "description": "Lower the music while someone speaks",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "media_id",
+        "src_in",
+        "src_out",
+        "start",
+        "volume",
+        "fade_in",
+        "fade_out",
+        "duck"
+      ],
+      "title": "AudioItem",
       "type": "object"
     },
     "Blur": {
@@ -227,11 +456,18 @@
           "exclusiveMinimum": 0,
           "type": "number"
         },
+        "speed": {
+          "default": 1.0,
+          "description": "0.5 = slow motion, 2 = twice as fast; audio is muted when not 1",
+          "maximum": 4,
+          "minimum": 0.25,
+          "type": "number"
+        },
         "grade": {
           "$ref": "#/$defs/Grade"
         },
         "crop": {
-          "description": "Empty = centered crop",
+          "description": "Empty = centered crop; times are clip-local timeline seconds",
           "items": {
             "$ref": "#/$defs/CropKey"
           },
@@ -247,6 +483,29 @@
             }
           ],
           "default": null
+        },
+        "zoom": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Zoom"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "transition": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Transition"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Transition into this clip from the previous one"
         },
         "effects": {
           "items": {
@@ -264,6 +523,12 @@
         "muted": {
           "default": false,
           "type": "boolean"
+        },
+        "volume": {
+          "default": 1.0,
+          "maximum": 2,
+          "minimum": 0,
+          "type": "number"
         }
       },
       "required": [
@@ -271,11 +536,15 @@
         "media_id",
         "src_in",
         "src_out",
+        "speed",
         "grade",
         "crop",
         "follow",
+        "zoom",
+        "transition",
         "effects",
-        "muted"
+        "muted",
+        "volume"
       ],
       "title": "Clip",
       "type": "object"
@@ -300,18 +569,29 @@
           "items": {
             "discriminator": {
               "mapping": {
+                "add_audio": "#/$defs/AddAudio",
                 "add_clip": "#/$defs/AddClip",
+                "add_overlay": "#/$defs/AddOverlay",
                 "add_text": "#/$defs/AddText",
                 "delete": "#/$defs/Delete",
+                "delete_audio": "#/$defs/DeleteAudio",
+                "delete_overlay": "#/$defs/DeleteOverlay",
                 "delete_text": "#/$defs/DeleteText",
                 "move": "#/$defs/Move",
                 "set_aspect": "#/$defs/SetAspect",
                 "set_crop": "#/$defs/SetCrop",
                 "set_effects": "#/$defs/SetEffects",
+                "set_finish": "#/$defs/SetFinish",
                 "set_grade": "#/$defs/SetGrade",
                 "set_muted": "#/$defs/SetMuted",
+                "set_speed": "#/$defs/SetSpeed",
+                "set_transition": "#/$defs/SetTransition",
+                "set_volume": "#/$defs/SetVolume",
+                "set_zoom": "#/$defs/SetZoom",
                 "split": "#/$defs/Split",
                 "trim": "#/$defs/Trim",
+                "update_audio": "#/$defs/UpdateAudio",
+                "update_overlay": "#/$defs/UpdateOverlay",
                 "update_text": "#/$defs/UpdateText"
               },
               "propertyName": "op"
@@ -355,6 +635,39 @@
               },
               {
                 "$ref": "#/$defs/SetAspect"
+              },
+              {
+                "$ref": "#/$defs/SetSpeed"
+              },
+              {
+                "$ref": "#/$defs/SetTransition"
+              },
+              {
+                "$ref": "#/$defs/SetZoom"
+              },
+              {
+                "$ref": "#/$defs/SetVolume"
+              },
+              {
+                "$ref": "#/$defs/AddOverlay"
+              },
+              {
+                "$ref": "#/$defs/UpdateOverlay"
+              },
+              {
+                "$ref": "#/$defs/DeleteOverlay"
+              },
+              {
+                "$ref": "#/$defs/AddAudio"
+              },
+              {
+                "$ref": "#/$defs/UpdateAudio"
+              },
+              {
+                "$ref": "#/$defs/DeleteAudio"
+              },
+              {
+                "$ref": "#/$defs/SetFinish"
               }
             ]
           },
@@ -437,6 +750,44 @@
       "title": "Delete",
       "type": "object"
     },
+    "DeleteAudio": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "delete_audio",
+          "default": "delete_audio",
+          "type": "string"
+        },
+        "audio_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "audio_id"
+      ],
+      "title": "DeleteAudio",
+      "type": "object"
+    },
+    "DeleteOverlay": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "delete_overlay",
+          "default": "delete_overlay",
+          "type": "string"
+        },
+        "overlay_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "overlay_id"
+      ],
+      "title": "DeleteOverlay",
+      "type": "object"
+    },
     "DeleteText": {
       "additionalProperties": false,
       "properties": {
@@ -454,6 +805,39 @@
         "text_id"
       ],
       "title": "DeleteText",
+      "type": "object"
+    },
+    "Finish": {
+      "additionalProperties": false,
+      "description": "Whole-video finishing touches.",
+      "properties": {
+        "letterbox": {
+          "anyOf": [
+            {
+              "maximum": 3,
+              "minimum": 1.5,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Cinema bars to this aspect ratio, e.g. 2.39"
+        },
+        "grain": {
+          "default": 0,
+          "description": "Film grain amount",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "letterbox",
+        "grain"
+      ],
+      "title": "Finish",
       "type": "object"
     },
     "Follow": {
@@ -476,7 +860,7 @@
     },
     "Grade": {
       "additionalProperties": false,
-      "description": "Color adjustments, all 0 = untouched. Ranges are the safe bounds the renderer accepts.",
+      "description": "Color adjustments, all 0 = untouched. Ranges are the safe bounds the renderer accepts.\n\nWhat each field does to pixels is defined once in auteur/grade.py (and ported to the editor).",
       "properties": {
         "exposure": {
           "default": 0,
@@ -510,6 +894,85 @@
           "maximum": 1,
           "minimum": -1,
           "type": "number"
+        },
+        "highlights": {
+          "default": 0,
+          "description": "Brighten (+) or recover (-) the bright end",
+          "maximum": 1,
+          "minimum": -1,
+          "type": "number"
+        },
+        "shadows": {
+          "default": 0,
+          "description": "Lift (+) or deepen (-) the dark end",
+          "maximum": 1,
+          "minimum": -1,
+          "type": "number"
+        },
+        "fade": {
+          "default": 0,
+          "description": "Lifted, matte blacks",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "shadow_hue": {
+          "default": 200,
+          "description": "Split-toning hue for shadows (degrees)",
+          "maximum": 360,
+          "minimum": 0,
+          "type": "number"
+        },
+        "shadow_tone": {
+          "default": 0,
+          "description": "Split-toning strength for shadows",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "highlight_hue": {
+          "default": 35,
+          "description": "Split-toning hue for highlights (degrees)",
+          "maximum": 360,
+          "minimum": 0,
+          "type": "number"
+        },
+        "highlight_tone": {
+          "default": 0,
+          "description": "Split-toning strength for highlights",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "vignette": {
+          "default": 0,
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "log": {
+          "default": "none",
+          "description": "Camera log profile to convert to normal contrast before grading",
+          "enum": [
+            "none",
+            "apple_log",
+            "slog3",
+            "vlog",
+            "generic"
+          ],
+          "type": "string"
+        },
+        "look": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Preset this grade came from, for display"
         }
       },
       "required": [
@@ -517,7 +980,17 @@
         "contrast",
         "saturation",
         "temperature",
-        "tint"
+        "tint",
+        "highlights",
+        "shadows",
+        "fade",
+        "shadow_hue",
+        "shadow_tone",
+        "highlight_hue",
+        "highlight_tone",
+        "vignette",
+        "log",
+        "look"
       ],
       "title": "Grade",
       "type": "object"
@@ -590,6 +1063,26 @@
         },
         "has_audio": {
           "type": "boolean"
+        },
+        "kind": {
+          "default": "video",
+          "enum": [
+            "video",
+            "audio"
+          ],
+          "type": "string"
+        },
+        "recorded_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Capture time from the file's metadata (ISO 8601), if any"
         }
       },
       "required": [
@@ -600,7 +1093,9 @@
         "fps",
         "width",
         "height",
-        "has_audio"
+        "has_audio",
+        "kind",
+        "recorded_at"
       ],
       "title": "Media",
       "type": "object"
@@ -627,6 +1122,61 @@
         "index"
       ],
       "title": "Move",
+      "type": "object"
+    },
+    "Overlay": {
+      "additionalProperties": false,
+      "description": "A B-roll clip on the second video track, at an absolute timeline time.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "media_id": {
+          "type": "string"
+        },
+        "src_in": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "src_out": {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "start": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "layout": {
+          "default": "full",
+          "description": "full covers the frame; the corners are picture-in-picture",
+          "enum": [
+            "full",
+            "kanan_atas",
+            "kiri_atas",
+            "kanan_bawah",
+            "kiri_bawah"
+          ],
+          "type": "string"
+        },
+        "grade": {
+          "$ref": "#/$defs/Grade"
+        },
+        "muted": {
+          "default": true,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "media_id",
+        "src_in",
+        "src_out",
+        "start",
+        "layout",
+        "grade",
+        "muted"
+      ],
+      "title": "Overlay",
       "type": "object"
     },
     "Project": {
@@ -682,6 +1232,11 @@
             "$ref": "#/$defs/TrackInfo"
           },
           "type": "object"
+        },
+        "spent": {
+          "default": 0,
+          "description": "Meta Model API spend in USD across all runs",
+          "type": "number"
         }
       },
       "required": [
@@ -693,7 +1248,8 @@
         "redo_stack",
         "chat",
         "last_render",
-        "tracks"
+        "tracks",
+        "spent"
       ],
       "title": "Project",
       "type": "object"
@@ -794,6 +1350,43 @@
       "title": "SetEffects",
       "type": "object"
     },
+    "SetFinish": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "set_finish",
+          "default": "set_finish",
+          "type": "string"
+        },
+        "letterbox": {
+          "anyOf": [
+            {
+              "maximum": 3,
+              "minimum": 1.5,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Cinema bars to this ratio (2.39 = scope); null removes"
+        },
+        "grain": {
+          "default": 0,
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "op",
+        "letterbox",
+        "grain"
+      ],
+      "title": "SetFinish",
+      "type": "object"
+    },
     "SetGrade": {
       "additionalProperties": false,
       "properties": {
@@ -852,6 +1445,118 @@
       "title": "SetMuted",
       "type": "object"
     },
+    "SetSpeed": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "set_speed",
+          "default": "set_speed",
+          "type": "string"
+        },
+        "clip_id": {
+          "type": "string"
+        },
+        "speed": {
+          "description": "0.5 = slow motion; the clip's source range stays the same",
+          "maximum": 4,
+          "minimum": 0.25,
+          "type": "number"
+        }
+      },
+      "required": [
+        "op",
+        "clip_id",
+        "speed"
+      ],
+      "title": "SetSpeed",
+      "type": "object"
+    },
+    "SetTransition": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "set_transition",
+          "default": "set_transition",
+          "type": "string"
+        },
+        "clip_id": {
+          "type": "string"
+        },
+        "transition": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Transition"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Into this clip from the previous one; null removes it"
+        }
+      },
+      "required": [
+        "op",
+        "clip_id",
+        "transition"
+      ],
+      "title": "SetTransition",
+      "type": "object"
+    },
+    "SetVolume": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "set_volume",
+          "default": "set_volume",
+          "type": "string"
+        },
+        "clip_id": {
+          "type": "string"
+        },
+        "volume": {
+          "maximum": 2,
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "op",
+        "clip_id",
+        "volume"
+      ],
+      "title": "SetVolume",
+      "type": "object"
+    },
+    "SetZoom": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "set_zoom",
+          "default": "set_zoom",
+          "type": "string"
+        },
+        "clip_id": {
+          "type": "string"
+        },
+        "zoom": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Zoom"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "op",
+        "clip_id",
+        "zoom"
+      ],
+      "title": "SetZoom",
+      "type": "object"
+    },
     "Split": {
       "additionalProperties": false,
       "properties": {
@@ -896,6 +1601,7 @@
           "type": "string"
         },
         "text": {
+          "description": "Line breaks (\\n) are kept as-is by both the preview and the renderer",
           "type": "string"
         },
         "start": {
@@ -914,6 +1620,30 @@
             "caption"
           ],
           "type": "string"
+        },
+        "look": {
+          "default": "bersih",
+          "description": "bersih: clean white; tebal: big bold caps; karaoke: spoken word lights up; kotak: spoken word in a color box; pop: words appear as they are spoken",
+          "enum": [
+            "bersih",
+            "tebal",
+            "karaoke",
+            "kotak",
+            "pop"
+          ],
+          "type": "string"
+        },
+        "color": {
+          "default": "#FFD43B",
+          "description": "Accent for highlighted/emphasized words",
+          "pattern": "^#[0-9a-fA-F]{6}$",
+          "type": "string"
+        },
+        "words": {
+          "items": {
+            "$ref": "#/$defs/TextWord"
+          },
+          "type": "array"
         },
         "x": {
           "default": 0.5,
@@ -935,10 +1665,42 @@
         "start",
         "end",
         "style",
+        "look",
+        "color",
+        "words",
         "x",
         "y"
       ],
       "title": "TextItem",
+      "type": "object"
+    },
+    "TextWord": {
+      "additionalProperties": false,
+      "description": "One spoken word of a subtitle, in timeline seconds, for word-by-word looks.",
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "start": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "end": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "emphasis": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "text",
+        "start",
+        "end",
+        "emphasis"
+      ],
+      "title": "TextWord",
       "type": "object"
     },
     "Timeline": {
@@ -963,18 +1725,36 @@
           },
           "type": "array"
         },
+        "overlays": {
+          "items": {
+            "$ref": "#/$defs/Overlay"
+          },
+          "type": "array"
+        },
         "texts": {
           "items": {
             "$ref": "#/$defs/TextItem"
           },
           "type": "array"
+        },
+        "audio": {
+          "items": {
+            "$ref": "#/$defs/AudioItem"
+          },
+          "type": "array"
+        },
+        "finish": {
+          "$ref": "#/$defs/Finish"
         }
       },
       "required": [
         "aspect",
         "fps",
         "clips",
-        "texts"
+        "overlays",
+        "texts",
+        "audio",
+        "finish"
       ],
       "title": "Timeline",
       "type": "object"
@@ -1006,6 +1786,32 @@
         "object_ids"
       ],
       "title": "TrackInfo",
+      "type": "object"
+    },
+    "Transition": {
+      "additionalProperties": false,
+      "description": "How a clip enters from the previous one. A crossfade overlaps the two clips by `duration`;\ndips fade out to a color and back in without overlapping.",
+      "properties": {
+        "kind": {
+          "enum": [
+            "crossfade",
+            "hitam",
+            "putih"
+          ],
+          "type": "string"
+        },
+        "duration": {
+          "default": 0.5,
+          "maximum": 2,
+          "minimum": 0.1,
+          "type": "number"
+        }
+      },
+      "required": [
+        "kind",
+        "duration"
+      ],
+      "title": "Transition",
       "type": "object"
     },
     "Trim": {
@@ -1051,6 +1857,207 @@
         "src_out"
       ],
       "title": "Trim",
+      "type": "object"
+    },
+    "UpdateAudio": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "update_audio",
+          "default": "update_audio",
+          "type": "string"
+        },
+        "audio_id": {
+          "type": "string"
+        },
+        "src_in": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "src_out": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "start": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "volume": {
+          "anyOf": [
+            {
+              "maximum": 2,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "fade_in": {
+          "anyOf": [
+            {
+              "maximum": 10,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "fade_out": {
+          "anyOf": [
+            {
+              "maximum": 10,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "duck": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "op",
+        "audio_id",
+        "src_in",
+        "src_out",
+        "start",
+        "volume",
+        "fade_in",
+        "fade_out",
+        "duck"
+      ],
+      "title": "UpdateAudio",
+      "type": "object"
+    },
+    "UpdateOverlay": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "update_overlay",
+          "default": "update_overlay",
+          "type": "string"
+        },
+        "overlay_id": {
+          "type": "string"
+        },
+        "src_in": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "src_out": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "start": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "layout": {
+          "anyOf": [
+            {
+              "enum": [
+                "full",
+                "kanan_atas",
+                "kiri_atas",
+                "kanan_bawah",
+                "kiri_bawah"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "grade": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Grade"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "op",
+        "overlay_id",
+        "src_in",
+        "src_out",
+        "start",
+        "layout",
+        "grade"
+      ],
+      "title": "UpdateOverlay",
       "type": "object"
     },
     "UpdateText": {
@@ -1100,6 +2107,36 @@
           ],
           "default": null
         },
+        "look": {
+          "anyOf": [
+            {
+              "enum": [
+                "bersih",
+                "tebal",
+                "karaoke",
+                "kotak",
+                "pop"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "color": {
+          "anyOf": [
+            {
+              "pattern": "^#[0-9a-fA-F]{6}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "x": {
           "anyOf": [
             {
@@ -1133,10 +2170,36 @@
         "text",
         "start",
         "end",
+        "look",
+        "color",
         "x",
         "y"
       ],
       "title": "UpdateText",
+      "type": "object"
+    },
+    "Zoom": {
+      "additionalProperties": false,
+      "description": "Slow push in/out over the clip (Ken Burns): scale 1 = the normal crop.",
+      "properties": {
+        "start": {
+          "default": 1.0,
+          "maximum": 2,
+          "minimum": 1,
+          "type": "number"
+        },
+        "end": {
+          "default": 1.15,
+          "maximum": 2,
+          "minimum": 1,
+          "type": "number"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "title": "Zoom",
       "type": "object"
     }
   },
@@ -1148,18 +2211,29 @@
     "op": {
       "discriminator": {
         "mapping": {
+          "add_audio": "#/$defs/AddAudio",
           "add_clip": "#/$defs/AddClip",
+          "add_overlay": "#/$defs/AddOverlay",
           "add_text": "#/$defs/AddText",
           "delete": "#/$defs/Delete",
+          "delete_audio": "#/$defs/DeleteAudio",
+          "delete_overlay": "#/$defs/DeleteOverlay",
           "delete_text": "#/$defs/DeleteText",
           "move": "#/$defs/Move",
           "set_aspect": "#/$defs/SetAspect",
           "set_crop": "#/$defs/SetCrop",
           "set_effects": "#/$defs/SetEffects",
+          "set_finish": "#/$defs/SetFinish",
           "set_grade": "#/$defs/SetGrade",
           "set_muted": "#/$defs/SetMuted",
+          "set_speed": "#/$defs/SetSpeed",
+          "set_transition": "#/$defs/SetTransition",
+          "set_volume": "#/$defs/SetVolume",
+          "set_zoom": "#/$defs/SetZoom",
           "split": "#/$defs/Split",
           "trim": "#/$defs/Trim",
+          "update_audio": "#/$defs/UpdateAudio",
+          "update_overlay": "#/$defs/UpdateOverlay",
           "update_text": "#/$defs/UpdateText"
         },
         "propertyName": "op"
@@ -1203,6 +2277,39 @@
         },
         {
           "$ref": "#/$defs/SetAspect"
+        },
+        {
+          "$ref": "#/$defs/SetSpeed"
+        },
+        {
+          "$ref": "#/$defs/SetTransition"
+        },
+        {
+          "$ref": "#/$defs/SetZoom"
+        },
+        {
+          "$ref": "#/$defs/SetVolume"
+        },
+        {
+          "$ref": "#/$defs/AddOverlay"
+        },
+        {
+          "$ref": "#/$defs/UpdateOverlay"
+        },
+        {
+          "$ref": "#/$defs/DeleteOverlay"
+        },
+        {
+          "$ref": "#/$defs/AddAudio"
+        },
+        {
+          "$ref": "#/$defs/UpdateAudio"
+        },
+        {
+          "$ref": "#/$defs/DeleteAudio"
+        },
+        {
+          "$ref": "#/$defs/SetFinish"
         }
       ]
     }

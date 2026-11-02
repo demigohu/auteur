@@ -1,0 +1,39 @@
+# Production on one VPS: Caddy (HTTPS) -> web (Next.js) and api (FastAPI, ffmpeg).
+# Setup: copy deploy/.env.example to .env, fill it in, then `docker compose up -d --build`.
+services:
+  api:
+    build: ./api
+    env_file: ./api/.env
+    environment:
+      # These win over api/.env, whose values are meant for local development.
+      CORS_ORIGINS: https://${DOMAIN}
+      AUTEUR_DATA_DIR: /data
+    volumes:
+      - auteur-data:/data
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./web
+      args:
+        NEXT_PUBLIC_API_URL: https://${DOMAIN}/api
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.8.4
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on:
+      - api
+      - web
+    restart: unless-stopped
+
+volumes:
+  auteur-data:
+  caddy-data:

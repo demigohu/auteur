@@ -21,6 +21,7 @@ export type RunState = {
   plan: { text: string; status: StepStatus }[];
   log: LogItem[];
   progress: number | null;
+  cost: number;
   status: "running" | "done" | "failed" | "stopped" | "cancelled" | "error";
 };
 
@@ -35,6 +36,8 @@ type EditorState = {
   run: RunState | null;
   selectedClipId: string | null;
   selectedTextId: string | null;
+  selectedOverlayId: string | null;
+  selectedAudioId: string | null;
   time: number;
   seekRequest: { time: number; nonce: number } | null;
   pxPerSecond: number;
@@ -42,6 +45,8 @@ type EditorState = {
   tracks: Record<string, TrackData>;
   showTracks: boolean;
   marks: CheckMark[];
+  /** While true the preview shows the untouched footage (held "Sebelum" button). */
+  before: boolean;
 
   load: (id: string) => Promise<void>;
   connect: (id: string) => () => void;
@@ -53,11 +58,13 @@ type EditorState = {
   stopRun: () => Promise<void>;
   undoRun: (runId: string) => Promise<void>;
   exportVideo: () => Promise<void>;
-  select: (sel: { clip?: string | null; text?: string | null }) => void;
+  select: (sel: { clip?: string | null; text?: string | null; overlay?: string | null; audio?: string | null }) => void;
   setTab: (tab: SideTab) => void;
   setShowTracks: (on: boolean) => void;
+  setBefore: (on: boolean) => void;
   /** Local-only grade change for live slider feedback; the commit goes through applyOps. */
   previewGrade: (clipId: string, grade: Grade) => void;
+  applyLook: (o: { clipIds: string[] | null; look: string | null; intensity: number; auto: boolean; match: boolean }) => Promise<void>;
   setTime: (t: number) => void;
   seek: (t: number) => void;
   setZoom: (px: number) => void;
@@ -95,7 +102,7 @@ export const useEditor = create<EditorState>((set, get) => {
     const run = get().run;
     if (e.type === "run_started") {
       set({
-        run: { id: e.run_id, instruction: String(e.instruction), plan: [], log: [], progress: null, status: "running" },
+        run: { id: e.run_id, instruction: String(e.instruction), plan: [], log: [], progress: null, cost: 0, status: "running" },
         tab: "agent",
         marks: [],
       });
@@ -155,6 +162,12 @@ export const useEditor = create<EditorState>((set, get) => {
         setProject(e.project as ProjectView);
         set({ showTracks: true });
         break;
+      case "cost": {
+        update({ cost: Number(e.run) });
+        const project = get().project;
+        if (project) set({ project: { ...project, spent: Number(e.total) } });
+        break;
+      }
       case "message":
         break;
       case "run_finished": {
@@ -180,6 +193,8 @@ export const useEditor = create<EditorState>((set, get) => {
     run: null,
     selectedClipId: null,
     selectedTextId: null,
+    selectedOverlayId: null,
+    selectedAudioId: null,
     time: 0,
     seekRequest: null,
     pxPerSecond: 48,
@@ -187,6 +202,7 @@ export const useEditor = create<EditorState>((set, get) => {
     tracks: {},
     showTracks: false,
     marks: [],
+    before: false,
 
     load: async (id) => {
       try {
@@ -199,7 +215,7 @@ export const useEditor = create<EditorState>((set, get) => {
 
     connect: (id) => {
       const source = new EventSource(`${API_URL}/projects/${id}/events`);
-      const types = ["run_started", "plan", "thought", "tool_call", "tool_result", "progress", "check", "timeline", "track", "message", "run_finished"];
+      const types = ["run_started", "plan", "thought", "tool_call", "tool_result", "progress", "check", "timeline", "track", "cost", "message", "run_finished"];
       const handler = (msg: MessageEvent) => onEvent(JSON.parse(msg.data));
       types.forEach((t) => source.addEventListener(t, handler));
       return () => source.close();
@@ -250,15 +266,22 @@ export const useEditor = create<EditorState>((set, get) => {
       if (id) await act("Mengekspor video", () => api.render(id, true));
     },
 
-    select: ({ clip, text }) =>
+    select: ({ clip, text, overlay, audio }) =>
       set((s) => ({
         selectedClipId: clip ?? null,
         selectedTextId: text ?? null,
+        selectedOverlayId: overlay ?? null,
+        selectedAudioId: audio ?? null,
         // Selecting something opens its properties.
-        tab: clip || text ? "inspector" : s.tab,
+        tab: clip || text || overlay || audio ? "inspector" : s.tab,
       })),
     setTab: (tab) => set({ tab }),
     setShowTracks: (on) => set({ showTracks: on }),
+    setBefore: (on) => set({ before: on }),
+    applyLook: async ({ clipIds, look, intensity, auto, match }) => {
+      const id = get().project?.id;
+      if (id) await act("Menerapkan warna", () => api.grade(id, { clip_ids: clipIds, look, intensity, auto, match }));
+    },
     previewGrade: (clipId, grade) => {
       const project = get().project;
       if (!project) return;

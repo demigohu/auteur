@@ -15,14 +15,19 @@ from pydantic import Field
 
 from typing import Literal
 
-from auteur.media import media_dir
+from auteur import colorist, costs, subtitles
+from auteur import grade as G
+from auteur.media import load_beats, media_dir
 from auteur.reframe import follow_keys, out_of_frame
 from auteur.render import render
 from auteur.timeline import OpError, Project
 from auteur.timeline.history import TrackInfo
-from auteur.timeline.models import Aspect, Blur, Follow, Highlight, Model, Timeline
+from auteur.timeline.models import (
+    Aspect, Blur, Follow, Highlight, Model, OverlayLayout, TextLook, TextWord, Timeline, Transition, Zoom,
+)
 from auteur.timeline.ops import (
-    MIN_CLIP, AddClip, AddText, Delete, DeleteText, Op, SetCrop, SetEffects, Split, Trim, apply, new_id,
+    MIN_CLIP, AddAudio, AddClip, AddOverlay, AddText, Delete, DeleteAudio, DeleteOverlay, DeleteText, Op, SetCrop,
+    SetEffects, SetFinish, SetGrade, SetSpeed, SetTransition, SetZoom, Split, Trim, apply, new_id,
 )
 from auteur.tracking import Track, load_track, track_media
 from auteur.transcript import Transcript, cut_ranges, transcribe
@@ -49,6 +54,17 @@ class ToolContext:
     check_failures: int = 0
     transcripts: dict[str, Transcript] = field(default_factory=dict)
     tracks: dict[str, Track] = field(default_factory=dict)
+    cost: float = 0.0
+    frames: colorist.FrameCache = field(default_factory=dict)
+    match_requested: bool = False
+    beat_every: int | None = None  # set by potong_di_beat: the checker then keeps cuts on the beat
+
+    def add_cost(self, usd: float) -> None:
+        if usd <= 0:
+            return
+        self.cost += usd
+        self.project.spent += usd
+        self.emit({"type": "cost", "run": round(self.cost, 4), "total": round(self.project.spent, 4)})
 
     def track(self, track_id: str) -> Track:
         if track_id not in self.tracks:
@@ -100,10 +116,27 @@ def describe_timeline(p: Project) -> str:
             extras.append(f"effects {[e.kind for e in c.effects]}")
         if c.muted:
             extras.append("muted")
+        if c.speed != 1:
+            extras.append(f"speed {c.speed}x")
+        if c.transition:
+            extras.append(f"{c.transition.kind} in {c.transition.duration}s")
+        if c.zoom:
+            extras.append(f"zoom {c.zoom.start}->{c.zoom.end}")
+        if c.volume != 1:
+            extras.append(f"volume {c.volume}")
         lines.append(
             f"  {c.id}: {c.media_id} src {c.src_in:.2f}-{c.src_out:.2f} -> timeline {start:.2f}-{start + c.duration:.2f}"
             + (f" ({'; '.join(extras)})" if extras else "")
         )
+    for o in tl.overlays:
+        lines.append(f"  B-roll {o.id}: {o.media_id} src {o.src_in:.2f}-{o.src_out:.2f} at {o.start:.2f}-{o.end:.2f} ({o.layout})")
+    for a in tl.audio:
+        lines.append(
+            f"  Music {a.id}: {a.media_id} src {a.src_in:.2f}-{a.src_out:.2f} at {a.start:.2f}, volume {a.volume}"
+            + (", ducks under speech" if a.duck else "")
+        )
+    if tl.finish.letterbox or tl.finish.grain:
+        lines.append(f"  Finish: letterbox {tl.finish.letterbox}, grain {tl.finish.grain}")
     for t in tl.texts[:30]:
         lines.append(f"  {t.id} [{t.style}] {t.start:.2f}-{t.end:.2f}: {t.text}")
     if len(tl.texts) > 30:
@@ -120,7 +153,10 @@ async def get_transcript(ctx: ToolContext, media_id: str) -> Transcript:
             ctx.transcripts[media_id] = Transcript(duration=m.duration, turns=[], silences=[])
         else:
             cache = media_dir(ctx.project_dir, media_id) / "transcript.json"
+            fresh = not cache.exists()
             ctx.transcripts[media_id] = await asyncio.to_thread(transcribe, Path(m.path), cache)
+            if fresh:
+                ctx.add_cost(costs.transcribe(m.duration))
     return ctx.transcripts[media_id]
 
 
@@ -146,7 +182,7 @@ class DengarArgs(ToolArgs):
 
 
 async def dengar(ctx: ToolContext, a: DengarArgs) -> str:
-    ids = a.media_ids or list(ctx.project.media)
+    ids = a.media_ids or [m.id for m in ctx.project.media.values() if m.kind == "video"]
     transcripts = await asyncio.gather(*(get_transcript(ctx, mid) for mid in ids))
     parts = []
     for mid, t in zip(ids, transcripts):
@@ -218,7 +254,7 @@ def filler_ops(tl: Timeline, clip_id: str, cuts: list[tuple[float, float]], medi
         near_in, near_out = a - clip.src_in < MIN_CLIP, clip.src_out - b < MIN_CLIP
         if near_in and near_out:
             do(Delete(clip_id=clip_id))
-            removed += clip.duration
+            removed += clip.src_duration
             break
         if near_in:
             do(Trim(clip_id=clip_id, src_in=b))
@@ -226,8 +262,8 @@ def filler_ops(tl: Timeline, clip_id: str, cuts: list[tuple[float, float]], medi
             do(Trim(clip_id=clip_id, src_out=a))
         else:
             middle, right = new_id("clip"), new_id("clip")
-            do(Split(clip_id=clip_id, at=start + (a - clip.src_in), new_clip_id=middle))
-            do(Split(clip_id=middle, at=start + (b - clip.src_in), new_clip_id=right))
+            do(Split(clip_id=clip_id, at=start + clip.to_local(a), new_clip_id=middle))
+            do(Split(clip_id=middle, at=start + clip.to_local(b), new_clip_id=right))
             do(Delete(clip_id=middle))
         removed += b - a
     return ops, tl, removed
@@ -255,51 +291,77 @@ async def buang_filler(ctx: ToolContext, a: BuangFillerArgs) -> str:
 
 # --- subtitle ------------------------------------------------------------------------------------
 
+DEFAULT_Y = {"bersih": 0.82, "tebal": 0.74, "karaoke": 0.74, "kotak": 0.74, "pop": 0.7}
+
+
 class SubtitleArgs(ToolArgs):
-    max_words: int = Field(6, ge=1, le=12, description="Words per subtitle line")
-    y: float = Field(0.82, ge=0, le=1, description="Vertical position (0 top, 1 bottom)")
+    gaya: TextLook = Field(
+        "karaoke",
+        description="bersih: clean white; tebal: big bold caps; karaoke: the spoken word lights up (creator style); "
+        "kotak: spoken word in a color box; pop: words appear as they are spoken",
+    )
+    warna: str = Field("#FFD43B", pattern=r"^#[0-9a-fA-F]{6}$", description="Accent color for highlighted words")
+    maks_kata: int = Field(5, ge=1, le=12, description="Max words per subtitle (3-5 suits vertical video)")
+    y: float | None = Field(None, ge=0.05, le=0.95, description="Vertical center (0 top, 1 bottom); default per style")
+    koreksi: bool = Field(True, description="Fix misheard words, casing and punctuation with Muse Spark")
+    tekankan: bool = Field(True, description="Color one key word per line")
 
 
 async def subtitle(ctx: ToolContext, a: SubtitleArgs) -> str:
     tl = ctx.project.timeline
     words: list[tuple[float, float, str]] = []
+    scenes: list[str] = []
     for c, start in zip(tl.clips, tl.clip_starts()):
-        if c.muted:
+        if not c.has_sound:
             continue
         t = await get_transcript(ctx, c.media_id)
         for turn in t.turns:
             for w in turn.words:
                 if w.is_filler or w.end <= c.src_in or w.start >= c.src_out:
                     continue
-                s = start + max(w.start, c.src_in) - c.src_in
-                e = start + min(w.end, c.src_out) - c.src_in
+                s = start + c.to_local(max(w.start, c.src_in))
+                e = start + c.to_local(min(w.end, c.src_out))
                 words.append((s, e, w.text))
-
-    chunks: list[list[tuple[float, float, str]]] = []
-    for w in sorted(words):
-        cur = chunks[-1] if chunks else None
-        if (
-            cur is None or len(cur) >= a.max_words or w[0] - cur[-1][1] > 0.6
-            or w[1] - cur[0][0] > 3.0 or cur[-1][2][-1] in ".?!"
-        ):
-            chunks.append([w])
-        else:
-            cur.append(w)
-
-    ops: list[Op] = [DeleteText(text_id=t.id) for t in tl.texts if t.style == "subtitle"]
-    for i, ch in enumerate(chunks):
-        end = ch[-1][1] + 0.2
-        if i + 1 < len(chunks):
-            end = min(end, chunks[i + 1][0][0])
-        end = min(end, tl.duration)
-        if end - ch[0][0] < 0.2:
-            continue
-        ops.append(AddText(text=" ".join(w[2] for w in ch), start=round(ch[0][0], 3), end=round(end, 3), y=a.y))
-    added = sum(isinstance(op, AddText) for op in ops)
-    if not added:
+        cached = media_dir(ctx.project_dir, c.media_id) / "scenes.txt"
+        if cached.exists() and cached.read_text() not in scenes:
+            scenes.append(cached.read_text())
+    if not words:
         return "No speech on the timeline, so no subtitles were added."
-    ctx.commit(f"Subtitle ({added} baris)", ops)
-    return f"Added {added} subtitle lines."
+
+    out_w, out_h = tl.size
+    groups = subtitles.chunk(words, a.maks_kata)
+    texts = [" ".join(w[2] for w in g) for g in groups]
+    emphasis: list[list[str]] = [[] for _ in groups]
+    if a.koreksi or a.tekankan:
+        fixed, usd = await subtitles.correct(texts, "\n".join(scenes), a.tekankan)
+        ctx.add_cost(usd)
+        if a.koreksi:
+            texts = [t for t, _ in fixed]
+        emphasis = [e for _, e in fixed]
+
+    # Re-time corrected words, then wrap with real font metrics (may split long chunks further).
+    timed = [subtitles.timed_words(g, t, e) for g, t, e in zip(groups, texts, emphasis)]
+    retimed = [[(w.start, w.end, w.text) for w in tw] for tw in timed]
+    marks = {(w.start, w.text) for tw in timed for w in tw if w.emphasis}
+    fitted = subtitles.fit(retimed, a.gaya, out_w, out_h)
+
+    y = a.y if a.y is not None else DEFAULT_Y[a.gaya]
+    ops: list[Op] = [DeleteText(text_id=t.id) for t in tl.texts if t.style == "subtitle"]
+    for i, (ws, text) in enumerate(fitted):
+        end = ws[-1][1] + 0.25
+        if i + 1 < len(fitted):
+            end = min(end, fitted[i + 1][0][0][0])
+        end = min(end, tl.duration)
+        if end - ws[0][0] < 0.2:
+            continue
+        ops.append(AddText(
+            text=text, start=round(ws[0][0], 3), end=round(end, 3), look=a.gaya, color=a.warna, y=y,
+            words=[TextWord(text=w[2], start=round(w[0], 3), end=round(w[1], 3), emphasis=(w[0], w[2]) in marks) for w in ws],
+        ))
+    added = sum(isinstance(op, AddText) for op in ops)
+    ctx.commit(f"Subtitle {a.gaya} ({added} baris)", ops)
+    sample = "\n".join(f"  {t.replace(chr(10), ' / ')}" for _, t in fitted[:6])
+    return f"Added {added} subtitles ({a.gaya}, corrected={a.koreksi}). First lines:\n{sample}"
 
 
 # --- render + periksa ----------------------------------------------------------------------------
@@ -358,7 +420,7 @@ def periksa(ctx: ToolContext, out: Path) -> tuple[list[str], list[Mark]]:
                 for f0, f1 in zip(frames, frames[1:]):
                     gap = (f1 - f0) / track.fps
                     if 2 * e.hold < gap < 4.0:
-                        a, b = start + f0 / track.fps - c.src_in, start + f1 / track.fps - c.src_in
+                        a, b = start + c.to_local(f0 / track.fps), start + c.to_local(f1 / track.fps)
                         marks.append({"start": round(a, 2), "end": round(b, 2), "label": "Blur mungkin bocor"})
                         worst = max(worst, gap)
             if worst:
@@ -367,6 +429,55 @@ def periksa(ctx: ToolContext, out: Path) -> tuple[list[str], list[Mark]]:
                     f"(marked on the timeline). Call `efek` again for clip {c.id} with the same objects and "
                     f"tahan={min(4.0, round(worst / 2 + 0.25, 2))}. Do not re-run `lacak` for this."
                 )
+
+    # Color: the grade must not burn highlights or crush shadows that the source still had, and
+    # clips the user asked to match must actually match. Measured on sampled source frames through
+    # the exact grade the renderer applies, so no extra render is needed.
+    graded = [(c, s) for c, s in zip(tl.clips, tl.clip_starts()) if not G.is_identity(c.grade)]
+    lumas: list[tuple[str, float, float, float]] = []
+    for c, start in graded:
+        f = colorist.clip_frames(ctx.frames, ctx.project.media[c.media_id], c)
+        before, after = G.stats(f), G.stats(G.apply(c.grade, f))
+        span = (round(start, 2), round(start + c.duration, 2))
+        if after["clipped"] > 0.04 and after["clipped"] - before["clipped"] > 0.03:
+            marks.append({"start": span[0], "end": span[1], "label": "Warna terbakar"})
+            issues.append(
+                f"Clip {c.id}: the grade burns {after['clipped']:.0%} of the frame to pure white "
+                f"(source: {before['clipped']:.0%}). Call `warna` for it with penyesuaian "
+                f'{{"exposure": -0.2, "highlights": -0.3}} or a lower intensitas.'
+            )
+        if after["crushed"] > 0.08 and after["crushed"] - before["crushed"] > 0.05:
+            marks.append({"start": span[0], "end": span[1], "label": "Gelap hancur"})
+            issues.append(
+                f"Clip {c.id}: the grade crushes {after['crushed']:.0%} of the frame to black "
+                f"(source: {before['crushed']:.0%}). Call `warna` for it with penyesuaian "
+                f'{{"shadows": 0.3}} or a lower intensitas.'
+            )
+        lumas.append((c.id, after["luma"], *span))
+    if ctx.match_requested:
+        # Loose on purpose: a montage may cut from a night street to a stage; only real jumps count.
+        for (a, la, _, _), (b, lb, s, e) in zip(lumas, lumas[1:]):
+            if abs(la - lb) > 0.18:
+                marks.append({"start": s, "end": e, "label": "Warna tidak seragam"})
+                issues.append(
+                    f"Clips {a} and {b} differ in brightness ({la:.2f} vs {lb:.2f}) although they should "
+                    f"match. Call `warna` on all clips with samakan=true."
+                )
+
+    # Beat sync: once cuts were put on the beat, later trims must not knock them off it.
+    if ctx.beat_every and tl.audio and len(tl.clips) > 1:
+        music = tl.audio[0]
+        beats = load_beats(ctx.project_dir, music.media_id)
+        grid = [music.start + b - music.src_in for b in beats.beats[:: ctx.beat_every] if b >= music.src_in]
+        off = [(s, min(abs(s - g) for g in grid)) for s in tl.clip_starts()[1:] if grid]
+        late = [(s, d) for s, d in off if d > 0.08]
+        for s, _ in late:
+            marks.append({"start": round(max(0, s - 0.15), 2), "end": round(s + 0.15, 2), "label": "Potongan lepas dari beat"})
+        if late:
+            issues.append(
+                f"{len(late)} cuts are off the beat by up to {max(d for _, d in late):.2f}s (edits after potong_di_beat). "
+                f"Call `potong_di_beat` again (tiap {ctx.beat_every}) after your last trim."
+            )
     return issues, marks
 
 
@@ -402,6 +513,215 @@ async def render_tool(ctx: ToolContext, a: RenderArgs) -> str:
     )
 
 
+# --- warna ---------------------------------------------------------------------------------------
+
+Look = Literal["hangat", "cinematic", "film", "moody", "vintage", "hitam_putih", "cerah", "dingin"]
+
+
+class WarnaArgs(ToolArgs):
+    clip_ids: list[str] | None = Field(None, description="Clips to grade; omit for all")
+    look: Look | None = Field(None, description="Preset look; omit for correction only")
+    intensitas: float = Field(0.7, ge=0, le=1, description="How strongly the look is applied")
+    koreksi_otomatis: bool = Field(True, description="First correct exposure and white balance from the footage")
+    samakan: bool = Field(True, description="Match brightness and warmth across the clips")
+    log: Literal["none", "apple_log", "slog3", "vlog", "generic"] = Field(
+        "none",
+        description="Camera log profile of the footage (flat, gray-looking). The result tells you when footage "
+        "looks like log; use generic when the camera is unknown",
+    )
+    penyesuaian: dict[str, float] = Field(
+        default_factory=dict,
+        description="Extra adjustments added on top, e.g. {\"exposure\": -0.2, \"vignette\": 0.3}. Fields: "
+        + ", ".join(colorist.NUMERIC) + " (shadow_hue/highlight_hue in degrees)",
+    )
+
+
+async def warna(ctx: ToolContext, a: WarnaArgs) -> str:
+    clips = ctx.clips(a.clip_ids)
+    if not clips:
+        raise ToolError("No clips on the timeline")
+    unknown = set(a.penyesuaian) - set(colorist.NUMERIC) - set(colorist.HUES)
+    if unknown:
+        raise ToolError(f"Unknown grade fields {sorted(unknown)}; use {colorist.NUMERIC}")
+    results = await asyncio.to_thread(
+        colorist.grade_clips, ctx.project.media, clips, a.look, a.intensitas, a.koreksi_otomatis,
+        a.samakan, a.penyesuaian, ctx.frames, a.log,
+    )
+    if a.samakan and len(clips) > 1:
+        ctx.match_requested = True
+    label = colorist.LOOK_LABELS.get(a.look or "", "Koreksi warna")
+    ctx.commit(f"Warna: {label}", [SetGrade(clip_ids=[cid], grade=g) for cid, g, _, _ in results])
+    lines = [
+        f"  {cid}: {G.describe(before)}\n    -> {G.describe(after)}"
+        + ("\n    (source looks flat, like log footage: consider log='generic' or the camera's profile)"
+           if a.log == "none" and G.looks_like_log(before) else "")
+        for cid, _, before, after in results
+    ]
+    return f"Graded {len(results)} clips ({label}, intensity {a.intensitas}). Measured on sampled frames:\n" + "\n".join(lines)
+
+
+# --- musik ---------------------------------------------------------------------------------------
+
+class MusikArgs(ToolArgs):
+    media_id: str = Field(description="An uploaded audio file")
+    mulai_musik: float = Field(0, ge=0, description="Where in the song to start, in seconds (skip a slow intro)")
+    volume: float = Field(0.8, ge=0, le=2)
+    duck: bool = Field(True, description="Lower the music while someone speaks")
+    ganti: bool = Field(True, description="Replace music already on the timeline")
+
+
+async def musik(ctx: ToolContext, a: MusikArgs) -> str:
+    m = ctx.project.media.get(a.media_id)
+    if m is None or m.kind != "audio":
+        raise ToolError(f"{a.media_id!r} is not an uploaded audio file; audio media: "
+                        f"{[x.id for x in ctx.project.media.values() if x.kind == 'audio']}")
+    ops: list[Op] = [DeleteAudio(audio_id=x.id) for x in ctx.project.timeline.audio] if a.ganti else []
+    ops.append(AddAudio(media_id=m.id, src_in=a.mulai_musik, volume=a.volume, duck=a.duck))
+    ctx.commit(f"Musik: {m.name}", ops)
+    beats = await asyncio.to_thread(load_beats, ctx.project_dir, m.id)
+    on_timeline = [round(b - a.mulai_musik, 2) for b in beats.beats if b >= a.mulai_musik][:24]
+    down = [round(b - a.mulai_musik, 2) for b in beats.downbeats if b >= a.mulai_musik][:8]
+    return (
+        f"Music {m.name} placed from its {a.mulai_musik:.1f}s. Tempo {beats.bpm} BPM "
+        f"(a beat every {60 / beats.bpm if beats.bpm else 0:.2f}s). Timeline beat times: {on_timeline}... "
+        f"bar starts: {down}... Use `potong_di_beat` to land the cuts on these."
+    )
+
+
+# --- potong_di_beat ------------------------------------------------------------------------------
+
+class PotongDiBeatArgs(ToolArgs):
+    tiap: Literal[1, 2, 4] = Field(2, description="Cut on every Nth beat: 1 = fast and punchy, 4 = calm (once per bar)")
+
+
+async def potong_di_beat(ctx: ToolContext, a: PotongDiBeatArgs) -> str:
+    tl = ctx.project.timeline
+    if not tl.audio:
+        raise ToolError("No music on the timeline; call `musik` first")
+    music = tl.audio[0]
+    beats = await asyncio.to_thread(load_beats, ctx.project_dir, music.media_id)
+    grid = [music.start + b - music.src_in for b in beats.beats[:: a.tiap] if b >= music.src_in]
+    if len(grid) < 2:
+        raise ToolError("The music has too few detectable beats")
+    # Walk the cuts left to right; every change shifts the clips after it, so recompute each time.
+    ops: list[Op] = []
+    scratch, moved = tl, 0
+    for i in range(len(scratch.clips) - 1):
+        starts = scratch.clip_starts()
+        clip, nxt = scratch.clips[i], scratch.clips[i + 1]
+        overlap = nxt.transition.duration if nxt.transition and nxt.transition.kind == "crossfade" else 0
+        cut = starts[i + 1]
+        candidates = [g for g in grid if g > starts[i] + 0.5]
+        if not candidates:
+            break
+        target = min(candidates, key=lambda g: abs(g - cut))
+        new_local = target - starts[i] + overlap
+        m = ctx.project.media[clip.media_id]
+        src_out = round(min(clip.src_in + new_local * clip.speed, m.duration), 3)
+        if abs(target - cut) < 0.02 or src_out - clip.src_in < 0.3:
+            continue
+        op = Trim(clip_id=clip.id, src_out=src_out)
+        scratch = apply(scratch, op, ctx.project.media)
+        ops.append(op)
+        moved += 1
+    ctx.beat_every = a.tiap
+    if not ops:
+        return "Cuts already sit on the beat grid."
+    ctx.commit(f"Potong di beat (tiap {a.tiap} ketukan)", ops)
+    return f"Moved {moved} cuts onto every {a.tiap} beat(s).\n" + describe_timeline(ctx.project)
+
+
+# --- transisi, kecepatan, zoom, sinematik ----------------------------------------------------------
+
+class TransisiArgs(ToolArgs):
+    jenis: Literal["crossfade", "hitam", "putih", "potong"] = Field(
+        description="crossfade blends clips; hitam/putih dip through black/white; potong removes transitions (hard cut)"
+    )
+    durasi: float = Field(0.5, ge=0.1, le=2)
+    clip_ids: list[str] | None = Field(None, description="Clips that get the transition INTO them; omit for every cut")
+
+
+async def transisi(ctx: ToolContext, a: TransisiArgs) -> str:
+    tl = ctx.project.timeline
+    ids = a.clip_ids or [c.id for c in tl.clips[1:]]
+    ops: list[Op] = []
+    for cid in ids:
+        i = next((k for k, c in enumerate(tl.clips) if c.id == cid), None)
+        if i is None:
+            raise ToolError(f"Clip {cid!r} not found")
+        if a.jenis == "potong":
+            ops.append(SetTransition(clip_id=cid, transition=None))
+            continue
+        if i == 0 and a.jenis == "crossfade":
+            continue
+        limit = min(tl.clips[i].duration, tl.clips[i - 1].duration if i else tl.clips[i].duration) / 2
+        ops.append(SetTransition(clip_id=cid, transition=Transition(kind=a.jenis, duration=round(min(a.durasi, limit), 2))))
+    if not ops:
+        return "No transitions to set."
+    ctx.commit(f"Transisi {a.jenis}", ops)
+    return f"Set {a.jenis} on {len(ops)} cuts.\n" + describe_timeline(ctx.project)
+
+
+class KecepatanArgs(ToolArgs):
+    clip_ids: list[str]
+    speed: float = Field(ge=0.25, le=4, description="0.5 = slow motion (best on 60fps footage), 2-4 = time-lapse feel")
+
+
+async def kecepatan(ctx: ToolContext, a: KecepatanArgs) -> str:
+    ctx.commit(f"Kecepatan {a.speed}x", [SetSpeed(clip_id=c.id, speed=a.speed) for c in ctx.clips(a.clip_ids)])
+    slow = [c for c in ctx.clips(a.clip_ids) if a.speed < 1 and ctx.project.media[c.media_id].fps < 50]
+    note = (f" Note: {[c.id for c in slow]} were shot below 50fps, so slow motion will look a bit choppy."
+            if slow else "")
+    return f"Speed {a.speed}x on {len(a.clip_ids)} clips (their audio is muted).{note}\n" + describe_timeline(ctx.project)
+
+
+class ZoomArgs(ToolArgs):
+    clip_ids: list[str]
+    dari: float = Field(1.0, ge=1, le=2, description="Scale at the clip's start")
+    ke: float = Field(1.15, ge=1, le=2, description="Scale at its end; dari > ke zooms out")
+    hapus: bool = False
+
+
+async def zoom(ctx: ToolContext, a: ZoomArgs) -> str:
+    z = None if a.hapus else Zoom(start=a.dari, end=a.ke)
+    ctx.commit("Zoom pelan" if z else "Hapus zoom", [SetZoom(clip_id=c.id, zoom=z) for c in ctx.clips(a.clip_ids)])
+    return f"Zoom {'removed' if z is None else f'{a.dari}->{a.ke}'} on {len(a.clip_ids)} clips."
+
+
+class SinematikArgs(ToolArgs):
+    letterbox: float | None = Field(2.39, ge=1.5, le=3, description="Cinema bar ratio (2.39 scope, 1.85 flat); null for none")
+    grain: float = Field(0.3, ge=0, le=1, description="Film grain, 0.2-0.4 is subtle")
+
+
+async def sinematik(ctx: ToolContext, a: SinematikArgs) -> str:
+    ctx.commit("Finishing sinematik", [SetFinish(letterbox=a.letterbox, grain=a.grain)])
+    vertical = ctx.project.timeline.aspect == "9:16"
+    return (f"Letterbox {a.letterbox}, grain {a.grain}."
+            + (" The video is vertical, so bars leave a wide strip in the middle; that is a deliberate style." if vertical and a.letterbox else ""))
+
+
+# --- broll ---------------------------------------------------------------------------------------
+
+class BrollItem(Model):
+    media_id: str
+    src_in: float = Field(ge=0)
+    src_out: float = Field(gt=0)
+    start: float = Field(ge=0, description="Timeline time it appears")
+    layout: OverlayLayout = "full"
+
+
+class BrollArgs(ToolArgs):
+    items: list[BrollItem] = Field(min_length=1)
+    ganti: bool = Field(False, description="Remove existing B-roll first")
+
+
+async def broll(ctx: ToolContext, a: BrollArgs) -> str:
+    ops: list[Op] = [DeleteOverlay(overlay_id=o.id) for o in ctx.project.timeline.overlays] if a.ganti else []
+    ops += [AddOverlay(**it.model_dump()) for it in a.items]
+    ctx.commit(f"B-roll ({len(a.items)})", ops)
+    return f"Placed {len(a.items)} B-roll clips over the main track (muted, the main audio keeps playing).\n" + describe_timeline(ctx.project)
+
+
 # --- tonton --------------------------------------------------------------------------------------
 
 class TontonArgs(ToolArgs):
@@ -410,14 +730,15 @@ class TontonArgs(ToolArgs):
 
 
 async def tonton(ctx: ToolContext, a: TontonArgs) -> str:
-    ids = a.media_ids or list(ctx.project.media)
+    ids = a.media_ids or [m.id for m in ctx.project.media.values() if m.kind == "video"]
     for mid in ids:
-        if mid not in ctx.project.media:
-            raise ToolError(f"Media {mid!r} not found")
+        if mid not in ctx.project.media or ctx.project.media[mid].kind != "video":
+            raise ToolError(f"{mid!r} is not a video in this project")
 
     async def one(mid: str) -> str:
         m = ctx.project.media[mid]
-        text = await watch(m, media_dir(ctx.project_dir, mid) / "scenes.txt", a.fokus)
+        text, usd = await watch(m, media_dir(ctx.project_dir, mid) / "scenes.txt", a.fokus)
+        ctx.add_cost(usd)
         return f"## {mid} ({m.name}, {m.duration:.1f}s, {m.width}x{m.height}). Times are source seconds\n{text}"
 
     return "\n\n".join(await asyncio.gather(*(one(mid) for mid in ids)))
@@ -448,6 +769,7 @@ async def lacak(ctx: ToolContext, a: LacakArgs) -> str:
         except Exception as e:
             raise ToolError(f"Tracking failed: {e}") from None
         ctx.tracks[track.id] = track
+        ctx.add_cost(costs.sam(track.total_frames))
         ctx.project.tracks[track.id] = TrackInfo(
             id=track.id, media_id=a.media_id, prompt=prompt, object_ids=list(track.objects)
         )
@@ -546,6 +868,31 @@ TOOLS = [
         "If the checker reports the subject leaving the frame, call again for those clips with a smaller `halus`.",
         ReframeArgs, reframe,
     ),
+    Tool(
+        "warna",
+        "Color grade clips: automatic exposure/white-balance correction, matching across clips, and a preset look "
+        "(hangat, cinematic, film, moody, vintage, hitam_putih, cerah, dingin) at an intensity, plus fine adjustments. "
+        "Returns measured brightness/clipping before and after. Use this for any color request instead of set_grade.",
+        WarnaArgs, warna,
+    ),
+    Tool(
+        "musik",
+        "Put an uploaded song under the video (ducks under speech by default) and get its tempo and beat times.",
+        MusikArgs, musik,
+    ),
+    Tool("potong_di_beat", "Move the cuts between clips onto the music's beat grid. Call after `susun` and `musik`.",
+         PotongDiBeatArgs, potong_di_beat),
+    Tool("transisi", "Set transitions between clips: crossfade, dip to black/white, or plain cuts.", TransisiArgs, transisi),
+    Tool("kecepatan", "Change clip speed: slow motion (0.5) or sped up (2-4). Sped/slowed clips are muted.",
+         KecepatanArgs, kecepatan),
+    Tool("zoom", "Slow push-in (or pull-out) over clips, Ken Burns style.", ZoomArgs, zoom),
+    Tool("sinematik", "Cinema finishing for the whole video: letterbox bars and film grain.", SinematikArgs, sinematik),
+    Tool(
+        "broll",
+        "Lay B-roll over the main track at given timeline times (full frame or picture-in-picture corners), "
+        "e.g. show what the speaker talks about while their voice continues.",
+        BrollArgs, broll,
+    ),
     Tool("efek", "Blur tracked objects (faces, license plates) or highlight them by dimming the rest.", EfekArgs, efek),
     Tool("susun", "Replace the whole video track with the given source ranges, in story order.", SusunArgs, susun),
     Tool(
@@ -556,7 +903,12 @@ TOOLS = [
         UbahArgs, ubah_timeline,
     ),
     Tool("buang_filler", "Cut filler words (eh, hmm...) and long pauses from clips, using the transcript.", BuangFillerArgs, buang_filler),
-    Tool("subtitle", "(Re)generate subtitles from the transcript for everything on the timeline. Call after cutting.", SubtitleArgs, subtitle),
+    Tool(
+        "subtitle",
+        "(Re)generate subtitles for everything on the timeline, word-timed from the transcript, with misheard "
+        "words fixed and a creator-style look. Call after all cuts and after setting the aspect.",
+        SubtitleArgs, subtitle,
+    ),
     Tool(
         "render",
         "Render the timeline. An automatic checker then verifies it against the request; on FAILED, fix and render again.",

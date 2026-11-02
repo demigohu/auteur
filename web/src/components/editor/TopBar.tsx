@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleNotch, DownloadSimple, Export, FilmSlate } from "@phosphor-icons/react";
+import { CircleNotch, Coins, DownloadSimple, Export, FilmSlate } from "@phosphor-icons/react";
 import Link from "next/link";
 import { fileUrl } from "@/lib/api";
 import { useEditor } from "@/lib/store";
@@ -13,6 +13,7 @@ export function TopBar() {
   const pending = useEditor((s) => s.pending);
   const applyOps = useEditor((s) => s.applyOps);
   const exportVideo = useEditor((s) => s.exportVideo);
+  const run = useEditor((s) => s.run);
   if (!project) return null;
 
   const { aspect, clips } = project.timeline;
@@ -34,6 +35,13 @@ export function TopBar() {
             <CircleNotch size={12} className="animate-spin" /> {pending}
           </span>
         )}
+        <span
+          className="flex items-center gap-1.5 font-mono text-[11px] text-muted"
+          title="Biaya Meta Model API: Muse Spark, SAM 3.1, Voice Transcribe"
+        >
+          <Coins size={13} />
+          {run ? `run $${run.cost.toFixed(3)} · ` : ""}total ${project.spent.toFixed(2)}
+        </span>
         <div role="radiogroup" aria-label="Format video" className="flex rounded-md border border-line-strong p-0.5">
           {ASPECTS.map((a) => (
             <button

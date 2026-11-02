@@ -12,6 +12,7 @@ from pathlib import Path
 
 from openai import AsyncOpenAI
 
+from auteur import costs
 from auteur.config import settings
 from auteur.timeline.models import Media
 
@@ -38,9 +39,10 @@ def _sample(m: Media, workdir: Path) -> list[tuple[float, Path]]:
     return [(round(i * step + step / 2, 1), f) for i, f in enumerate(frames)]
 
 
-async def watch(m: Media, cache: Path, focus: str | None = None) -> str:
+async def watch(m: Media, cache: Path, focus: str | None = None) -> tuple[str, float]:
+    """Scene description and what the call cost in USD (0 when cached)."""
     if focus is None and cache.exists():
-        return cache.read_text()
+        return cache.read_text(), 0.0
     with tempfile.TemporaryDirectory() as tmp:
         frames = _sample(m, Path(tmp))
         content: list[dict] = [{"type": "input_text", "text": PROMPT + (f"\n\nAlso answer specifically: {focus}" if focus else "")}]
@@ -52,4 +54,4 @@ async def watch(m: Media, cache: Path, focus: str | None = None) -> str:
     text = r.output_text.strip()
     if focus is None:
         cache.write_text(text)
-    return text
+    return text, costs.spark(r.usage)

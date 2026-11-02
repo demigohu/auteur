@@ -47,6 +47,7 @@ def test_ops_undo_redo(client: TestClient, project: dict) -> None:
     assert view["history"][0]["author"] == "user"
     assert "before" not in view["history"][0]
     assert view["can_undo"] and not view["can_redo"]
+    assert view["busy"] is False  # the handler's own lock must not look like an agent run
 
     view = client.post(f"/projects/{pid}/undo").json()
     assert view["timeline"]["clips"] == [] and view["can_redo"]
@@ -75,3 +76,18 @@ async def test_edits_blocked_while_agent_runs(client: TestClient, project: dict)
         assert client.get(f"/projects/{project['id']}").json()["busy"] is True
     finally:
         lock.release()
+
+
+def test_run_quota_per_visitor() -> None:
+    import auteur.main as main
+
+    # Settings is a frozen dataclass read at import; flip the guard on just for this test.
+    object.__setattr__(main.settings, "runs_per_visitor_per_day", 1)
+    try:
+        req = type("R", (), {"client": type("C", (), {"host": "1.2.3.4"})()})()
+        main.check_run_quota(req)
+        with pytest.raises(main.HTTPException) as e:
+            main.check_run_quota(req)
+        assert e.value.status_code == 429
+    finally:
+        object.__setattr__(main.settings, "runs_per_visitor_per_day", 0)

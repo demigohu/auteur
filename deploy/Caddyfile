@@ -1,0 +1,18 @@
+{$DOMAIN} {
+	request_body {
+		max_size 600MB
+	}
+
+	# API under /api (prefix stripped). No compression and immediate flushing, so the agent's
+	# Server-Sent Events reach the browser as they happen.
+	handle_path /api/* {
+		reverse_proxy api:8000 {
+			flush_interval -1
+		}
+	}
+
+	handle {
+		encode zstd gzip
+		reverse_proxy web:3000
+	}
+}

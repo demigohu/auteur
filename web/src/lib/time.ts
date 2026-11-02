@@ -1,3 +1,5 @@
+import type { Clip } from "./timeline";
+
 /** 00:12:07 style timecode (minutes:seconds:frames) for the editor's readouts. */
 export function timecode(seconds: number, fps: number): string {
   const s = Math.max(0, seconds);
@@ -9,16 +11,24 @@ export function timecode(seconds: number, fps: number): string {
 
 export const toFrames = (seconds: number, fps: number) => Math.max(1, Math.round(seconds * fps));
 
-export const clipDuration = (c: { src_in: number; src_out: number }) => c.src_out - c.src_in;
+/** Length on the timeline: source length divided by speed (Clip.duration in the API). */
+export const clipDuration = (c: Pick<Clip, "src_in" | "src_out" | "speed">) => (c.src_out - c.src_in) / (c.speed ?? 1);
 
-export function clipStarts(clips: { src_in: number; src_out: number }[]): number[] {
+const overlap = (c: Pick<Clip, "transition">, i: number) =>
+  i > 0 && c.transition?.kind === "crossfade" ? c.transition.duration : 0;
+
+/** Timeline start of each clip; a crossfade pulls a clip back over the previous one (Timeline.clip_starts). */
+export function clipStarts(clips: Pick<Clip, "src_in" | "src_out" | "speed" | "transition">[]): number[] {
   let t = 0;
-  return clips.map((c) => {
+  return clips.map((c, i) => {
+    t -= overlap(c, i);
     const start = t;
     t += clipDuration(c);
     return start;
   });
 }
 
-export const timelineDuration = (clips: { src_in: number; src_out: number }[]) =>
-  clips.reduce((sum, c) => sum + clipDuration(c), 0);
+export function timelineDuration(clips: Pick<Clip, "src_in" | "src_out" | "speed" | "transition">[]): number {
+  if (!clips.length) return 0;
+  return clipStarts(clips).at(-1)! + clipDuration(clips.at(-1)!);
+}

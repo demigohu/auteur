@@ -4,12 +4,16 @@ Every op is validated and applied to a copy; a failed op raises OpError with a m
 whoever issued it (the agent reads it as a tool result and can correct itself).
 """
 
+import re
 from typing import Annotated, Literal
 from uuid import uuid4
 
 from pydantic import Field, TypeAdapter
 
-from auteur.timeline.models import Aspect, Clip, CropKey, Effect, Follow, Grade, Media, Model, TextItem, Timeline
+from auteur.timeline.models import (
+    Aspect, AudioItem, Clip, CropKey, Effect, Follow, Grade, Media, Model, Overlay, OverlayLayout, TextItem,
+    TextLook, TextWord, Timeline, Transition, Zoom,
+)
 
 MIN_CLIP = 0.1  # seconds; shorter clips are unwatchable and break ffmpeg concat
 
@@ -63,6 +67,9 @@ class AddText(Model):
     start: float = Field(ge=0)
     end: float = Field(gt=0)
     style: Literal["subtitle", "title", "caption"] = "subtitle"
+    look: TextLook = "bersih"
+    color: str = Field("#FFD43B", pattern=r"^#[0-9a-fA-F]{6}$")
+    words: list[TextWord] = Field(default_factory=list)
     x: float = Field(0.5, ge=0, le=1)
     y: float = Field(0.85, ge=0, le=1)
 
@@ -73,6 +80,8 @@ class UpdateText(Model):
     text: str | None = Field(None, min_length=1)
     start: float | None = Field(None, ge=0)
     end: float | None = Field(None, gt=0)
+    look: TextLook | None = None
+    color: str | None = Field(None, pattern=r"^#[0-9a-fA-F]{6}$")
     x: float | None = Field(None, ge=0, le=1)
     y: float | None = Field(None, ge=0, le=1)
 
@@ -112,12 +121,123 @@ class SetAspect(Model):
     aspect: Aspect
 
 
+class SetSpeed(Model):
+    op: Literal["set_speed"] = "set_speed"
+    clip_id: str
+    speed: float = Field(ge=0.25, le=4, description="0.5 = slow motion; the clip's source range stays the same")
+
+
+class SetTransition(Model):
+    op: Literal["set_transition"] = "set_transition"
+    clip_id: str
+    transition: Transition | None = Field(description="Into this clip from the previous one; null removes it")
+
+
+class SetZoom(Model):
+    op: Literal["set_zoom"] = "set_zoom"
+    clip_id: str
+    zoom: Zoom | None
+
+
+class SetVolume(Model):
+    op: Literal["set_volume"] = "set_volume"
+    clip_id: str
+    volume: float = Field(ge=0, le=2)
+
+
+class AddOverlay(Model):
+    op: Literal["add_overlay"] = "add_overlay"
+    id: str | None = None
+    media_id: str
+    src_in: float = Field(ge=0)
+    src_out: float = Field(gt=0)
+    start: float = Field(ge=0, description="Timeline time the B-roll appears")
+    layout: OverlayLayout = "full"
+
+
+class UpdateOverlay(Model):
+    op: Literal["update_overlay"] = "update_overlay"
+    overlay_id: str
+    src_in: float | None = Field(None, ge=0)
+    src_out: float | None = Field(None, gt=0)
+    start: float | None = Field(None, ge=0)
+    layout: OverlayLayout | None = None
+    grade: Grade | None = None
+
+
+class DeleteOverlay(Model):
+    op: Literal["delete_overlay"] = "delete_overlay"
+    overlay_id: str
+
+
+class AddAudio(Model):
+    op: Literal["add_audio"] = "add_audio"
+    id: str | None = None
+    media_id: str
+    src_in: float = Field(0, ge=0)
+    src_out: float | None = Field(None, gt=0, description="Defaults to the end of the music or of the video")
+    start: float = Field(0, ge=0)
+    volume: float = Field(0.8, ge=0, le=2)
+    fade_in: float = Field(0.5, ge=0, le=10)
+    fade_out: float = Field(1.5, ge=0, le=10)
+    duck: bool = True
+
+
+class UpdateAudio(Model):
+    op: Literal["update_audio"] = "update_audio"
+    audio_id: str
+    src_in: float | None = Field(None, ge=0)
+    src_out: float | None = Field(None, gt=0)
+    start: float | None = Field(None, ge=0)
+    volume: float | None = Field(None, ge=0, le=2)
+    fade_in: float | None = Field(None, ge=0, le=10)
+    fade_out: float | None = Field(None, ge=0, le=10)
+    duck: bool | None = None
+
+
+class DeleteAudio(Model):
+    op: Literal["delete_audio"] = "delete_audio"
+    audio_id: str
+
+
+class SetFinish(Model):
+    op: Literal["set_finish"] = "set_finish"
+    letterbox: float | None = Field(None, ge=1.5, le=3, description="Cinema bars to this ratio (2.39 = scope); null removes")
+    grain: float = Field(0, ge=0, le=1)
+
+
 Op = Annotated[
     AddClip | Split | Trim | Move | Delete | AddText | UpdateText | DeleteText
-    | SetGrade | SetCrop | SetEffects | SetMuted | SetAspect,
+    | SetGrade | SetCrop | SetEffects | SetMuted | SetAspect
+    | SetSpeed | SetTransition | SetZoom | SetVolume
+    | AddOverlay | UpdateOverlay | DeleteOverlay | AddAudio | UpdateAudio | DeleteAudio | SetFinish,
     Field(discriminator="op"),
 ]
 op_adapter: TypeAdapter[Op] = TypeAdapter(Op)
+
+
+def syllables(word: str) -> int:
+    return max(1, len(re.findall(r"[aiueoy]+", word.lower())))
+
+
+def spread_words(text: str, start: float, end: float, old: list[TextWord]) -> list[TextWord]:
+    """Word timings for `text` over [start, end].
+
+    When the words are unchanged and the span is unchanged the old timings are kept; otherwise the
+    words are spread by syllable count over the span (an edited typo shouldn't lose its subtitle).
+    """
+    tokens = text.split()
+    if [w.text for w in old] == tokens and old and abs(old[0].start - start) < 1e-3 and abs(old[-1].end - end) < 1e-3:
+        return old
+    emphasized = {w.text.lower().strip(".,!?") for w in old if w.emphasis}
+    weights = [syllables(t) for t in tokens]
+    total, acc, out = sum(weights) or 1, 0, []
+    for tok, w in zip(tokens, weights):
+        a = start + (end - start) * acc / total
+        acc += w
+        b = start + (end - start) * acc / total
+        out.append(TextWord(text=tok, start=round(a, 3), end=round(b, 3), emphasis=tok.lower().strip(".,!?") in emphasized))
+    return out
 
 
 def _clip_index(tl: Timeline, clip_id: str) -> int:
@@ -125,6 +245,22 @@ def _clip_index(tl: Timeline, clip_id: str) -> int:
         if c.id == clip_id:
             return i
     raise OpError(f"Clip {clip_id!r} not found; existing clips: {[c.id for c in tl.clips]}")
+
+
+def _index(items: list, item_id: str, what: str) -> int:
+    for i, it in enumerate(items):
+        if it.id == item_id:
+            return i
+    raise OpError(f"{what} {item_id!r} not found; existing: {[it.id for it in items]}")
+
+
+def _media(media: dict[str, Media], media_id: str, kind: str | None = None) -> Media:
+    m = media.get(media_id)
+    if m is None:
+        raise OpError(f"Media {media_id!r} not found; available: {list(media)}")
+    if kind and m.kind != kind:
+        raise OpError(f"Media {media_id!r} is {m.kind}, not {kind}")
+    return m
 
 
 def _text_index(tl: Timeline, text_id: str) -> int:
@@ -135,7 +271,7 @@ def _text_index(tl: Timeline, text_id: str) -> int:
 
 
 def _check_new_id(tl: Timeline, new: str | None) -> None:
-    if new is not None and any(x.id == new for x in [*tl.clips, *tl.texts]):
+    if new is not None and any(x.id == new for x in [*tl.clips, *tl.texts, *tl.overlays, *tl.audio]):
         raise OpError(f"Id {new!r} is already used")
 
 
@@ -152,9 +288,7 @@ def apply(tl: Timeline, op: Op, media: dict[str, Media]) -> Timeline:
 
     match op:
         case AddClip():
-            if op.media_id not in media:
-                raise OpError(f"Media {op.media_id!r} not found; available: {list(media)}")
-            _check_range(media[op.media_id], op.src_in, op.src_out)
+            _check_range(_media(media, op.media_id, "video"), op.src_in, op.src_out)
             _check_new_id(tl, op.id)
             clip = Clip(id=op.id or new_id("clip"), media_id=op.media_id, src_in=op.src_in, src_out=op.src_out)
             index = len(tl.clips) if op.index is None else min(op.index, len(tl.clips))
@@ -166,10 +300,13 @@ def apply(tl: Timeline, op: Op, media: dict[str, Media]) -> Timeline:
             offset = op.at - tl.clip_starts()[i]
             if offset < MIN_CLIP or clip.duration - offset < MIN_CLIP:
                 raise OpError(f"Split point {op.at}s is outside clip {clip.id!r} or too close to its edge")
-            cut = round(clip.src_in + offset, 3)
+            cut = round(clip.to_source(offset), 3)
             left = clip.model_copy(update={"src_out": cut})
             _check_new_id(tl, op.new_clip_id)
-            right = clip.model_copy(deep=True, update={"id": op.new_clip_id or new_id("clip"), "src_in": cut})
+            # The right half starts with a plain cut; any transition stays where it was, on the left.
+            right = clip.model_copy(
+                deep=True, update={"id": op.new_clip_id or new_id("clip"), "src_in": cut, "transition": None}
+            )
             # Crop keys are clip-local, so the right half's keys shift back by `offset`.
             left.crop = [k for k in clip.crop if k.t <= offset]
             right.crop = [k.model_copy(update={"t": round(k.t - offset, 3)}) for k in clip.crop if k.t >= offset]
@@ -181,9 +318,10 @@ def apply(tl: Timeline, op: Op, media: dict[str, Media]) -> Timeline:
             src_in = clip.src_in if op.src_in is None else op.src_in
             src_out = clip.src_out if op.src_out is None else op.src_out
             _check_range(media[clip.media_id], src_in, src_out)
-            shift = src_in - clip.src_in
+            # Crop keys are in clip-local timeline time, so source shifts are scaled by the speed.
+            shift = (src_in - clip.src_in) / clip.speed
             crop = [k.model_copy(update={"t": round(k.t - shift, 3)}) for k in clip.crop]
-            crop = [k for k in crop if 0 <= k.t <= src_out - src_in]
+            crop = [k for k in crop if 0 <= k.t <= (src_out - src_in) / clip.speed]
             tl.clips[i] = clip.model_copy(update={"src_in": src_in, "src_out": src_out, "crop": crop})
 
         case Move():
@@ -203,8 +341,12 @@ def apply(tl: Timeline, op: Op, media: dict[str, Media]) -> Timeline:
 
         case UpdateText():
             i = _text_index(tl, op.text_id)
+            old = tl.texts[i]
             changes = op.model_dump(exclude={"op", "text_id"}, exclude_none=True)
-            item = tl.texts[i].model_copy(update=changes)
+            item = old.model_copy(update=changes)
+            if old.words and (op.text is not None or op.start is not None or op.end is not None):
+                # Edited text or a moved/stretched item: re-spread the words over the new span.
+                item = item.model_copy(update={"words": spread_words(item.text, item.start, item.end, old.words)})
             if item.end <= item.start:
                 raise OpError("Text end must be after start")
             tl.texts[i] = item
@@ -236,5 +378,72 @@ def apply(tl: Timeline, op: Op, media: dict[str, Media]) -> Timeline:
 
         case SetAspect():
             tl.aspect = op.aspect
+
+        case SetSpeed():
+            i = _clip_index(tl, op.clip_id)
+            clip = tl.clips[i]
+            if clip.src_duration / op.speed < MIN_CLIP:
+                raise OpError(f"At {op.speed}x clip {clip.id!r} would be shorter than {MIN_CLIP}s")
+            # Keep crop keys at the same source moments.
+            ratio = clip.speed / op.speed
+            crop = [k.model_copy(update={"t": round(k.t * ratio, 3)}) for k in clip.crop]
+            tl.clips[i] = clip.model_copy(update={"speed": op.speed, "crop": crop})
+
+        case SetTransition():
+            i = _clip_index(tl, op.clip_id)
+            tr = op.transition
+            if tr is not None:
+                if i == 0 and tr.kind == "crossfade":
+                    raise OpError("The first clip has nothing to crossfade from; use 'hitam' to fade in from black")
+                limit = min(tl.clips[i].duration, tl.clips[i - 1].duration if i else tl.clips[i].duration)
+                if tr.duration > limit / 2:
+                    raise OpError(f"Transition of {tr.duration}s is too long for clips of {limit:.2f}s (max half)")
+            tl.clips[i] = tl.clips[i].model_copy(update={"transition": tr})
+
+        case SetZoom():
+            i = _clip_index(tl, op.clip_id)
+            tl.clips[i] = tl.clips[i].model_copy(update={"zoom": op.zoom})
+
+        case SetVolume():
+            i = _clip_index(tl, op.clip_id)
+            tl.clips[i] = tl.clips[i].model_copy(update={"volume": op.volume})
+
+        case AddOverlay():
+            m = _media(media, op.media_id, "video")
+            _check_range(m, op.src_in, op.src_out)
+            _check_new_id(tl, op.id)
+            tl.overlays.append(Overlay(**{**op.model_dump(exclude={"op"}), "id": op.id or new_id("broll")}))
+            tl.overlays.sort(key=lambda o: o.start)
+
+        case UpdateOverlay():
+            i = _index(tl.overlays, op.overlay_id, "B-roll")
+            item = tl.overlays[i].model_copy(update=op.model_dump(exclude={"op", "overlay_id"}, exclude_none=True))
+            _check_range(media[item.media_id], item.src_in, item.src_out)
+            tl.overlays[i] = item
+            tl.overlays.sort(key=lambda o: o.start)
+
+        case DeleteOverlay():
+            tl.overlays.pop(_index(tl.overlays, op.overlay_id, "B-roll"))
+
+        case AddAudio():
+            m = _media(media, op.media_id)
+            if not m.has_audio:
+                raise OpError(f"Media {m.id!r} has no audio")
+            src_out = op.src_out if op.src_out is not None else min(m.duration, op.src_in + max(tl.duration - op.start, MIN_CLIP))
+            _check_range(m, op.src_in, src_out)
+            _check_new_id(tl, op.id)
+            tl.audio.append(AudioItem(**{**op.model_dump(exclude={"op"}), "src_out": round(src_out, 3), "id": op.id or new_id("music")}))
+
+        case UpdateAudio():
+            i = _index(tl.audio, op.audio_id, "Music")
+            item = tl.audio[i].model_copy(update=op.model_dump(exclude={"op", "audio_id"}, exclude_none=True))
+            _check_range(media[item.media_id], item.src_in, item.src_out)
+            tl.audio[i] = item
+
+        case DeleteAudio():
+            tl.audio.pop(_index(tl.audio, op.audio_id, "Music"))
+
+        case SetFinish():
+            tl.finish = tl.finish.model_copy(update={"letterbox": op.letterbox, "grain": op.grain})
 
     return tl

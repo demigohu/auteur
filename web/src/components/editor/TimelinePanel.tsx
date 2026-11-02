@@ -6,7 +6,7 @@ import { useRef, useState } from "react";
 import { fileUrl, type MediaView } from "@/lib/api";
 import { useEditor } from "@/lib/store";
 import { clipDuration, clipStarts, timelineDuration } from "@/lib/time";
-import type { Clip, TextItem } from "@/lib/timeline";
+import type { AudioItem, Clip, Overlay, TextItem } from "@/lib/timeline";
 
 const MIN_CLIP = 0.1;
 const TRACK_LABEL_W = 44;
@@ -40,12 +40,14 @@ export function TimelinePanel() {
   const select = useEditor((s) => s.select);
   const selectedClipId = useEditor((s) => s.selectedClipId);
   const selectedTextId = useEditor((s) => s.selectedTextId);
+  const selectedOverlayId = useEditor((s) => s.selectedOverlayId);
+  const selectedAudioId = useEditor((s) => s.selectedAudioId);
   const marks = useEditor((s) => s.marks);
   const [drag, setDrag] = useState<Drag | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   if (!project) return null;
-  const { clips, texts } = project.timeline;
+  const { clips, texts, overlays, audio } = project.timeline;
   const media = Object.fromEntries(project.media.map((m) => [m.id, m]));
   const duration = timelineDuration(clips);
   const locked = project.busy;
@@ -74,6 +76,8 @@ export function TimelinePanel() {
   const deleteSelected = () => {
     if (selectedClipId) applyOps("Hapus klip", [{ op: "delete", clip_id: selectedClipId }]);
     else if (selectedTextId) applyOps("Hapus teks", [{ op: "delete_text", text_id: selectedTextId }]);
+    else if (selectedOverlayId) applyOps("Hapus B-roll", [{ op: "delete_overlay", overlay_id: selectedOverlayId }]);
+    else if (selectedAudioId) applyOps("Hapus musik", [{ op: "delete_audio", audio_id: selectedAudioId }]);
     select({});
   };
 
@@ -83,7 +87,8 @@ export function TimelinePanel() {
     if (drag.kind === "move") return setDrag({ ...drag, dx });
     const clip = clips.find((c) => c.id === drag.clipId)!;
     const m = media[clip.media_id];
-    const delta = dx / px;
+    // Pixels are timeline seconds; trims move the source range, which runs `speed` times faster.
+    const delta = (dx / px) * clip.speed;
     if (drag.edge === "in") {
       const src_in = Math.min(Math.max(clip.src_in + delta, 0), clip.src_out - MIN_CLIP);
       setDrag({ ...drag, src_in });
@@ -121,7 +126,11 @@ export function TimelinePanel() {
         <ToolButton label="Potong di playhead (S)" onClick={splitAtPlayhead} disabled={locked}>
           <Scissors size={15} />
         </ToolButton>
-        <ToolButton label="Hapus (Delete)" onClick={deleteSelected} disabled={locked || (!selectedClipId && !selectedTextId)}>
+        <ToolButton
+          label="Hapus (Delete)"
+          onClick={deleteSelected}
+          disabled={locked || (!selectedClipId && !selectedTextId && !selectedOverlayId && !selectedAudioId)}
+        >
           <Trash size={15} />
         </ToolButton>
         <span className="mx-1 h-4 w-px bg-line" />
@@ -150,6 +159,24 @@ export function TimelinePanel() {
       >
         <div className="relative h-full" style={{ width: contentW + TRACK_LABEL_W }}>
           <Ruler px={px} width={contentW} onSeek={(x) => seek(timeAt(x))} />
+
+          {overlays.length > 0 && (
+            <Track label="V2" height={36}>
+              {overlays.map((o) => (
+                <OverlayBlock
+                  key={o.id}
+                  item={o}
+                  media={media[o.media_id]}
+                  px={px}
+                  selected={selectedOverlayId === o.id}
+                  onSelect={() => {
+                    select({ overlay: o.id });
+                    seek(o.start);
+                  }}
+                />
+              ))}
+            </Track>
+          )}
 
           <Track label="V1" height={CLIP_H}>
             {shown.map((c, i) => (
@@ -186,6 +213,22 @@ export function TimelinePanel() {
               />
             ))}
           </Track>
+
+          {audio.length > 0 && (
+            <Track label="A1" height={40}>
+              {audio.map((a) => (
+                <MusicBlock
+                  key={a.id}
+                  item={a}
+                  media={media[a.media_id]}
+                  px={px}
+                  limit={duration}
+                  selected={selectedAudioId === a.id}
+                  onSelect={() => select({ audio: a.id })}
+                />
+              ))}
+            </Track>
+          )}
 
           {marks.map((m, i) => (
             <CheckMarkBand key={i} start={m.start} end={m.end} label={m.label} px={px} onSeek={() => seek(m.start)} />
@@ -290,6 +333,18 @@ function ClipBlock(props: {
       }}
     >
       {media && <Filmstrip media={media} clip={clip} width={props.width} px={props.px} />}
+      {clip.transition && (
+        <span
+          title={`Transisi ${clip.transition.kind} ${clip.transition.duration}s`}
+          className="absolute top-0 bottom-0 left-0 z-10 bg-gradient-to-r from-text/35 to-transparent"
+          style={{ width: Math.max(6, clip.transition.duration * props.px) }}
+        />
+      )}
+      <div className="absolute bottom-1 left-2 z-10 flex gap-1">
+        {clip.speed !== 1 && <Badge>{clip.speed}x</Badge>}
+        {clip.zoom && <Badge>zoom</Badge>}
+        {clip.transition && <Badge>{clip.transition.kind}</Badge>}
+      </div>
       <div className="absolute inset-x-0 top-0 flex items-center gap-1.5 bg-gradient-to-b from-black/70 to-transparent px-2 pt-1 pb-3">
         <span className="truncate text-[11px] font-medium text-text">{media?.name ?? clip.media_id}</span>
         <span className="shrink-0 font-mono text-[10px] text-text/70">{clipDuration(clip).toFixed(1)}s</span>
@@ -310,6 +365,67 @@ function ClipBlock(props: {
         />
       ))}
     </motion.div>
+  );
+}
+
+function Badge({ children }: { children: React.ReactNode }) {
+  return <span className="rounded-[3px] bg-bg/80 px-1 font-mono text-[9px] leading-[14px] text-text">{children}</span>;
+}
+
+function OverlayBlock(props: { item: Overlay; media: MediaView | undefined; px: number; selected: boolean; onSelect: () => void }) {
+  const { item, media, px } = props;
+  return (
+    <button
+      type="button"
+      onClick={props.onSelect}
+      title={`B-roll ${media?.name ?? ""} (${item.layout})`}
+      className={`absolute top-1.5 bottom-1.5 overflow-hidden rounded-md border text-left ${
+        props.selected ? "border-accent ring-1 ring-accent" : "border-line-strong"
+      }`}
+      style={{ left: item.start * px, width: Math.max((item.src_out - item.src_in) * px, 6) }}
+    >
+      {media && (
+        <span
+          className="absolute inset-0 opacity-60"
+          style={{ backgroundImage: `url(${fileUrl(media.thumb_url)})`, backgroundSize: "auto 100%", backgroundRepeat: "repeat-x" }}
+        />
+      )}
+      <span className="relative px-1.5 text-[10px] text-text">B-roll {item.layout !== "full" ? "PiP" : ""}</span>
+    </button>
+  );
+}
+
+function MusicBlock(props: { item: AudioItem; media: MediaView | undefined; px: number; limit: number; selected: boolean; onSelect: () => void }) {
+  const { item, media, px } = props;
+  const length = Math.max(0, Math.min(item.src_out - item.src_in, props.limit - item.start));
+  const total = media?.duration ?? length;
+  // Beats inside the used part of the song, mapped onto the timeline.
+  const beats = (media?.beats ?? []).filter((b) => b >= item.src_in && b <= item.src_in + length).map((b) => item.start + b - item.src_in);
+  return (
+    <button
+      type="button"
+      onClick={props.onSelect}
+      title={media?.name}
+      className={`absolute top-1.5 bottom-1.5 overflow-hidden rounded-md border bg-panel-2 text-left ${
+        props.selected ? "border-accent ring-1 ring-accent" : "border-line-strong"
+      }`}
+      style={{ left: item.start * px, width: Math.max(length * px, 6) }}
+    >
+      {media?.filmstrip_url && (
+        <span
+          className="absolute inset-0 opacity-80"
+          style={{
+            backgroundImage: `url(${fileUrl(media.filmstrip_url)})`,
+            backgroundSize: `${total * px}px 100%`,
+            backgroundPosition: `${-item.src_in * px}px 0`,
+          }}
+        />
+      )}
+      {beats.map((b) => (
+        <span key={b} className="absolute top-0 bottom-0 w-px bg-text/25" style={{ left: (b - item.start) * px }} />
+      ))}
+      <span className="relative px-1.5 text-[10px] text-text">{media?.name}</span>
+    </button>
   );
 }
 

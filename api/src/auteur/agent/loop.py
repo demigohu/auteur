@@ -10,6 +10,7 @@ from typing import Any
 
 from openai import AsyncOpenAI
 
+from auteur import costs
 from auteur.agent.tools import TOOLS_BY_NAME, StopRun, ToolContext, ToolError, describe_timeline, parse_args, tool_specs
 from auteur.config import settings
 from auteur.events import bus
@@ -35,9 +36,23 @@ strongest moment when asked. Respect the requested length.
 ("person"), then `reframe` so the crop follows it. To hide faces or plates: `lacak` ("face", \
 "license plate"), then `efek` blur with the main subject in `kecuali` unless asked otherwise. `lacak` is slow \
 (1-3 min), so track each media and prompt once and reuse the track.
-- Cut filler with `buang_filler` after `susun`; generate subtitles with `subtitle` after all cuts.
+- Cut filler with `buang_filler` after `susun`; generate subtitles with `subtitle` after all cuts and \
+after setting the aspect. Pick its `gaya` from the request: karaoke for creator/Reels/TikTok videos, \
+tebal or pop for punchy short content, bersih for calm or informative videos; match `warna` to the \
+grade or the user's brand color if they gave one.
+- Montages ("a day in my life", travel, cinematic): `tonton` every clip, order them as a story \
+(chronologically by recording time for a day-in-the-life), keep each shot short (1.5-4s) and \
+`susun` them. Then, in this order: `kecepatan` 0.5 on one or two beautiful moments (60fps footage \
+only), any trims to hit the length, `transisi` (crossfade or hitam for calm/cinematic, mostly hard \
+cuts for energetic), then `musik` and `potong_di_beat` LAST among timing edits (tiap 2 for most, 4 \
+for calm, 1 for hype), since any later trim knocks cuts off the beat. Then `zoom` on static shots, \
+and for a cinematic look `warna` (cinematic or film) plus `sinematik` (letterbox only for 16:9). \
+Use `broll` to cover a talking shot with what they talk about.
 - Use `ubah_timeline` for precise revisions (trim, move, split, delete, text, grade, crop, aspect). \
 Keep the user's manual edits unless they ask otherwise; the history shows who changed what.
+- For any color request ("warm", "cinematic", "make it look like film", "fix the colors", "match \
+the clips"), use `warna`: pick the closest look, keep intensitas around 0.5-0.8 unless asked for a \
+strong look, and keep koreksi_otomatis on. Read the measured results it returns.
 - Finish with `render`. The checker also verifies the subject stays in frame and blurs do not \
 leak. If it FAILS, fix exactly what it reports (e.g. `reframe` those clips with a smaller `halus`) \
 and render again.
@@ -47,10 +62,14 @@ and render again.
 
 def state_message(store: Store, project_id: str) -> str:
     p = store.get(project_id)
-    media = "\n".join(
-        f"  {m.id}: {m.name}, {m.duration:.1f}s, {m.width}x{m.height}, {'audio' if m.has_audio else 'no audio'}"
-        for m in p.media.values()
-    ) or "  (none uploaded)"
+    def describe_media(m) -> str:
+        if m.kind == "audio":
+            return f"  {m.id}: {m.name}, MUSIC/AUDIO, {m.duration:.1f}s"
+        shot = f", recorded {m.recorded_at}" if m.recorded_at else ""
+        return (f"  {m.id}: {m.name}, video {m.duration:.1f}s, {m.width}x{m.height} @ {m.fps:.0f}fps, "
+                f"{'with sound' if m.has_audio else 'silent'}{shot}")
+
+    media = "\n".join(describe_media(m) for m in p.media.values()) or "  (none uploaded)"
     history = "\n".join(f"  {h}" for h in p.history_summary(15)) or "  (no edits yet)"
     tracks = "\n".join(f"  {t.id}: '{t.prompt}' on {t.media_id}" for t in p.tracks.values()) or "  (none)"
     return (
@@ -85,6 +104,7 @@ async def run_agent(store: Store, project_id: str, run_id: str, instruction: str
                 r = await client.responses.create(
                     model=MODEL, instructions=SYSTEM, input=items, tools=tool_specs(), parallel_tool_calls=False,
                 )
+                ctx.add_cost(costs.spark(r.usage))
                 items += [o.model_dump(exclude_none=True) for o in r.output]
                 calls = [o for o in r.output if o.type == "function_call"]
                 narration = "".join(

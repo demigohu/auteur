@@ -1,0 +1,197 @@
+"use client";
+
+import { CaretRight, MagicWand } from "@phosphor-icons/react";
+import { AnimatePresence, motion } from "motion/react";
+import { useState } from "react";
+import { NEUTRAL_GRADE } from "@/lib/grade";
+import { useEditor } from "@/lib/store";
+import type { Clip, Grade } from "@/lib/timeline";
+
+// Mirrors colorist.LOOK_LABELS on the API; the grade itself is always computed server-side.
+const LOOKS = [
+  { id: "hangat", label: "Hangat", swatch: "linear-gradient(135deg,#f2b36b,#c8784a)" },
+  { id: "cinematic", label: "Cinematic", swatch: "linear-gradient(135deg,#1f6f7a,#e39a55)" },
+  { id: "film", label: "Film", swatch: "linear-gradient(135deg,#8c8a74,#d9c8a0)" },
+  { id: "moody", label: "Moody", swatch: "linear-gradient(135deg,#1c2533,#4a5566)" },
+  { id: "vintage", label: "Vintage", swatch: "linear-gradient(135deg,#b59a6d,#e2cfa2)" },
+  { id: "hitam_putih", label: "Hitam putih", swatch: "linear-gradient(135deg,#111,#ddd)" },
+  { id: "cerah", label: "Cerah", swatch: "linear-gradient(135deg,#ffd166,#4cc9f0)" },
+  { id: "dingin", label: "Dingin", swatch: "linear-gradient(135deg,#4a7fbf,#a9cbe8)" },
+] as const;
+
+type Field = { key: keyof Grade; label: string; min: number; max: number; step?: number };
+
+const BASIC: Field[] = [
+  { key: "exposure", label: "Exposure", min: -2, max: 2 },
+  { key: "contrast", label: "Kontras", min: -1, max: 1 },
+  { key: "highlights", label: "Highlights", min: -1, max: 1 },
+  { key: "shadows", label: "Shadows", min: -1, max: 1 },
+  { key: "saturation", label: "Saturasi", min: -1, max: 1 },
+  { key: "temperature", label: "Temperatur", min: -1, max: 1 },
+  { key: "tint", label: "Tint", min: -1, max: 1 },
+];
+
+const ADVANCED: Field[] = [
+  { key: "fade", label: "Fade", min: 0, max: 1 },
+  { key: "vignette", label: "Vignette", min: 0, max: 1 },
+  { key: "shadow_tone", label: "Warna bayangan", min: 0, max: 1 },
+  { key: "shadow_hue", label: "Hue bayangan", min: 0, max: 360, step: 1 },
+  { key: "highlight_tone", label: "Warna terang", min: 0, max: 1 },
+  { key: "highlight_hue", label: "Hue terang", min: 0, max: 360, step: 1 },
+];
+
+const HUE_TRACK = "linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)";
+
+export function ColorPanel({ clip, locked }: { clip: Clip; locked: boolean }) {
+  const applyOps = useEditor((s) => s.applyOps);
+  const applyLook = useEditor((s) => s.applyLook);
+  const previewGrade = useEditor((s) => s.previewGrade);
+  const clipCount = useEditor((s) => s.project?.timeline.clips.length ?? 1);
+  const [grade, setGradeState] = useState<Grade>(clip.grade);
+  const [intensity, setIntensity] = useState(0.7);
+  const [auto, setAuto] = useState(true);
+  const [allClips, setAllClips] = useState(clipCount > 1);
+  const [advanced, setAdvanced] = useState(false);
+
+  const setGrade = (g: Grade) => {
+    setGradeState(g);
+    previewGrade(clip.id, g);
+  };
+  const commit = (g: Grade) => applyOps("Ubah warna klip", [{ op: "set_grade", clip_ids: [clip.id], grade: { ...g, look: null } }]);
+  const look = (id: string | null, k = intensity) =>
+    applyLook({ clipIds: allClips ? null : [clip.id], look: id, intensity: k, auto, match: allClips });
+
+  const slider = (f: Field) => {
+    const value = grade[f.key] as number;
+    const hue = f.key.endsWith("_hue");
+    return (
+      <div key={f.key} className="space-y-1">
+        <div className="flex items-center justify-between">
+          <label htmlFor={`grade-${f.key}`} className="text-xs text-text">
+            {f.label}
+          </label>
+          <span className="font-mono text-[11px] tabular-nums text-muted">
+            {hue ? `${Math.round(value)}°` : `${value > 0 ? "+" : ""}${value.toFixed(2)}`}
+          </span>
+        </div>
+        <input
+          id={`grade-${f.key}`}
+          type="range"
+          min={f.min}
+          max={f.max}
+          step={f.step ?? 0.01}
+          value={value}
+          onChange={(e) => setGrade({ ...grade, [f.key]: Number(e.target.value) })}
+          onPointerUp={() => commit(grade)}
+          onKeyUp={() => commit(grade)}
+          onDoubleClick={() => {
+            const g = { ...grade, [f.key]: NEUTRAL_GRADE[f.key] };
+            setGrade(g);
+            commit(g);
+          }}
+          className={`w-full ${hue ? "h-1.5 appearance-none rounded-full" : ""}`}
+          style={hue ? { background: HUE_TRACK } : undefined}
+        />
+      </div>
+    );
+  };
+
+  return (
+    <fieldset disabled={locked} className="space-y-4 disabled:opacity-50">
+      <legend className="mb-2 flex w-full items-center justify-between text-xs font-medium text-muted">
+        Warna
+        {grade.look && <span className="font-normal text-faint">Look: {LOOKS.find((l) => l.id === grade.look)?.label}</span>}
+      </legend>
+
+      <div className="grid grid-cols-4 gap-1.5">
+        {LOOKS.map((l) => (
+          <button
+            key={l.id}
+            type="button"
+            onClick={() => look(l.id)}
+            className={`group overflow-hidden rounded-md border text-left transition active:scale-[0.97] ${
+              grade.look === l.id ? "border-accent" : "border-line hover:border-line-strong"
+            }`}
+          >
+            <span className="block h-7" style={{ background: l.swatch }} />
+            <span className="block truncate px-1.5 py-1 text-[10px] text-text">{l.label}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="space-y-1">
+        <div className="flex items-center justify-between">
+          <label htmlFor="look-intensity" className="text-xs text-text">
+            Intensitas look
+          </label>
+          <span className="font-mono text-[11px] tabular-nums text-muted">{Math.round(intensity * 100)}%</span>
+        </div>
+        <input
+          id="look-intensity"
+          type="range"
+          min={0}
+          max={1}
+          step={0.05}
+          value={intensity}
+          onChange={(e) => setIntensity(Number(e.target.value))}
+          onPointerUp={() => grade.look && look(grade.look, intensity)}
+          className="w-full"
+        />
+      </div>
+
+      <div className="space-y-1.5 text-xs text-text">
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} />
+          Koreksi exposure dan white balance otomatis
+        </label>
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={allClips} onChange={(e) => setAllClips(e.target.checked)} />
+          Semua klip, warnanya disamakan
+        </label>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => look(null)}
+        className="flex items-center gap-1.5 rounded-md border border-line-strong px-2.5 py-1.5 text-xs text-text transition hover:bg-raised active:scale-[0.98]"
+      >
+        <MagicWand size={13} /> Koreksi saja
+      </button>
+
+      <div className="space-y-3 border-t border-line pt-4">{BASIC.map(slider)}</div>
+
+      <div>
+        <button
+          type="button"
+          onClick={() => setAdvanced((a) => !a)}
+          className="flex items-center gap-1.5 text-xs text-muted transition hover:text-text"
+        >
+          <CaretRight size={11} className={`transition-transform ${advanced ? "rotate-90" : ""}`} /> Lanjutan
+        </button>
+        <AnimatePresence initial={false}>
+          {advanced && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="space-y-3 overflow-hidden pt-3"
+            >
+              {ADVANCED.map(slider)}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => {
+          setGrade(NEUTRAL_GRADE);
+          commit(NEUTRAL_GRADE);
+        }}
+        className="text-xs text-muted transition hover:text-text"
+      >
+        Reset warna klip ini
+      </button>
+    </fieldset>
+  );
+}

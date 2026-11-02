@@ -1,5 +1,19 @@
 @import "tailwindcss";
 
+/* Subtitle font: the same files the renderer uses (api/assets/fonts), so preview text matches export. */
+@font-face {
+  font-family: "Montserrat";
+  font-weight: 800;
+  font-display: block;
+  src: url("/fonts/montserrat-800.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Montserrat";
+  font-weight: 900;
+  font-display: block;
+  src: url("/fonts/montserrat-900.ttf") format("truetype");
+}
+
 /*
  * Auteur Labs is dark-only on purpose: like every grading and editing suite, a neutral dark
  * surround keeps the footage's colors readable. One accent (amber) marks the playhead,

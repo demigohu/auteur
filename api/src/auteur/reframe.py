@@ -42,7 +42,7 @@ def _subject_centers(track: Track, object_id: str, clip: Clip) -> list[tuple[flo
     n = max(1, round(clip.duration * SAMPLE_FPS))
     out: list[tuple[float, float] | None] = []
     for i in range(n):
-        box = track.box_at(object_id, clip.src_in + i / SAMPLE_FPS)
+        box = track.box_at(object_id, clip.to_source(i / SAMPLE_FPS))
         if box is None:
             out.append(None)
             continue
@@ -111,7 +111,7 @@ def out_of_frame(
     n = max(1, round(clip.duration * SAMPLE_FPS))
     for i in range(n):
         t = i / SAMPLE_FPS
-        box = track.box_at(object_id, clip.src_in + t)
+        box = track.box_at(object_id, clip.to_source(t))
         if box is None:
             continue
         cx = (box[0] + box[2]) / 2 / track.width

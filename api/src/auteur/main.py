@@ -1,17 +1,19 @@
 import asyncio
 import json
 import shutil
+from datetime import date
 import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi import FastAPI, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
+from auteur import colorist
 from auteur.agent.loop import run_agent
 from auteur.config import settings
 from auteur.events import bus
@@ -21,7 +23,7 @@ from auteur.store import NotFound, Store
 from auteur.timeline import Media, Op, OpError, Project, Timeline
 from auteur.timeline.history import ChatMessage
 from auteur.tracking import load_track
-from auteur.timeline.ops import new_id
+from auteur.timeline.ops import SetGrade, new_id
 
 app = FastAPI(title="Auteur Labs API")
 
@@ -39,6 +41,20 @@ app.mount("/files", StaticFiles(directory=settings.data_dir / "projects"), name=
 # One lock per project serializes edits; an agent run holds it for the whole run.
 _locks: dict[str, asyncio.Lock] = {}
 _runs: dict[str, tuple[str, asyncio.Task]] = {}
+_visitor_runs: dict[tuple[str, date], int] = {}
+
+
+def check_run_quota(request: Request) -> None:
+    """Public-demo guards (off unless configured): a global spend cap and runs per visitor per day."""
+    if settings.spend_cap_usd and store.total_spent() >= settings.spend_cap_usd:
+        raise HTTPException(429, "Kuota demo hari ini sudah habis. Coba lagi nanti atau jalankan Auteur secara lokal.")
+    if settings.runs_per_visitor_per_day:
+        key = (request.client.host if request.client else "unknown", date.today())
+        if _visitor_runs.get(key, 0) >= settings.runs_per_visitor_per_day:
+            raise HTTPException(
+                429, f"Batas demo {settings.runs_per_visitor_per_day} arahan per hari tercapai. Terima kasih sudah mencoba!"
+            )
+        _visitor_runs[key] = _visitor_runs.get(key, 0) + 1
 
 
 def project_lock(project_id: str) -> asyncio.Lock:
@@ -57,6 +73,29 @@ class MediaView(Media):
     preview_url: str
     thumb_url: str
     filmstrip_url: str | None
+    beats: list[float] | None = None
+
+
+def timeline_speech(p: Project) -> list[tuple[float, float]]:
+    """Timeline ranges where someone speaks, from cached transcripts; the preview ducks music there
+    (the export uses a sidechain compressor, which needs no ranges)."""
+    from auteur.transcript import Transcript
+
+    out = []
+    for c, start in zip(p.timeline.clips, p.timeline.clip_starts()):
+        cache = store.project_dir(p.id) / "media" / c.media_id / "transcript.json"
+        if not c.has_sound or not cache.exists():
+            continue
+        for turn in Transcript.model_validate_json(cache.read_text()).turns:
+            a, b = max(turn.start, c.src_in), min(turn.end, c.src_out)
+            if b > a:
+                out.append((round(start + c.to_local(a), 2), round(start + c.to_local(b), 2)))
+    return out
+
+
+def media_beats(p: Project, m: Media) -> list[float] | None:
+    f = store.project_dir(p.id) / "media" / m.id / "beats.json"
+    return json.loads(f.read_text())["beats"] if m.kind == "audio" and f.exists() else None
 
 
 class TrackView(BaseModel):
@@ -76,13 +115,17 @@ class ProjectView(BaseModel):
     history: list[CommitView]
     chat: list[ChatMessage]
     tracks: list[TrackView]
+    speech: list[tuple[float, float]]
+    spent: float
     last_render_url: str | None
     can_undo: bool
     can_redo: bool
     busy: bool
 
     @classmethod
-    def of(cls, p: Project) -> "ProjectView":
+    def of(cls, p: Project, busy: bool | None = None) -> "ProjectView":
+        """`busy=False` from handlers that hold the project lock themselves: their own lock is not
+        the agent running, and reporting it would make the editor lock the timeline."""
         base = f"/files/{p.id}/media"
         return cls(
             id=p.id,
@@ -90,18 +133,22 @@ class ProjectView(BaseModel):
             media=[
                 MediaView(
                     **m.model_dump(),
-                    preview_url=f"{base}/{m.id}/preview.mp4",
-                    thumb_url=f"{base}/{m.id}/thumb.jpg",
-                    filmstrip_url=(
-                        f"{base}/{m.id}/filmstrip.jpg"
-                        if (store.project_dir(p.id) / "media" / m.id / "filmstrip.jpg").exists() else None
+                    preview_url=f"{base}/{m.id}/preview.{'m4a' if m.kind == 'audio' else 'mp4'}",
+                    thumb_url=f"{base}/{m.id}/{'filmstrip.png' if m.kind == 'audio' else 'thumb.jpg'}",
+                    filmstrip_url=next(
+                        (f"{base}/{m.id}/{name}" for name in ("filmstrip.jpg", "filmstrip.png")
+                         if (store.project_dir(p.id) / "media" / m.id / name).exists()),
+                        None,
                     ),
+                    beats=media_beats(p, m),
                 )
                 for m in p.media.values()
             ],
             timeline=p.timeline,
             history=[CommitView(**c.model_dump(include=set(CommitView.model_fields))) for c in p.history],
             chat=p.chat,
+            spent=round(p.spent, 4),
+            speech=timeline_speech(p),
             tracks=[
                 TrackView(id=t.id, media_id=t.media_id, prompt=t.prompt, url=f"/files/{p.id}/tracks/{t.id}.json")
                 for t in p.tracks.values()
@@ -109,12 +156,20 @@ class ProjectView(BaseModel):
             last_render_url=f"/files/{p.id}/{p.last_render}" if p.last_render else None,
             can_undo=bool(p.history),
             can_redo=bool(p.redo_stack),
-            busy=project_lock(p.id).locked(),
+            busy=project_lock(p.id).locked() if busy is None else busy,
         )
 
 
 class CreateProject(BaseModel):
     name: str = Field(min_length=1, max_length=100)
+
+
+class GradeRequest(BaseModel):
+    clip_ids: list[str] | None = None
+    look: str | None = None
+    intensity: float = Field(0.7, ge=0, le=1)
+    auto: bool = True
+    match: bool = True
 
 
 class RenderRequest(BaseModel):
@@ -182,13 +237,19 @@ async def upload_media(project_id: str, file: UploadFile) -> ProjectView:
         finally:
             Path(tmp.name).unlink(missing_ok=True)
 
-        total = sum(m.duration for m in p.media.values()) + media.duration
+        if media.kind == "video" and settings.max_file_seconds and media.duration > settings.max_file_seconds:
+            shutil.rmtree(store.project_dir(p.id) / "media" / media_id, ignore_errors=True)
+            raise HTTPException(
+                400, f"Video {media.duration:.0f} detik; di demo publik maksimal {settings.max_file_seconds:.0f} detik per file"
+            )
+        # The 5-minute budget is for footage (it drives SAM and transcription cost); music is free to add.
+        total = sum(m.duration for m in p.media.values() if m.kind == "video") + (media.duration if media.kind == "video" else 0)
         if total > MAX_TOTAL_SECONDS:
             shutil.rmtree(store.project_dir(p.id) / "media" / media_id, ignore_errors=True)
             raise HTTPException(400, f"Project footage would be {total:.0f}s; the limit is {MAX_TOTAL_SECONDS}s")
         p.media[media.id] = media
         store.save(p)
-        return ProjectView.of(p)
+        return ProjectView.of(p, busy=False)
 
 
 @app.post("/projects/{project_id}/ops")
@@ -200,7 +261,7 @@ async def apply_ops(project_id: str, body: OpsRequest) -> ProjectView:
         except OpError as e:
             raise HTTPException(400, str(e)) from None
         store.save(p)
-        return ProjectView.of(p)
+        return ProjectView.of(p, busy=False)
 
 
 @app.post("/projects/{project_id}/undo")
@@ -209,7 +270,7 @@ async def undo(project_id: str) -> ProjectView:
         p = load(project_id)
         p.undo()
         store.save(p)
-        return ProjectView.of(p)
+        return ProjectView.of(p, busy=False)
 
 
 @app.post("/projects/{project_id}/redo")
@@ -218,15 +279,16 @@ async def redo(project_id: str) -> ProjectView:
         p = load(project_id)
         p.redo()
         store.save(p)
-        return ProjectView.of(p)
+        return ProjectView.of(p, busy=False)
 
 
 @app.post("/projects/{project_id}/runs")
-async def start_run(project_id: str, body: RunRequest) -> dict[str, str]:
+async def start_run(project_id: str, body: RunRequest, request: Request) -> dict[str, str]:
     load(project_id)
     lock = ensure_idle(project_id)
     if (run := _runs.get(project_id)) and not run[1].done():
         raise HTTPException(409, "The agent is already running")
+    check_run_quota(request)
     run_id = new_id("run")
     task = asyncio.create_task(run_agent(store, project_id, run_id, body.instruction, lock))
     _runs[project_id] = (run_id, task)
@@ -250,7 +312,7 @@ async def undo_run(project_id: str, run_id: str) -> ProjectView:
         if p.undo_run(run_id) == 0:
             raise HTTPException(400, "That instruction has no edits at the top of the history to undo")
         store.save(p)
-        return ProjectView.of(p)
+        return ProjectView.of(p, busy=False)
 
 
 @app.get("/projects/{project_id}/events")
@@ -275,6 +337,33 @@ async def events(project_id: str) -> EventSourceResponse:
     return EventSourceResponse(stream(), ping=15)
 
 
+@app.get("/looks")
+def looks() -> list[dict[str, str]]:
+    return [{"id": k, "label": v} for k, v in colorist.LOOK_LABELS.items()]
+
+
+@app.post("/projects/{project_id}/grade")
+async def grade_project(project_id: str, body: GradeRequest) -> ProjectView:
+    """The inspector's look buttons: the same correction, matching and looks as the agent's `warna`."""
+    if body.look is not None and body.look not in colorist.LOOKS:
+        raise HTTPException(400, f"Unknown look {body.look!r}")
+    async with ensure_idle(project_id):
+        p = load(project_id)
+        clips = [c for c in p.timeline.clips if body.clip_ids is None or c.id in body.clip_ids]
+        if not clips:
+            raise HTTPException(400, "No clips to grade")
+        results = await asyncio.to_thread(
+            colorist.grade_clips, p.media, clips, body.look, body.intensity, body.auto, body.match, None, {},
+        )
+        label = colorist.LOOK_LABELS.get(body.look or "", "Koreksi warna")
+        try:
+            p.commit("user", f"Warna: {label}", [SetGrade(clip_ids=[cid], grade=g) for cid, g, _, _ in results])
+        except OpError as e:
+            raise HTTPException(400, str(e)) from None
+        store.save(p)
+        return ProjectView.of(p, busy=False)
+
+
 @app.post("/projects/{project_id}/render")
 async def export(project_id: str, body: RenderRequest) -> ProjectView:
     """Manual export from the editor's Export button (the agent renders through its own tool)."""
@@ -294,4 +383,4 @@ async def export(project_id: str, body: RenderRequest) -> ProjectView:
             raise HTTPException(400, str(e)) from None
         p.last_render = rel
         store.save(p)
-        return ProjectView.of(p)
+        return ProjectView.of(p, busy=False)

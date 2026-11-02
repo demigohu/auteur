@@ -52,6 +52,7 @@ class Project(Model):
     chat: list[ChatMessage] = Field(default_factory=list)
     last_render: str | None = Field(None, description="Path of the latest render, relative to the project dir")
     tracks: dict[str, TrackInfo] = Field(default_factory=dict)
+    spent: float = Field(0, description="Meta Model API spend in USD across all runs")
 
     def commit(self, author: Author, label: str, ops: list[Op], run_id: str | None = None) -> Commit:
         """Apply ops atomically: if any op fails, the timeline is left unchanged."""

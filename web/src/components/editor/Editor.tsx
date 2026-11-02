@@ -4,6 +4,7 @@ import { Warning, X } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect } from "react";
 import { useEditor } from "@/lib/store";
+import { clipDuration, clipStarts } from "@/lib/time";
 import { MediaBin } from "./MediaBin";
 import { Preview } from "./Preview";
 import { SidePanel } from "./SidePanel";
@@ -54,18 +55,14 @@ function useShortcuts() {
       } else if (e.key === "Delete" || e.key === "Backspace") {
         if (s.selectedClipId) s.applyOps("Hapus klip", [{ op: "delete", clip_id: s.selectedClipId }]);
         else if (s.selectedTextId) s.applyOps("Hapus teks", [{ op: "delete_text", text_id: s.selectedTextId }]);
+        else if (s.selectedOverlayId) s.applyOps("Hapus B-roll", [{ op: "delete_overlay", overlay_id: s.selectedOverlayId }]);
+        else if (s.selectedAudioId) s.applyOps("Hapus musik", [{ op: "delete_audio", audio_id: s.selectedAudioId }]);
         s.select({});
       } else if (e.key.toLowerCase() === "s" && !mod) {
         const { clips } = s.project.timeline;
-        let start = 0;
-        for (const c of clips) {
-          const end = start + (c.src_out - c.src_in);
-          if (s.time > start + 0.1 && s.time < end - 0.1) {
-            s.applyOps("Potong klip di playhead", [{ op: "split", clip_id: c.id, at: Number(s.time.toFixed(3)) }]);
-            break;
-          }
-          start = end;
-        }
+        const starts = clipStarts(clips);
+        const i = clips.findIndex((c, k) => s.time > starts[k] + 0.1 && s.time < starts[k] + clipDuration(c) - 0.1);
+        if (i >= 0) s.applyOps("Potong klip di playhead", [{ op: "split", clip_id: clips[i].id, at: Number(s.time.toFixed(3)) }]);
       } else if (e.key === "Escape") {
         s.select({});
       }

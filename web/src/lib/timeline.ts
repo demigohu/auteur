@@ -23,7 +23,18 @@ export interface Schema {
     | SetCrop
     | SetEffects
     | SetMuted
-    | SetAspect;
+    | SetAspect
+    | SetSpeed
+    | SetTransition
+    | SetZoom
+    | SetVolume
+    | AddOverlay
+    | UpdateOverlay
+    | DeleteOverlay
+    | AddAudio
+    | UpdateAudio
+    | DeleteAudio
+    | SetFinish;
 }
 /**
  * This interface was referenced by `Schema`'s JSON-Schema
@@ -46,6 +57,10 @@ export interface Project {
   tracks: {
     [k: string]: TrackInfo;
   };
+  /**
+   * Meta Model API spend in USD across all runs
+   */
+  spent: number;
 }
 /**
  * This interface was referenced by `Schema`'s JSON-Schema
@@ -60,6 +75,11 @@ export interface Media {
   width: number;
   height: number;
   has_audio: boolean;
+  kind: "video" | "audio";
+  /**
+   * Capture time from the file's metadata (ISO 8601), if any
+   */
+  recorded_at: string | null;
 }
 /**
  * This interface was referenced by `Schema`'s JSON-Schema
@@ -69,7 +89,10 @@ export interface Timeline {
   aspect: "16:9" | "9:16" | "1:1";
   fps: number;
   clips: Clip[];
+  overlays: Overlay[];
   texts: TextItem[];
+  audio: AudioItem[];
+  finish: Finish;
 }
 /**
  * This interface was referenced by `Schema`'s JSON-Schema
@@ -80,17 +103,29 @@ export interface Clip {
   media_id: string;
   src_in: number;
   src_out: number;
+  /**
+   * 0.5 = slow motion, 2 = twice as fast; audio is muted when not 1
+   */
+  speed: number;
   grade: Grade;
   /**
-   * Empty = centered crop
+   * Empty = centered crop; times are clip-local timeline seconds
    */
   crop: CropKey[];
   follow: Follow | null;
+  zoom: Zoom | null;
+  /**
+   * Transition into this clip from the previous one
+   */
+  transition: Transition | null;
   effects: (Blur | Highlight)[];
   muted: boolean;
+  volume: number;
 }
 /**
  * Color adjustments, all 0 = untouched. Ranges are the safe bounds the renderer accepts.
+ *
+ * What each field does to pixels is defined once in auteur/grade.py (and ported to the editor).
  *
  * This interface was referenced by `Schema`'s JSON-Schema
  * via the `definition` "Grade".
@@ -110,6 +145,43 @@ export interface Grade {
    * Negative = green, positive = magenta
    */
   tint: number;
+  /**
+   * Brighten (+) or recover (-) the bright end
+   */
+  highlights: number;
+  /**
+   * Lift (+) or deepen (-) the dark end
+   */
+  shadows: number;
+  /**
+   * Lifted, matte blacks
+   */
+  fade: number;
+  /**
+   * Split-toning hue for shadows (degrees)
+   */
+  shadow_hue: number;
+  /**
+   * Split-toning strength for shadows
+   */
+  shadow_tone: number;
+  /**
+   * Split-toning hue for highlights (degrees)
+   */
+  highlight_hue: number;
+  /**
+   * Split-toning strength for highlights
+   */
+  highlight_tone: number;
+  vignette: number;
+  /**
+   * Camera log profile to convert to normal contrast before grading
+   */
+  log: "none" | "apple_log" | "slog3" | "vlog" | "generic";
+  /**
+   * Preset this grade came from, for display
+   */
+  look: string | null;
 }
 /**
  * Crop window center at a clip-local time, normalized to the source frame (0..1).
@@ -131,6 +203,27 @@ export interface CropKey {
 export interface Follow {
   track_id: string;
   object_id: string;
+}
+/**
+ * Slow push in/out over the clip (Ken Burns): scale 1 = the normal crop.
+ *
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "Zoom".
+ */
+export interface Zoom {
+  start: number;
+  end: number;
+}
+/**
+ * How a clip enters from the previous one. A crossfade overlaps the two clips by `duration`;
+ * dips fade out to a color and back in without overlapping.
+ *
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "Transition".
+ */
+export interface Transition {
+  kind: "crossfade" | "hitam" | "putih";
+  duration: number;
 }
 /**
  * This interface was referenced by `Schema`'s JSON-Schema
@@ -170,20 +263,99 @@ export interface Highlight {
   dim_background: number;
 }
 /**
+ * A B-roll clip on the second video track, at an absolute timeline time.
+ *
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "Overlay".
+ */
+export interface Overlay {
+  id: string;
+  media_id: string;
+  src_in: number;
+  src_out: number;
+  start: number;
+  /**
+   * full covers the frame; the corners are picture-in-picture
+   */
+  layout: "full" | "kanan_atas" | "kiri_atas" | "kanan_bawah" | "kiri_bawah";
+  grade: Grade;
+  muted: boolean;
+}
+/**
  * This interface was referenced by `Schema`'s JSON-Schema
  * via the `definition` "TextItem".
  */
 export interface TextItem {
   id: string;
+  /**
+   * Line breaks (\n) are kept as-is by both the preview and the renderer
+   */
   text: string;
   start: number;
   end: number;
   style: "subtitle" | "title" | "caption";
   /**
+   * bersih: clean white; tebal: big bold caps; karaoke: spoken word lights up; kotak: spoken word in a color box; pop: words appear as they are spoken
+   */
+  look: "bersih" | "tebal" | "karaoke" | "kotak" | "pop";
+  /**
+   * Accent for highlighted/emphasized words
+   */
+  color: string;
+  words: TextWord[];
+  /**
    * Center, normalized to output frame
    */
   x: number;
   y: number;
+}
+/**
+ * One spoken word of a subtitle, in timeline seconds, for word-by-word looks.
+ *
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "TextWord".
+ */
+export interface TextWord {
+  text: string;
+  start: number;
+  end: number;
+  emphasis: boolean;
+}
+/**
+ * Music on the audio track, at an absolute timeline time.
+ *
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "AudioItem".
+ */
+export interface AudioItem {
+  id: string;
+  media_id: string;
+  src_in: number;
+  src_out: number;
+  start: number;
+  volume: number;
+  fade_in: number;
+  fade_out: number;
+  /**
+   * Lower the music while someone speaks
+   */
+  duck: boolean;
+}
+/**
+ * Whole-video finishing touches.
+ *
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "Finish".
+ */
+export interface Finish {
+  /**
+   * Cinema bars to this aspect ratio, e.g. 2.39
+   */
+  letterbox: number | null;
+  /**
+   * Film grain amount
+   */
+  grain: number;
 }
 /**
  * This interface was referenced by `Schema`'s JSON-Schema
@@ -207,6 +379,17 @@ export interface Commit {
     | SetEffects
     | SetMuted
     | SetAspect
+    | SetSpeed
+    | SetTransition
+    | SetZoom
+    | SetVolume
+    | AddOverlay
+    | UpdateOverlay
+    | DeleteOverlay
+    | AddAudio
+    | UpdateAudio
+    | DeleteAudio
+    | SetFinish
   )[];
   run_id: string | null;
   at: string;
@@ -284,6 +467,9 @@ export interface AddText {
   start: number;
   end: number;
   style: "subtitle" | "title" | "caption";
+  look: "bersih" | "tebal" | "karaoke" | "kotak" | "pop";
+  color: string;
+  words: TextWord[];
   x: number;
   y: number;
 }
@@ -297,6 +483,8 @@ export interface UpdateText {
   text: string | null;
   start: number | null;
   end: number | null;
+  look: ("bersih" | "tebal" | "karaoke" | "kotak" | "pop") | null;
+  color: string | null;
   x: number | null;
   y: number | null;
 }
@@ -358,6 +546,139 @@ export interface SetMuted {
 export interface SetAspect {
   op: "set_aspect";
   aspect: "16:9" | "9:16" | "1:1";
+}
+/**
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "SetSpeed".
+ */
+export interface SetSpeed {
+  op: "set_speed";
+  clip_id: string;
+  /**
+   * 0.5 = slow motion; the clip's source range stays the same
+   */
+  speed: number;
+}
+/**
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "SetTransition".
+ */
+export interface SetTransition {
+  op: "set_transition";
+  clip_id: string;
+  /**
+   * Into this clip from the previous one; null removes it
+   */
+  transition: Transition | null;
+}
+/**
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "SetZoom".
+ */
+export interface SetZoom {
+  op: "set_zoom";
+  clip_id: string;
+  zoom: Zoom | null;
+}
+/**
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "SetVolume".
+ */
+export interface SetVolume {
+  op: "set_volume";
+  clip_id: string;
+  volume: number;
+}
+/**
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "AddOverlay".
+ */
+export interface AddOverlay {
+  op: "add_overlay";
+  id: string | null;
+  media_id: string;
+  src_in: number;
+  src_out: number;
+  /**
+   * Timeline time the B-roll appears
+   */
+  start: number;
+  layout: "full" | "kanan_atas" | "kiri_atas" | "kanan_bawah" | "kiri_bawah";
+}
+/**
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "UpdateOverlay".
+ */
+export interface UpdateOverlay {
+  op: "update_overlay";
+  overlay_id: string;
+  src_in: number | null;
+  src_out: number | null;
+  start: number | null;
+  layout: ("full" | "kanan_atas" | "kiri_atas" | "kanan_bawah" | "kiri_bawah") | null;
+  grade: Grade | null;
+}
+/**
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "DeleteOverlay".
+ */
+export interface DeleteOverlay {
+  op: "delete_overlay";
+  overlay_id: string;
+}
+/**
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "AddAudio".
+ */
+export interface AddAudio {
+  op: "add_audio";
+  id: string | null;
+  media_id: string;
+  src_in: number;
+  /**
+   * Defaults to the end of the music or of the video
+   */
+  src_out: number | null;
+  start: number;
+  volume: number;
+  fade_in: number;
+  fade_out: number;
+  duck: boolean;
+}
+/**
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "UpdateAudio".
+ */
+export interface UpdateAudio {
+  op: "update_audio";
+  audio_id: string;
+  src_in: number | null;
+  src_out: number | null;
+  start: number | null;
+  volume: number | null;
+  fade_in: number | null;
+  fade_out: number | null;
+  duck: boolean | null;
+}
+/**
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "DeleteAudio".
+ */
+export interface DeleteAudio {
+  op: "delete_audio";
+  audio_id: string;
+}
+/**
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "SetFinish".
+ */
+export interface SetFinish {
+  op: "set_finish";
+  /**
+   * Cinema bars to this ratio (2.39 = scope); null removes
+   */
+  letterbox: number | null;
+  grain: number;
 }
 /**
  * This interface was referenced by `Schema`'s JSON-Schema

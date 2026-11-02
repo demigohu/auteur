@@ -30,16 +30,32 @@ def _run(args: list[str]) -> str:
     return proc.stdout
 
 
+CREATION_TAGS = ("com.apple.quicktime.creationdate", "creation_time", "date")
+
+
 def probe(path: Path) -> dict:
     out = _run([
         "ffprobe", "-v", "error", "-show_entries",
-        "format=duration:stream=codec_type,width,height,avg_frame_rate:stream_side_data=rotation",
+        "format=duration:format_tags:stream=codec_type,width,height,avg_frame_rate,disposition:"
+        "stream_tags:stream_side_data=rotation",
         "-of", "json", str(path),
     ])
     info = json.loads(out)
-    video = next((s for s in info.get("streams", []) if s["codec_type"] == "video"), None)
+    streams = info.get("streams", [])
+    tags = {**{k: v for s in streams for k, v in s.get("tags", {}).items()}, **info["format"].get("tags", {})}
+    recorded_at = next((tags[k] for k in CREATION_TAGS if k in tags), None)
+    # Cover art in an MP3 shows up as a "video" stream; it is not footage.
+    video = next(
+        (s for s in streams if s["codec_type"] == "video" and not s.get("disposition", {}).get("attached_pic")), None
+    )
+    has_audio = any(s["codec_type"] == "audio" for s in streams)
     if video is None:
-        raise MediaError("File has no video stream")
+        if not has_audio:
+            raise MediaError("File has no video or audio stream")
+        return {
+            "duration": round(float(info["format"]["duration"]), 3), "fps": 0.0, "width": 0, "height": 0,
+            "has_audio": True, "kind": "audio", "recorded_at": None,
+        }
     num, _, den = video["avg_frame_rate"].partition("/")
     fps = float(num) / float(den or 1) if float(den or 1) else 30.0
     width, height = video["width"], video["height"]
@@ -52,7 +68,9 @@ def probe(path: Path) -> dict:
         "fps": round(fps, 3),
         "width": width,
         "height": height,
-        "has_audio": any(s["codec_type"] == "audio" for s in info["streams"]),
+        "has_audio": has_audio,
+        "kind": "video",
+        "recorded_at": recorded_at,
     }
 
 
@@ -67,6 +85,8 @@ def ingest(project_dir: Path, media_id: str, name: str, upload: Path) -> Media:
     source = d / f"source{upload.suffix.lower() or '.mp4'}"
     upload.replace(source)
     info = probe(source)
+    if info["kind"] == "audio":
+        return _ingest_audio(d, media_id, name, source, info)
 
     _run([
         "ffmpeg", "-y", "-loglevel", "error", "-i", str(source),
@@ -83,6 +103,30 @@ def ingest(project_dir: Path, media_id: str, name: str, upload: Path) -> Media:
     ])
     make_filmstrip(source, d / "filmstrip.jpg", info["duration"])
     return Media(id=media_id, name=name, path=str(source), **info)
+
+
+def _ingest_audio(d: Path, media_id: str, name: str, source: Path, info: dict) -> Media:
+    """Music: a browser-friendly copy, a waveform picture for the timeline, and its beats."""
+    from auteur.beats import analyze
+
+    _run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(source), "-vn", "-c:a", "aac", "-b:a", "160k",
+          "-movflags", "+faststart", str(d / "preview.m4a")])
+    width = max(200, min(4000, round(info["duration"] * 40)))
+    _run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(source), "-filter_complex",
+          f"aformat=channel_layouts=mono,showwavespic=s={width}x90:colors=#eea53f", "-frames:v", "1",
+          str(d / "filmstrip.png")])
+    (d / "beats.json").write_text(analyze(source).model_dump_json())
+    return Media(id=media_id, name=name, path=str(source), **info)
+
+
+def load_beats(project_dir: Path, media_id: str):
+    from auteur.beats import Beats, analyze
+
+    f = media_dir(project_dir, media_id) / "beats.json"
+    if not f.exists():
+        source = next(media_dir(project_dir, media_id).glob("source.*"))
+        f.write_text(analyze(source).model_dump_json())
+    return Beats.model_validate_json(f.read_text())
 
 
 def make_filmstrip(source: Path, out: Path, duration: float) -> None:

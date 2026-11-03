@@ -29,7 +29,7 @@ export function DiveIn() {
         <motion.div style={reduce ? undefined : { y: textY, scale: textScale }} className="absolute inset-0 grid place-items-center text-center text-paper">
           <div>
             <p className="display text-[clamp(90px,19vw,340px)] leading-[0.82] [paint-order:stroke_fill] [-webkit-text-stroke:6px_var(--ink)]">Dive in.</p>
-            <p className="mt-2 font-serif text-[clamp(22px,2.6vw,42px)] italic text-paper [paint-order:stroke_fill] [-webkit-text-stroke:4px_var(--ink)]">the cuts are down here</p>
+            <p className="mt-2 font-serif text-[clamp(22px,2.6vw,42px)] italic text-paper [paint-order:stroke_fill] [-webkit-text-stroke:4px_var(--ink)]">test runs below</p>
           </div>
         </motion.div>
       </div>
@@ -41,12 +41,12 @@ type Cut = { title: string; metric: string; unit: string; tags: string; color: s
 
 /** Real numbers from Auteur's own runs and test fixtures (docs/PRD.md, "Measured"). */
 const CUTS: Cut[] = [
-  { title: "Day in my life", metric: "167s", unit: "brief to export", tags: "9:16 · music · beat cuts", color: "#ff4f1f", ink: "#121110", img: "/assets/work-1.jpg", note: "88s of clips, 30s out", brief: "make a 30s day-in-my-life from these clips", did: ["Watched 88 seconds of night-walk clips and put them in time order", "Detected 120 BPM in the lofi track and cut on every bar", "Slowed the best walking shot to 0.5× (shot at 60 fps)", "Crossfades, a slow zoom on the stage, a warm grade", "Checked subject framing and beat sync, then exported 9:16"] },
-  { title: "On the beat", metric: "<10ms", unit: "cut to beat", tags: "lofi 120 bpm · every bar", color: "#c8f53c", ink: "#0e3a22", img: "/assets/work-2.jpg", note: "spectral flux + DP beats", brief: "cut this montage to the music", did: ["Beat grid from spectral flux and dynamic programming", "Snapped every cut to the nearest beat", "Checker flags any cut more than 150ms off"] },
-  { title: "Blur the crowd", metric: "83%", unit: "subject coverage", tags: "SAM 3.1 · 5s windows", color: "#ff8fcf", ink: "#121110", img: "/assets/work-3.jpg", note: "up from 53%", brief: "blur everyone in the background", did: ["Tracked people with SAM 3.1 in 5-second windows", "Stitched identities across windows by overlap", "Excluded the subject, blurred the rest frame by frame"] },
-  { title: "Captions that land", metric: "86%", unit: "words within 150ms", tags: "voice transcribe · karaoke", color: "#ffc22e", ink: "#121110", img: "/assets/work-4.jpg", note: "up from 37%", brief: "add bold subtitles", did: ["Word timing from Voice Transcribe, aligned to the audio envelope", "Removed doubled words from recognizer restarts", "Karaoke highlight in Montserrat, same renderer as export"] },
-  { title: "Graded from LOG", metric: "1.4", unit: "/255 preview vs export", tags: "Apple Log · S-Log3 · V-Log", color: "#2e3bff", ink: "#f2eee3", img: "/assets/work-5.jpg", note: "what you see is what ships", brief: "grade this footage, it's S-Log3", did: ["Converted with the maker's LOG curve", "Auto exposure and white balance per clip", "Matched clips to each other, then applied the look"] },
-  { title: "Talk over music", metric: "−4.6", unit: "dB ducking under speech", tags: "sidechain · auto", color: "#f2eee3", ink: "#121110", img: "/assets/work-6.jpg", note: "music steps aside", brief: "keep the music but I need to hear myself", did: ["Mapped where speech happens from the transcript", "Sidechain ducking in the export, the same ranges in preview", "Faded the track in and out at the ends"] },
+  { title: "Day in my life", metric: "167s", unit: "brief to export", tags: "9:16 · music · beat cuts", color: "#ff4f1f", ink: "#121110", img: "/assets/work-1.webp", note: "88s of clips, 30s out", brief: "make a 30s day-in-my-life from these clips", did: ["Watched 88 seconds of night-walk clips and put them in time order", "Detected 120 BPM in the lofi track and cut on every bar", "Slowed the best walking shot to 0.5× (shot at 60 fps)", "Crossfades, a slow zoom on the stage, a warm grade", "Checked subject framing and beat sync, then exported 9:16"] },
+  { title: "On the beat", metric: "<10ms", unit: "cut to beat", tags: "lofi 120 bpm · every bar", color: "#c8f53c", ink: "#0e3a22", img: "/assets/work-2.webp", note: "spectral flux + DP beats", brief: "cut this montage to the music", did: ["Beat grid from spectral flux and dynamic programming", "Snapped every cut to the nearest beat", "Checker flags any cut more than 150ms off"] },
+  { title: "Blur the crowd", metric: "83%", unit: "subject coverage", tags: "SAM 3.1 · 5s windows", color: "#ff8fcf", ink: "#121110", img: "/assets/work-3.webp", note: "up from 53%", brief: "blur everyone in the background", did: ["Tracked people with SAM 3.1 in 5-second windows", "Stitched identities across windows by overlap", "Excluded the subject, blurred the rest frame by frame"] },
+  { title: "Captions that land", metric: "86%", unit: "words within 150ms", tags: "voice transcribe · karaoke", color: "#ffc22e", ink: "#121110", img: "/assets/work-4.webp", note: "up from 37%", brief: "add bold subtitles", did: ["Word timing from Voice Transcribe, aligned to the audio envelope", "Removed doubled words from recognizer restarts", "Karaoke highlight in Montserrat, same renderer as export"] },
+  { title: "Graded from LOG", metric: "1.4", unit: "/255 preview vs export", tags: "Apple Log · S-Log3 · V-Log", color: "#2e3bff", ink: "#f2eee3", img: "/assets/work-5.webp", note: "what you see is what ships", brief: "grade this footage, it's S-Log3", did: ["Converted with the maker's LOG curve", "Auto exposure and white balance per clip", "Matched clips to each other, then applied the look"] },
+  { title: "Talk over music", metric: "−4.6", unit: "dB ducking under speech", tags: "sidechain · auto", color: "#f2eee3", ink: "#121110", img: "/assets/work-6.webp", note: "music steps aside", brief: "keep the music but I need to hear myself", did: ["Mapped where speech happens from the transcript", "Sidechain ducking in the export, the same ranges in preview", "Faded the track in and out at the ends"] },
 ];
 
 const STEP = 360 / CUTS.length;
@@ -74,9 +74,9 @@ export function Work() {
   return (
     <section id="work" ref={ref} className={`mat relative text-paper ${reduce ? "py-32" : "h-[420vh]"}`}>
       <div className={`${reduce ? "" : "sticky top-0 h-[100dvh]"} overflow-hidden px-[var(--gutter)] pt-28`}>
-        <Kicker tone="lime">(04) Selected cuts</Kicker>
-        <h2 className="display mt-5 text-[clamp(56px,7vw,112px)]">Cuts we&apos;re</h2>
-        <p className="pb-2 font-serif text-[clamp(48px,6vw,96px)] leading-[0.95] italic text-lime">loud about.</p>
+        <Kicker tone="lime">(04) Test runs</Kicker>
+        <h2 className="display mt-5 text-[clamp(56px,7vw,112px)]">Test runs,</h2>
+        <p className="pb-2 font-serif text-[clamp(48px,6vw,96px)] leading-[0.95] italic text-lime">with the numbers.</p>
 
         {reduce ? (
           <div className="mt-12 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
@@ -121,7 +121,7 @@ export function Work() {
             </div>
             <div className="pointer-events-auto absolute bottom-7 left-1/2 flex -translate-x-1/2 items-center gap-3 rounded-full bg-paper py-1.5 pr-2 pl-1.5 text-ink">
               <span className="relative size-9 overflow-hidden rounded-full border-2 border-ink" style={{ background: cut.color }}>
-                <Image src={cut.img} alt="" fill sizes="36px" className="object-cover mix-blend-multiply" />
+                <Image src={cut.img} alt="" fill sizes="36px" className="object-cover" />
               </span>
               <span className="pr-1">
                 <span className="block text-[14px] leading-tight font-semibold">{cut.title}</span>
@@ -140,7 +140,7 @@ export function Work() {
                   <path id="work-badge" d="M50,50 m-35,0 a35,35 0 1,1 70,0 a35,35 0 1,1 -70,0" />
                 </defs>
                 <text fill="#0e3a22" fontSize="9" letterSpacing="2.4" fontFamily="var(--font-geist-mono)">
-                  <textPath href="#work-badge">CLICK A CARD ✺ SEE THE NUMBERS ✺ </textPath>
+                  <textPath href="#work-badge">CLICK A CARD ✺ SEE WHAT IT DID ✺ </textPath>
                 </text>
               </svg>
               <Sparkle size={26} weight="fill" className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-tomato" />
@@ -173,14 +173,14 @@ function CutDrawer({ cut, onClose }: { cut: Cut | null; onClose: () => void }) {
             className="fixed top-0 right-0 bottom-0 z-[140] w-full max-w-[580px] overflow-y-auto border-l-2 border-ink bg-paper text-ink"
           >
             <div className="flex items-center justify-between border-b-2 border-ink px-7 py-5">
-              <span className="label text-[11px] text-ink/60">Selected cut</span>
+              <span className="label text-[11px] text-ink/60">Test run</span>
               <button type="button" onClick={onClose} autoFocus aria-label="Close" className="grid size-10 place-items-center rounded-full border-2 border-ink hover:bg-ink hover:text-paper">
                 <X size={16} weight="bold" />
               </button>
             </div>
             <div className="p-7">
               <div className="relative aspect-[16/10] overflow-hidden rounded-[18px] border-2 border-ink" style={{ background: cut.color }}>
-                <Image src={cut.img} alt="" fill sizes="580px" className="object-cover mix-blend-multiply" />
+                <Image src={cut.img} alt="" fill sizes="580px" className="object-cover" />
                 <p className="display absolute bottom-4 left-5 text-[64px] leading-none" style={{ color: cut.ink }}>
                   {cut.metric}
                 </p>

@@ -17,7 +17,7 @@ const EASE_OUT = [0.16, 1, 0.3, 1] as const;
 /** Where a brief waits for the editor to pick it up (AgentTab prefills its input from it). */
 export const briefKey = (projectId: string) => `auteur:brief:${projectId}`;
 
-function untitled(files: File[]): string {
+export function untitled(files: File[] = []): string {
   const first = files.find((f) => f.type.startsWith("video/"));
   return first ? first.name.replace(/\.[^.]+$/, "") : `Untitled ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
 }
@@ -175,7 +175,7 @@ function DialogBody({ draft, onClose }: { draft: Draft; onClose: () => void }) {
       </fieldset>
 
       <div className="mt-6">
-        <p className="label text-[10px] text-ink/60">Footage and music</p>
+        <p className="label text-[10px] text-ink/60">Footage and music (optional)</p>
         <button
           type="button"
           onClick={() => input.current?.click()}
@@ -250,7 +250,7 @@ function DialogBody({ draft, onClose }: { draft: Draft; onClose: () => void }) {
       )}
 
       <div className="mt-7 flex flex-wrap items-center justify-between gap-4">
-        <SubmitButton busy={Boolean(status)}>{status ?? "Create project"}</SubmitButton>
+        <SubmitButton busy={Boolean(status)}>{status ?? (files.length ? "Create project" : "Create blank project")}</SubmitButton>
         <p className="rotate-[-3deg] font-hand text-[20px] text-ink/55">{files.length ? "the agent can start right away." : "footage can come later, too."}</p>
       </div>
     </form>

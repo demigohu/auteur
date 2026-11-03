@@ -1,68 +1,6 @@
 "use client";
 
-import { ArrowRight, CircleNotch, Eye, EyeSlash } from "@phosphor-icons/react";
-import { useId, useState } from "react";
-
-/** Underlined field with a mono label, as on the reference contact form (docs/DESIGN.md, "Forms"). */
-export function Field(props: {
-  label: string;
-  name: string;
-  type?: "text" | "email" | "password";
-  autoComplete?: string;
-  placeholder?: string;
-  defaultValue?: string;
-  error?: string | null;
-  hint?: string;
-  required?: boolean;
-  minLength?: number;
-  autoFocus?: boolean;
-}) {
-  const id = useId();
-  const [shown, setShown] = useState(false);
-  const password = props.type === "password";
-  return (
-    <div>
-      <label htmlFor={id} className="label text-[10px] text-ink/60">
-        {props.label}
-      </label>
-      <div
-        className={`mt-1.5 flex items-center border-b-2 transition-colors focus-within:border-ink ${
-          props.error ? "border-tomato" : "border-ink/25"
-        }`}
-      >
-        <input
-          id={id}
-          name={props.name}
-          type={password && shown ? "text" : (props.type ?? "text")}
-          autoComplete={props.autoComplete}
-          placeholder={props.placeholder}
-          defaultValue={props.defaultValue}
-          required={props.required}
-          minLength={props.minLength}
-          autoFocus={props.autoFocus}
-          aria-invalid={Boolean(props.error)}
-          aria-describedby={props.error || props.hint ? `${id}-note` : undefined}
-          className="w-full bg-transparent py-2 text-[17px] text-ink placeholder:text-ink/30 focus:outline-none"
-        />
-        {password && (
-          <button
-            type="button"
-            onClick={() => setShown(!shown)}
-            aria-label={shown ? "Hide password" : "Show password"}
-            className="shrink-0 rounded-full p-1.5 text-ink/50 transition-colors hover:text-ink"
-          >
-            {shown ? <EyeSlash size={17} /> : <Eye size={17} />}
-          </button>
-        )}
-      </div>
-      {(props.error || props.hint) && (
-        <p id={`${id}-note`} className={`mt-1.5 text-[13px] ${props.error ? "text-tomato" : "text-ink/50"}`}>
-          {props.error ?? props.hint}
-        </p>
-      )}
-    </div>
-  );
-}
+import { ArrowRight, CircleNotch } from "@phosphor-icons/react";
 
 /** Pill choices; the chosen one goes ink with a lime label. */
 export function Chips<T extends string>(props: { label: string; options: readonly { value: T; label: string }[]; value: T; onChange: (v: T) => void }) {

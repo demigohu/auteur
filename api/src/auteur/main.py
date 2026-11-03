@@ -8,11 +8,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException, Request, Response, UploadFile
+from fastapi import FastAPI, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 from starlette.types import ASGIApp, Receive, Scope, Send
 from sse_starlette.sse import EventSourceResponse
 
@@ -22,25 +23,38 @@ from auteur.config import settings
 from auteur.events import bus
 from auteur.media import MAX_TOTAL_SECONDS, MediaError, ingest
 from auteur.render import RenderError, render
-from auteur.store import EmailTaken, NotFound, Store, User
+from auteur.auth import ClerkAuth
+from auteur.store import NotFound, Store
 from auteur.timeline import Media, Op, OpError, Project, Timeline
 from auteur.timeline.history import ChatMessage
 from auteur.tracking import load_track
 from auteur.timeline.models import Aspect
 from auteur.timeline.ops import SetGrade, new_id
 
-SESSION_COOKIE = "auteur_session"
 # Everything else needs a signed-in account. Media files stay public: their project ids are unguessable
 # and <video> elements cannot attach credentials cross-origin anyway.
-PUBLIC_PATHS = ("/health", "/auth/", "/files/", "/looks", "/docs", "/openapi.json")
+PUBLIC_PATHS = ("/health", "/files/", "/looks", "/docs", "/openapi.json")
 
 app = FastAPI(title="Auteur Labs API")
 store = Store(settings.data_dir)
+clerk = (
+    ClerkAuth(settings.clerk_publishable_key, settings.cors_origins, settings.clerk_jwks_url)
+    if settings.clerk_publishable_key
+    else None
+)
+
+
+def session_token(request: Request) -> str | None:
+    """Bearer token from fetches, or Clerk's `__session` cookie from the event stream."""
+    header = request.headers.get("authorization", "")
+    if header.lower().startswith("bearer "):
+        return header[7:].strip()
+    return request.cookies.get("__session")
 
 
 class RequireAccount:
     """Plain ASGI middleware (not BaseHTTPMiddleware, which buffers the agent's event stream): every
-    non-public request needs a session, and /projects/{id}/... must belong to that session's user."""
+    non-public request needs a Clerk session, and /projects/{id}/... must belong to that account."""
 
     def __init__(self, app: ASGIApp) -> None:
         self.app = app
@@ -48,17 +62,22 @@ class RequireAccount:
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http" or scope["method"] == "OPTIONS" or scope["path"].startswith(PUBLIC_PATHS):
             return await self.app(scope, receive, send)
-        user = store.session_user(Request(scope).cookies.get(SESSION_COOKIE))
-        if user is None:
+        if clerk is None:
+            detail = "Accounts are not configured: set CLERK_PUBLISHABLE_KEY in api/.env"
+            return await JSONResponse({"detail": detail}, 503)(scope, receive, send)
+        # Verification may fetch Clerk's signing keys (cached for an hour), so keep it off the event loop.
+        account = await run_in_threadpool(clerk.user_id, session_token(Request(scope)))
+        if account is None:
             return await JSONResponse({"detail": "Sign in to continue"}, 401)(scope, receive, send)
+        store.seen(account)
         if m := re.match(r"^/projects/([^/]+)", scope["path"]):
             try:
                 owner = store.owner(m[1])
             except NotFound:
                 owner = None
-            if owner != user.id:
+            if owner != account:
                 return await JSONResponse({"detail": f"Project {m[1]} not found"}, 404)(scope, receive, send)
-        scope.setdefault("state", {})["user"] = user
+        scope.setdefault("state", {})["account"] = account
         await self.app(scope, receive, send)
 
 
@@ -82,9 +101,12 @@ _visitor_runs: dict[tuple[str, date], int] = {}
 
 
 def check_run_quota(request: Request) -> None:
-    """Public-demo guards (off unless configured): a global spend cap and runs per visitor per day."""
+    """Spend guards (each off unless configured): a global cap, a cap per account, and runs per visitor
+    per day."""
     if settings.spend_cap_usd and store.total_spent() >= settings.spend_cap_usd:
         raise HTTPException(429, "Today's demo budget is used up. Try again tomorrow, or run Auteur locally.")
+    if settings.user_spend_cap_usd and store.spent_by(request.state.account) >= settings.user_spend_cap_usd:
+        raise HTTPException(429, f"This account has used its ${settings.user_spend_cap_usd:.2f} of agent runs. Manual editing still works.")
     if settings.runs_per_visitor_per_day:
         key = (request.client.host if request.client else "unknown", date.today())
         if _visitor_runs.get(key, 0) >= settings.runs_per_visitor_per_day:
@@ -238,26 +260,6 @@ class ProjectSummary(BaseModel):
         )
 
 
-EMAIL = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
-
-
-class SignUp(BaseModel):
-    name: str = Field(min_length=1, max_length=80)
-    email: str = Field(pattern=EMAIL, max_length=200)
-    password: str = Field(min_length=8, max_length=200)
-
-
-class SignIn(BaseModel):
-    email: str = Field(pattern=EMAIL, max_length=200)
-    password: str = Field(min_length=1, max_length=200)
-
-
-class UserView(BaseModel):
-    id: str
-    email: str
-    name: str
-
-
 class GradeRequest(BaseModel):
     clip_ids: list[str] | None = None
     look: str | None = None
@@ -298,59 +300,14 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-def start_session(response: Response, user: User) -> UserView:
-    response.set_cookie(
-        SESSION_COOKIE,
-        store.new_session(user),
-        max_age=60 * 60 * 24 * 30,
-        httponly=True,
-        samesite="lax",
-        secure=settings.secure_cookies,
-    )
-    return UserView(id=user.id, email=user.email, name=user.name)
-
-
-@app.post("/auth/signup")
-def sign_up(body: SignUp, response: Response) -> UserView:
-    try:
-        user = store.create_user(body.email, body.name, body.password)
-    except EmailTaken:
-        raise HTTPException(409, "An account with that email already exists. Sign in instead.") from None
-    return start_session(response, user)
-
-
-@app.post("/auth/login")
-def sign_in(body: SignIn, response: Response) -> UserView:
-    user = store.authenticate(body.email, body.password)
-    if user is None:
-        raise HTTPException(401, "That email and password don't match an account.")
-    return start_session(response, user)
-
-
-@app.post("/auth/logout")
-def sign_out(request: Request, response: Response) -> dict[str, str]:
-    if token := request.cookies.get(SESSION_COOKIE):
-        store.end_session(token)
-    response.delete_cookie(SESSION_COOKIE)
-    return {"status": "ok"}
-
-
-@app.get("/auth/me")
-def me(request: Request) -> UserView:
-    user = store.session_user(request.cookies.get(SESSION_COOKIE))
-    if user is None:
-        raise HTTPException(401, "Sign in to continue")
-    return UserView(id=user.id, email=user.email, name=user.name)
-
-
 @app.get("/projects")
 def list_projects(request: Request) -> list[ProjectSummary]:
-    return [ProjectSummary.of(p, at) for p, at in store.list(request.state.user.id)]
+    return [ProjectSummary.of(p, at) for p, at in store.list(request.state.account)]
 
 
 @app.post("/projects")
 def create_project(body: CreateProject, request: Request) -> ProjectView:
-    p = store.create(body.name, owner_id=request.state.user.id)
+    p = store.create(body.name, owner_id=request.state.account)
     p.timeline = p.timeline.model_copy(update={"aspect": body.aspect, "fps": body.fps})
     store.save(p)
     return ProjectView.of(p)

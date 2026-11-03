@@ -1,17 +1,17 @@
 "use client";
 
-import { ArrowDown, Heart } from "@phosphor-icons/react";
+import { ArrowDown } from "@phosphor-icons/react";
 import { gsap } from "gsap";
 import { type MotionValue, motion, useReducedMotion, useScroll, useTransform } from "motion/react";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { useExperience } from "./experience";
-import { PillButton, RotatingBadge, Starburst } from "./primitives";
+import { PillButton, RotatingBadge } from "./primitives";
 
 const EASE_OUT = [0.16, 1, 0.3, 1] as const;
 const EASE_BACK = [0.34, 1.56, 0.64, 1] as const;
 
-const BRIEFS = ["make a 30s vlog", "cut the ums", "reframe it to 9:16", "grade it warm", "blur the plates", "sync it to the beat"];
+const BRIEFS = ["make a 30s vlog", "cut the ums", "reframe it to 9:16", "grade it warm", "blur the plates", "cut on the beat"];
 
 function Typewriter() {
   const reduce = useReducedMotion();
@@ -94,15 +94,23 @@ function Word({ text, start, shaky }: { text: string; start: number; shaky?: boo
   );
 }
 
-/** The card set into the first headline line, cycling through three facts (CSS `tile` keyframes). */
+const SHOTS = ["/assets/hero-1.webp", "/assets/hero-2.webp", "/assets/hero-3.webp"];
+
+/**
+ * A small monitor set into the first headline line. It hard-cuts between three shots every 1.6s, with a
+ * REC badge, a timecode and a playhead running along the bottom, like the preview in the editor.
+ */
 function Tile() {
   const reduce = useReducedMotion();
   const { entered } = useExperience();
-  const slides = [
-    { text: "9:16\nauto", bg: "var(--blue)", fg: "var(--paper)" },
-    { text: "-eee", bg: "var(--lime)", fg: "var(--forest)" },
-    { text: "zero\nscrub", bg: "var(--tomato)", fg: "var(--ink)" },
-  ];
+  const [shot, setShot] = useState(0);
+
+  useEffect(() => {
+    if (reduce || !entered) return;
+    const t = setInterval(() => setShot((v) => (v + 1) % SHOTS.length), 1600);
+    return () => clearInterval(t);
+  }, [reduce, entered]);
+
   return (
     <motion.span
       className="relative inline-block h-[0.74em] w-[0.92em] shrink-0 align-middle"
@@ -112,18 +120,24 @@ function Tile() {
       style={{ rotate: -4 }}
       aria-hidden
     >
-      <span className="absolute inset-0 overflow-hidden rounded-[0.1em] border-[3px] border-ink">
-        {slides.map((s, i) => (
-          <span
-            key={s.text}
-            className="tile-slide absolute inset-0 flex items-center justify-center text-center text-[0.2em] leading-[0.9] whitespace-pre-line"
-            style={{ background: s.bg, color: s.fg, animationDelay: `${i * 2}s` }}
-          >
-            {s.text}
-          </span>
+      <span className="absolute inset-0 overflow-hidden rounded-[0.1em] border-[3px] border-ink bg-ink">
+        {SHOTS.map((src, i) => (
+          <Image key={src} src={src} alt="" fill sizes="300px" priority={i === 0} className={`object-cover ${i === shot ? "opacity-100" : "opacity-0"}`} />
         ))}
-        <span className="absolute right-[0.06em] bottom-[0.05em] text-tomato">
-          <Heart weight="fill" className="beat size-[0.13em]" />
+        <span className="absolute top-[0.05em] left-[0.05em] flex items-center gap-[0.02em] rounded-[0.02em] bg-ink/80 px-[0.03em] py-[0.01em] font-mono text-[0.06em] leading-none tracking-normal text-paper">
+          <span className="size-[0.6em] animate-pulse rounded-full bg-[#ff3b30]" /> REC
+        </span>
+        <span className="absolute right-[0.05em] bottom-[0.09em] font-mono text-[0.055em] leading-none tracking-normal text-paper tabular-nums [text-shadow:0_1px_0_#000]">
+          00:0{shot * 2 + 1}:12
+        </span>
+        <span className="absolute inset-x-0 bottom-0 h-[0.04em] bg-ink/70">
+          <motion.span
+            key={shot}
+            className="block h-full bg-tomato"
+            initial={{ width: "0%" }}
+            animate={{ width: reduce ? "40%" : "100%" }}
+            transition={{ duration: 1.6, ease: "linear" }}
+          />
         </span>
       </span>
       <span className="absolute -top-[0.06em] left-1/2 h-[0.12em] w-[0.42em] -translate-x-1/2 rotate-[-6deg] bg-[#e8dcc0]/90 shadow-sm" />
@@ -187,36 +201,38 @@ export function Hero() {
       <div className="relative px-[var(--gutter)]">
         <motion.div {...fade(0.5)} className="label flex items-center justify-between text-[11px] text-ink/70">
           <span>(01) AI video editor</span>
-          <span className="hidden md:inline">Muse Spark + SAM 3.1 / built on Meta</span>
+          <span className="hidden md:inline">Built on Muse Spark, SAM 3.1 and Voice</span>
         </motion.div>
         <motion.p {...fade(0.55)} className="mt-5 font-mono text-[clamp(15px,1.5vw,21px)] md:mt-7">
           <Typewriter />
         </motion.p>
 
         <h1 className="display mt-3 text-[clamp(64px,19vw,300px)] leading-[0.86] md:mt-2 md:text-[clamp(78px,11.6vw,300px)]">
-          <span className="sr-only">Shoot raw. Just say cut.</span>
+          <span className="sr-only">Say the edit. Get the cut.</span>
           <motion.span aria-hidden className="flex flex-wrap items-center gap-x-[0.18em]" style={reduce ? undefined : { x: line1 }}>
             <Tile />
-            <Word text="Shoot" start={0.1} />
-            <Word text="raw." start={0.28} shaky />
+            <Word text="Say" start={0.1} />
+            <Word text="the" start={0.2} />
+            <Word text="edit." start={0.3} shaky />
           </motion.span>
           <motion.span aria-hidden className="flex flex-wrap items-center justify-end gap-x-[0.18em] text-tomato" style={reduce ? undefined : { x: line2 }}>
-            <Word text="Just" start={0.38} />
-            <Word text="say" start={0.5} />
-            <Word text="cut." start={0.62} />
+            <Word text="Get" start={0.4} />
+            <Word text="the" start={0.5} />
+            <Word text="cut." start={0.6} />
           </motion.span>
         </h1>
 
         <div className="mt-8 flex flex-col gap-8 md:mt-10 md:flex-row md:items-end md:justify-between">
           <div className="max-w-[460px]">
             <motion.p {...fade(0.8)} className="text-[clamp(17px,1.45vw,21px)] leading-[1.35] tracking-[-0.01em]">
-              Auteur is a video editor for <strong className="font-semibold">raw footage</strong> and{" "}
-              <strong className="font-semibold">people who&apos;d rather not scrub</strong>. Say what you want; it watches, listens, cuts and checks its own work.
+              Auteur&apos;s agent <strong className="font-semibold">watches your clips, hears every word</strong> and builds the edit on a timeline you can still
+              change. In our test it turned 88 seconds of night-walk footage into a <strong className="font-semibold">30-second vertical vlog</strong> in under three
+              minutes.
             </motion.p>
             <motion.div {...fade(0.9)} className="mt-6 flex flex-wrap gap-3">
-              <PillButton href="/signup">Start editing</PillButton>
+              <PillButton href="/signup">Start my first edit</PillButton>
               <PillButton href="#work" tone="paper">
-                See the cuts
+                See the test runs
               </PillButton>
             </motion.div>
           </div>
@@ -226,15 +242,15 @@ export function Hero() {
             animate={entered ? { opacity: 1, scale: 1, rotate: 0 } : undefined}
             transition={{ delay: 1.1, duration: 0.9, ease: EASE_BACK }}
           >
-            <RotatingBadge text="SCROLL · SHOOT RAW · SAY CUT · " className="size-[138px]" tone="lime">
+            <RotatingBadge text="SCROLL · GET THE CUT · " className="size-[138px]" tone="lime">
               <ArrowDown size={30} weight="bold" className="text-lime" />
             </RotatingBadge>
           </motion.div>
         </div>
       </div>
 
-      {/* Stickers, placed and weighted like the reference's. */}
-      <Sticker scrollY={scrollY} bounds={ref} speed={1.4} rotate={-12} delay={1.15} className="top-[19%] right-[5%] md:top-[17%] md:right-[9%]">
+      {/* Stickers: facts about Auteur and its props, each with its own parallax speed. */}
+      <Sticker scrollY={scrollY} bounds={ref} speed={1.4} rotate={-12} delay={1.15} className="top-[17%] right-[9%] hidden md:block">
         <div className="grid size-[104px] place-items-center rounded-full border-2 border-ink bg-lime text-center text-forest md:size-[150px]">
           <div>
             <p className="label text-[10px] md:text-[11px]">subjects tracked</p>
@@ -252,39 +268,32 @@ export function Hero() {
           Muse Spark
         </span>
       </Sticker>
-      <Sticker scrollY={scrollY} bounds={ref} speed={1.2} rotate={-14} delay={1.25} className="top-[11%] left-[47%] hidden lg:block">
-        <Image src="/assets/mascot.png" alt="" width={92} height={92} draggable={false} />
+      <Sticker scrollY={scrollY} bounds={ref} speed={1.2} rotate={-8} delay={1.25} className="top-[8%] left-[47%] hidden lg:block">
+        <Image src="/assets/mascot-wink.webp" alt="" width={110} height={110} draggable={false} />
       </Sticker>
-      <Sticker scrollY={scrollY} bounds={ref} speed={1.8} rotate={14} delay={1.3} className="right-[5%] bottom-[12%] md:right-auto md:bottom-[24%] md:left-[46%]">
-        <Starburst color="#2e3bff" className="size-[96px] md:size-[128px]">
-          <p className="label text-[10px] text-paper">fillers</p>
-          <p className="display text-[28px] leading-none text-paper md:text-[36px]">-eee</p>
-        </Starburst>
+      <Sticker scrollY={scrollY} bounds={ref} speed={1.8} rotate={-7} delay={1.3} className="right-[5%] bottom-[12%] md:right-auto md:bottom-[25%] md:left-[44%]">
+        <div className="rounded-[10px] border-2 border-ink bg-paper px-3 py-2 font-mono text-[13px] text-ink md:text-[15px]">
+          <p className="label mb-1 text-[9px] text-ink/50">transcript · 0:04</p>
+          so{" "}
+          <span className="relative text-tomato after:absolute after:top-1/2 after:left-0 after:h-[2px] after:w-full after:bg-tomato">um</span> today we&apos;re{" "}
+          <span className="relative text-tomato after:absolute after:top-1/2 after:left-0 after:h-[2px] after:w-full after:bg-tomato">uh</span>
+          <p className="label mt-1 text-[9px] text-forest">−2 fillers</p>
+        </div>
       </Sticker>
       <Sticker scrollY={scrollY} bounds={ref} speed={0.6} rotate={-6} delay={1.35} className="right-[14%] bottom-[19%] hidden md:block">
         <div className="w-[170px] border-2 border-ink bg-white p-2.5 pb-3">
           <div className="relative aspect-square overflow-hidden border-2 border-ink">
-            <Image src="/assets/polaroid.jpg" alt="A night shot, graded warm" fill sizes="170px" className="object-cover" draggable={false} />
-            <span className="display absolute inset-0 grid place-items-center text-center text-[40px] leading-[0.85] text-paper [text-shadow:0_2px_0_var(--ink)]">
-              take
-              <br />
-              07
-            </span>
-            <span className="label absolute bottom-1.5 left-1.5 rounded bg-ink px-1.5 py-0.5 text-[9px] text-paper">graded</span>
+            <Image src="/assets/polaroid.webp" alt="A night shot, graded warm" fill sizes="170px" priority className="object-cover" draggable={false} />
+            <span className="label absolute bottom-1.5 left-1.5 rounded bg-ink px-1.5 py-0.5 text-[9px] text-paper">take 07 · graded</span>
           </div>
           <p className="mt-1.5 text-center font-hand text-[19px] leading-none">night walk, warm grade</p>
         </div>
       </Sticker>
-      <Sticker scrollY={scrollY} bounds={ref} speed={1.1} rotate={-9} delay={1.4} className="bottom-[13%] left-[36%] hidden lg:block">
-        <span className="flex items-center gap-2 rounded-full border-2 border-ink bg-pink px-4 py-2 text-[15px] font-semibold">
-          <Heart size={15} weight="fill" className="text-tomato" /> Reels-ready
-        </span>
+      <Sticker scrollY={scrollY} bounds={ref} speed={1.1} rotate={-10} delay={1.4} className="bottom-[11%] left-[34%] hidden lg:block">
+        <Image src="/assets/sticker-clapper.webp" alt="" width={130} height={117} draggable={false} />
       </Sticker>
-      <Sticker scrollY={scrollY} bounds={ref} speed={1.5} rotate={4} delay={1.45} className="bottom-[14%] left-[60%] hidden xl:block">
-        <div className="border-2 border-ink bg-sun px-4 py-1.5 [clip-path:polygon(0_0,100%_0,100%_35%,96%_50%,100%_65%,100%_100%,0_100%,0_65%,4%_50%,0_35%)]">
-          <p className="label text-[9px]">certified</p>
-          <p className="display text-[22px] tracking-normal normal-case">beat-synced</p>
-        </div>
+      <Sticker scrollY={scrollY} bounds={ref} speed={1.5} rotate={6} delay={1.45} className="bottom-[14%] left-[58%] hidden xl:block">
+        <Image src="/assets/sticker-rec.webp" alt="" width={150} height={63} draggable={false} />
       </Sticker>
 
       <motion.div
@@ -294,8 +303,8 @@ export function Hero() {
         transition={{ delay: 1.7, duration: 0.6 }}
       >
         <span className="-rotate-6 font-hand text-[22px] leading-none">
-          psst. these stick.
-          <br /> go on, drag &apos;em.
+          these move.
+          <br /> try one.
         </span>
         <svg className="mt-3 h-[56px] w-[100px] rotate-[-8deg] -scale-y-100" viewBox="0 0 160 90" fill="none" aria-hidden>
           <path d="M4 70 C 40 20, 100 10, 150 40" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />

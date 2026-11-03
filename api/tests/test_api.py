@@ -7,11 +7,22 @@ from fastapi.testclient import TestClient
 from auteur.main import app, project_lock
 
 
+class FakeClerk:
+    """Stands in for Clerk: the bearer token is the account id. Real verification is in test_auth.py."""
+
+    def user_id(self, token: str | None) -> str | None:
+        return token if token and token.startswith("user_") else None
+
+
+@pytest.fixture(autouse=True)
+def fake_clerk(monkeypatch: pytest.MonkeyPatch) -> None:
+    import auteur.main as m
+
+    monkeypatch.setattr(m, "clerk", FakeClerk())
+
+
 def signed_in() -> TestClient:
-    c = TestClient(app)
-    r = c.post("/auth/signup", json={"name": "Ana", "email": f"{uuid.uuid4().hex}@example.com", "password": "correct horse"})
-    assert r.status_code == 200, r.text
-    return c
+    return TestClient(app, headers={"Authorization": f"Bearer user_{uuid.uuid4().hex[:12]}"})
 
 
 @pytest.fixture
@@ -92,7 +103,7 @@ def test_run_quota_per_visitor() -> None:
     # Settings is a frozen dataclass read at import; flip the guard on just for this test.
     object.__setattr__(main.settings, "runs_per_visitor_per_day", 1)
     try:
-        req = type("R", (), {"client": type("C", (), {"host": "1.2.3.4"})()})()
+        req = type("R", (), {"client": type("C", (), {"host": "1.2.3.4"})(), "state": type("S", (), {"account": "user_test"})()})()
         main.check_run_quota(req)
         with pytest.raises(main.HTTPException) as e:
             main.check_run_quota(req)
@@ -104,18 +115,6 @@ def test_run_quota_per_visitor() -> None:
 def test_projects_need_an_account() -> None:
     r = TestClient(app).get("/projects")
     assert r.status_code == 401
-
-
-def test_sign_in_and_out() -> None:
-    c = TestClient(app)
-    email = f"{uuid.uuid4().hex}@example.com"
-    assert c.post("/auth/signup", json={"name": "Bo", "email": email, "password": "long enough"}).status_code == 200
-    assert c.post("/auth/signup", json={"name": "Bo", "email": email, "password": "long enough"}).status_code == 409
-    c.post("/auth/logout")
-    assert c.get("/auth/me").status_code == 401
-    assert c.post("/auth/login", json={"email": email, "password": "wrong password"}).status_code == 401
-    r = c.post("/auth/login", json={"email": email.upper(), "password": "long enough"})
-    assert r.status_code == 200 and c.get("/auth/me").json()["name"] == "Bo"
 
 
 def test_projects_are_private_to_their_owner(client: TestClient) -> None:
@@ -133,3 +132,17 @@ def test_rename_and_delete(client: TestClient) -> None:
     assert client.patch(f"/projects/{pid}", json={"name": "Final cut"}).json()["name"] == "Final cut"
     assert client.delete(f"/projects/{pid}").status_code == 200
     assert client.get(f"/projects/{pid}").status_code == 404
+
+
+def test_spend_cap_per_account(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    import dataclasses
+
+    import auteur.main as m
+
+    pid = client.post("/projects", json={"name": "Spendy"}).json()["id"]
+    p = m.store.get(pid)
+    p.spent = 0.6
+    m.store.save(p)
+    monkeypatch.setattr(m, "settings", dataclasses.replace(m.settings, user_spend_cap_usd=0.5))
+    r = client.post(f"/projects/{pid}/runs", json={"instruction": "make it short"})
+    assert r.status_code == 429 and "$0.50" in r.json()["detail"]

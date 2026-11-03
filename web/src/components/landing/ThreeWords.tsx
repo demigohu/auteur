@@ -110,16 +110,16 @@ export function ThreeWords() {
                 <path d="M136 26 L151 41 L131 47" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
               <span className="mt-6 font-hand text-[clamp(20px,2vw,30px)] leading-none tracking-normal whitespace-nowrap normal-case">
-                every keeper
+                Muse Spark looks at
                 <br />
-                starts with a look.
+                frames from every clip.
               </span>
             </span>
           </span>
 
           <span className="pr-[12vw] font-serif text-[0.34em] leading-[1] tracking-normal normal-case italic text-forest/80">
-            (and then
-            <br />a check.)
+            (then it checks
+            <br />its work.)
           </span>
         </div>
 

@@ -178,7 +178,7 @@ input[type="range"] {
   opacity: var(--texture-strength, 0.55);
   mix-blend-mode: overlay;
   background-image: url("/assets/paper-texture.png");
-  background-size: 512px 512px;
+  background-size: 640px 640px;
 }
 .grain {
   position: fixed;

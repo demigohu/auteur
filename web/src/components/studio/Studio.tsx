@@ -13,13 +13,14 @@ import {
 } from "@phosphor-icons/react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import Link from "next/link";
+import { useClerk, useUser } from "@clerk/nextjs";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Logo } from "@/components/ui/Logo";
-import { ApiError, api, type NewProject, type ProjectSummary, type User } from "@/lib/api";
+import { ApiError, api, type NewProject, type ProjectSummary } from "@/lib/api";
 import { greeting } from "@/lib/format";
 import { ASPECTS, AspectGlyph } from "./aspects";
-import { CreateProjectDialog, type Draft, EMPTY_DRAFT } from "./CreateProjectDialog";
+import { CreateProjectDialog, type Draft, EMPTY_DRAFT, untitled } from "./CreateProjectDialog";
 import { ProjectCard, ProjectCardSkeleton } from "./ProjectCard";
 import { RECIPES, type Recipe } from "./recipes";
 
@@ -54,11 +55,20 @@ function aspectOf(file: File): Promise<NewProject["aspect"]> {
 }
 
 export function Studio() {
-  const router = useRouter();
   const params = useSearchParams();
   const reduce = useReducedMotion();
   const search = useRef<HTMLInputElement>(null);
-  const [user, setUser] = useState<User | null>(null);
+  const { user: clerkUser } = useUser();
+  const { signOut } = useClerk();
+  const router = useRouter();
+  const [creating, setCreating] = useState<NewProject["aspect"] | null>(null);
+  const user = clerkUser
+    ? {
+        name: clerkUser.fullName || clerkUser.username || clerkUser.primaryEmailAddress?.emailAddress.split("@")[0] || "You",
+        email: clerkUser.primaryEmailAddress?.emailAddress ?? "",
+        firstName: clerkUser.firstName,
+      }
+    : null;
   // Set after mount: the clock must not be read during prerender.
   const [hello, setHello] = useState("Hello");
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
@@ -85,14 +95,10 @@ export function Studio() {
   }, []);
 
   useEffect(() => {
-    api
-      .me()
-      .then((u) => {
-        setUser(u);
-        setHello(greeting());
-      })
-      .catch(() => {});
     load();
+    // The greeting reads the clock, so it is set after mount rather than during prerender.
+    const id = requestAnimationFrame(() => setHello(greeting()));
+    return () => cancelAnimationFrame(id);
   }, [load]);
 
   // "/" or Cmd+K focuses search; N opens a new project.
@@ -148,15 +154,21 @@ export function Studio() {
     setDraft({ ...EMPTY_DRAFT, files: media, aspect: firstVideo ? await aspectOf(firstVideo) : "16:9" });
   }
 
-  const fromRecipe = (r: Recipe) => setDraft({ ...EMPTY_DRAFT, name: r.title, aspect: r.aspect, fps: r.fps, brief: r.brief });
-
-  async function signOut() {
-    await api.signOut().catch(() => {});
-    router.replace("/login");
-    router.refresh();
+  // A format tile makes an empty project straight away and opens it; footage goes in from the editor.
+  async function blank(aspect: NewProject["aspect"]) {
+    setCreating(aspect);
+    try {
+      const p = await api.createProject({ name: untitled(), aspect, fps: 30 });
+      router.push(`/p/${p.id}`);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Couldn't reach the server. Is the API running on port 8000?");
+      setCreating(null);
+    }
   }
 
-  const firstName = user?.name.split(" ")[0];
+  const fromRecipe = (r: Recipe) => setDraft({ ...EMPTY_DRAFT, name: r.title, aspect: r.aspect, fps: r.fps, brief: r.brief });
+
+  const firstName = user?.firstName ?? user?.name.split(" ")[0];
   const searching = query.trim().length > 0;
 
   return (
@@ -230,7 +242,7 @@ export function Studio() {
             </div>
             <button
               type="button"
-              onClick={signOut}
+              onClick={() => signOut({ redirectUrl: "/" })}
               aria-label="Sign out"
               title="Sign out"
               className="ml-auto grid size-8 shrink-0 place-items-center rounded-full transition-colors hover:bg-ink hover:text-paper"
@@ -303,13 +315,15 @@ export function Studio() {
                 </header>
 
                 <section aria-labelledby="quick-start" className="mt-12">
-                  <SectionHead id="quick-start" kicker="Start fresh" title="Pick a format" />
+                  <SectionHead id="quick-start" kicker="One click, empty timeline" title="Blank project" />
                   <div className="mt-5 grid grid-cols-2 gap-4 xl:grid-cols-4">
                     {ASPECTS.map((a, i) => (
                       <motion.button
                         key={a.value}
                         type="button"
-                        onClick={() => setDraft({ ...EMPTY_DRAFT, aspect: a.value })}
+                        onClick={() => blank(a.value)}
+                        disabled={creating !== null}
+                        aria-busy={creating === a.value}
                         initial={reduce ? false : { opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.05 * i, duration: 0.6, ease: EASE_OUT }}
@@ -320,7 +334,7 @@ export function Studio() {
                         </span>
                         <span>
                           <span className="display block text-[36px]">{a.value}</span>
-                          <span className="mt-1 block text-[14px] text-ink/60">{a.use}</span>
+                          <span className="mt-1 block text-[14px] text-ink/60">{creating === a.value ? "Opening the editor…" : a.use}</span>
                         </span>
                       </motion.button>
                     ))}

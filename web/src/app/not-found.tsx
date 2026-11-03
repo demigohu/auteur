@@ -9,7 +9,7 @@ export default function NotFound() {
         <Logo />
       </div>
       <div className="text-center">
-        <Image src="/assets/mascot.png" alt="" width={140} height={140} className="mx-auto rotate-12 drop-shadow-[0_16px_20px_rgba(0,0,0,0.25)]" />
+        <Image src="/assets/mascot-wow.webp" alt="" width={140} height={140} className="mx-auto rotate-12 drop-shadow-[0_16px_20px_rgba(0,0,0,0.25)]" />
         <p className="label mt-6 text-ink/50">Error 404</p>
         <h1 className="display mt-3 text-[clamp(80px,14vw,220px)] text-tomato">Cut.</h1>
         <p className="font-serif text-[clamp(30px,3.6vw,52px)] leading-tight italic">this scene never made the edit.</p>

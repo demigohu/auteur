@@ -1,13 +1,9 @@
-"""Persistence: one SQLite row per project holding the Project JSON (timeline + history), plus accounts
-and their sessions."""
+"""Persistence: one SQLite row per project holding the Project JSON (timeline + history), and the
+accounts that own them. Accounts live in Clerk; this only remembers which Clerk user ids it has seen."""
 
-import hashlib
-import hmac
-import secrets
 import sqlite3
 import threading
-from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 
 from auteur.timeline import Project
@@ -16,24 +12,6 @@ from auteur.timeline.ops import new_id
 
 class NotFound(KeyError):
     pass
-
-
-class EmailTaken(ValueError):
-    pass
-
-
-@dataclass(frozen=True)
-class User:
-    id: str
-    email: str
-    name: str
-
-
-SESSION_DAYS = 30
-
-
-def _hash_password(password: str, salt: bytes) -> bytes:
-    return hashlib.scrypt(password.encode(), salt=salt, n=2**14, r=8, p=1, dklen=32)
 
 
 class Store:
@@ -48,13 +26,15 @@ class Store:
             )
             if "owner_id" not in {r[1] for r in self._db.execute("PRAGMA table_info(projects)")}:
                 self._db.execute("ALTER TABLE projects ADD COLUMN owner_id TEXT")
-            self._db.execute(
-                "CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, email TEXT UNIQUE, name TEXT,"
-                " salt BLOB, password_hash BLOB, created_at TEXT)"
-            )
-            self._db.execute(
-                "CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, user_id TEXT, expires_at TEXT)"
-            )
+            self._db.execute("CREATE TABLE IF NOT EXISTS accounts (id TEXT PRIMARY KEY, first_seen TEXT)")
+            # Before Clerk, accounts and sessions were stored here. Their projects become unowned, so the
+            # first Clerk account picks them up (see `seen`).
+            tables = {r[0] for r in self._db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+            if "users" in tables:
+                self._db.execute("UPDATE projects SET owner_id = NULL WHERE owner_id IN (SELECT id FROM users)")
+                self._db.execute("DROP TABLE users")
+            if "sessions" in tables:
+                self._db.execute("DROP TABLE sessions")
 
     def project_dir(self, project_id: str) -> Path:
         return self.data_dir / "projects" / project_id
@@ -94,6 +74,11 @@ class Store:
                 (p.id, p.name, p.model_dump_json(), datetime.now(UTC).isoformat()),
             )
 
+    def spent_by(self, owner_id: str) -> float:
+        with self._lock:
+            rows = self._db.execute("SELECT json_extract(data, '$.spent') FROM projects WHERE owner_id = ?", (owner_id,)).fetchall()
+        return sum(r[0] or 0 for r in rows)
+
     def total_spent(self) -> float:
         with self._lock:
             rows = self._db.execute("SELECT json_extract(data, '$.spent') FROM projects").fetchall()
@@ -109,55 +94,13 @@ class Store:
 
     # Accounts
 
-    def create_user(self, email: str, name: str, password: str) -> User:
-        """New account. The first account adopts projects made before accounts existed, so a local
-        install keeps its work."""
-        user = User(id=new_id("user"), email=email.strip().lower(), name=name.strip())
-        salt = secrets.token_bytes(16)
+    def seen(self, account_id: str) -> None:
+        """Record a Clerk user the first time it makes a request. The very first account adopts projects
+        that have no owner, so a local install keeps its work."""
         with self._lock, self._db:
-            try:
-                self._db.execute(
-                    "INSERT INTO users (id, email, name, salt, password_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                    (user.id, user.email, user.name, salt, _hash_password(password, salt), datetime.now(UTC).isoformat()),
-                )
-            except sqlite3.IntegrityError:
-                raise EmailTaken(user.email) from None
-            if self._db.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 1:
-                self._db.execute("UPDATE projects SET owner_id = ? WHERE owner_id IS NULL", (user.id,))
-        return user
-
-    def authenticate(self, email: str, password: str) -> User | None:
-        with self._lock:
-            row = self._db.execute(
-                "SELECT id, email, name, salt, password_hash FROM users WHERE email = ?", (email.strip().lower(),)
-            ).fetchone()
-        if row is None or not hmac.compare_digest(_hash_password(password, row[3]), row[4]):
-            return None
-        return User(id=row[0], email=row[1], name=row[2])
-
-    def new_session(self, user: User) -> str:
-        token = secrets.token_urlsafe(32)
-        expires = datetime.now(UTC) + timedelta(days=SESSION_DAYS)
-        with self._lock, self._db:
-            self._db.execute(
-                "INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)",
-                (hashlib.sha256(token.encode()).hexdigest(), user.id, expires.isoformat()),
-            )
-        return token
-
-    def session_user(self, token: str | None) -> User | None:
-        if not token:
-            return None
-        with self._lock:
-            row = self._db.execute(
-                "SELECT u.id, u.email, u.name, s.expires_at FROM sessions s JOIN users u ON u.id = s.user_id"
-                " WHERE s.token_hash = ?",
-                (hashlib.sha256(token.encode()).hexdigest(),),
-            ).fetchone()
-        if row is None or datetime.fromisoformat(row[3]) < datetime.now(UTC):
-            return None
-        return User(id=row[0], email=row[1], name=row[2])
-
-    def end_session(self, token: str) -> None:
-        with self._lock, self._db:
-            self._db.execute("DELETE FROM sessions WHERE token_hash = ?", (hashlib.sha256(token.encode()).hexdigest(),))
+            if self._db.execute("SELECT 1 FROM accounts WHERE id = ?", (account_id,)).fetchone():
+                return
+            first = self._db.execute("SELECT COUNT(*) FROM accounts").fetchone()[0] == 0
+            self._db.execute("INSERT INTO accounts (id, first_seen) VALUES (?, ?)", (account_id, datetime.now(UTC).isoformat()))
+            if first:
+                self._db.execute("UPDATE projects SET owner_id = ? WHERE owner_id IS NULL", (account_id,))

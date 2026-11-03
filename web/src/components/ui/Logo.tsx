@@ -1,18 +1,15 @@
-import { Waveform } from "@phosphor-icons/react/dist/ssr";
+import Image from "next/image";
 import Link from "next/link";
 
-/** The lime logo pill, tilted like a sticker (docs/DESIGN.md, "Logo"). */
+/** The Auteur wordmark sticker (public/assets/logo.png): lime pill, REC dot. Straightens on hover. */
 export function Logo({ href = "/", size = "md" }: { href?: string; size?: "sm" | "md" }) {
+  const h = size === "sm" ? 34 : 44;
+  const w = Math.round(h * RATIO);
   return (
-    <Link
-      href={href}
-      aria-label="Auteur home"
-      className={`display inline-flex -rotate-3 items-center gap-1.5 rounded-full border-2 border-ink bg-lime text-ink shadow-[0_3px_0_0_var(--ink)] transition-transform duration-300 ease-[var(--ease-back)] hover:rotate-0 ${
-        size === "sm" ? "px-3 pt-1 pb-0.5 text-[17px]" : "px-4 pt-1.5 pb-1 text-[22px]"
-      }`}
-    >
-      Auteur
-      <Waveform size={size === "sm" ? 13 : 16} weight="bold" className="-mt-0.5 text-tomato" />
+    <Link href={href} aria-label="Auteur home" className="inline-block transition-transform duration-300 ease-[var(--ease-back)] hover:-rotate-3 hover:scale-[1.04]">
+      <Image src="/assets/logo.png" alt="Auteur" width={w} height={h} priority className="block" style={{ width: w, height: h }} />
     </Link>
   );
 }
+
+const RATIO = 900 / 446;

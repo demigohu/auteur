@@ -29,6 +29,7 @@ function Ribbon(props: { words: string[]; height: number; amp: number; flip: boo
   const id = useId().replace(/:/g, "");
   const textPath = useRef<SVGTextPathElement>(null);
   const measure = useRef<SVGTextElement>(null);
+  const holes = useRef<SVGGElement>(null);
   const reduce = useReducedMotion();
   const unit = props.words.map((w) => `${w}  ✺  `).join("");
   const d = wavePath(props.height, props.amp, props.flip);
@@ -36,18 +37,21 @@ function Ribbon(props: { words: string[]; height: number; amp: number; flip: boo
   useEffect(() => {
     if (reduce || !textPath.current || !measure.current) return;
     const length = measure.current.getComputedTextLength();
+    const hole = props.size * 0.62;
     let frame = 0;
     let t0 = performance.now();
     const tick = (now: number) => {
       const shift = ((now - t0) / 1000) * props.speed + window.scrollY * props.scrollFactor;
       const offset = -(((shift % length) + length) % length);
       textPath.current?.setAttribute("startOffset", offset.toFixed(1));
+      // The sprocket holes travel with the words, so the strip reads as film running through a gate.
+      holes.current?.style.setProperty("stroke-dashoffset", (-offset % hole).toFixed(1));
       frame = requestAnimationFrame(tick);
     };
     t0 = performance.now();
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [reduce, props.speed, props.scrollFactor]);
+  }, [reduce, props.speed, props.scrollFactor, props.size]);
 
   return (
     <div className="pointer-events-none relative w-full" style={{ height: props.height }} aria-hidden>
@@ -55,8 +59,13 @@ function Ribbon(props: { words: string[]; height: number; amp: number; flip: boo
         <defs>
           <path id={`wave-${id}`} d={d} />
         </defs>
-        <use href={`#wave-${id}`} stroke="#121110" strokeWidth={props.size * 1.8 + 5} fill="none" />
-        <use href={`#wave-${id}`} stroke={props.color} strokeWidth={props.size * 1.8} fill="none" />
+        <use href={`#wave-${id}`} stroke="#121110" strokeWidth={props.size * 2.3 + 5} fill="none" />
+        <use href={`#wave-${id}`} stroke={props.color} strokeWidth={props.size * 2.3} fill="none" />
+        {/* Sprocket holes along both edges: dashed copies of the wave, nudged up and down. */}
+        <g ref={holes} stroke="#121110" strokeWidth={props.size * 0.2} strokeDasharray={`${props.size * 0.3} ${props.size * 0.32}`} fill="none">
+          <use href={`#wave-${id}`} transform={`translate(0 ${-props.size * 0.88})`} />
+          <use href={`#wave-${id}`} transform={`translate(0 ${props.size * 0.88})`} />
+        </g>
       </svg>
       <svg width="100%" height={props.height} viewBox={`0 0 1440 ${props.height}`} className="absolute inset-0 overflow-visible">
         <defs>
@@ -80,29 +89,29 @@ export function Ribbons() {
   return (
     <div className="pointer-events-none relative z-30 h-0" aria-hidden>
       <div className="absolute inset-x-0 top-0 -translate-y-[62%] rotate-[-3deg]">
-        <Ribbon words={["Shoot raw", "Just say cut", "Watch", "Listen", "Track", "Reframe"]} height={180} amp={46} flip={false} color="var(--tomato)" ink="#121110" size={40} speed={60} scrollFactor={0.8} />
+        <Ribbon words={["Watch", "Listen", "Track", "Reframe", "Grade", "Subtitle", "Check"]} height={180} amp={46} flip={false} color="var(--tomato)" ink="#121110" size={40} speed={60} scrollFactor={0.8} />
       </div>
       <div className="absolute inset-x-0 top-0 -translate-y-[40%] rotate-[2deg]">
-        <Ribbon words={["Scroll-stopping cuts", "Beat-synced", "Subtitles that land", "Checked before export"]} height={218} amp={58} flip color="var(--lime)" ink="#0e3a22" size={48} speed={-45} scrollFactor={-1.07} />
+        <Ribbon words={["Cuts on the beat", "Captions timed to the word", "Checked before export", "16:9 · 9:16 · 1:1"]} height={218} amp={58} flip color="var(--lime)" ink="#0e3a22" size={48} speed={-45} scrollFactor={-1.07} />
       </div>
     </div>
   );
 }
 
 const WORDS: { text: string; box?: boolean; underline?: boolean }[] = [
-  { text: "You" },
-  { text: "shot" },
-  { text: "40" },
-  { text: "minutes." },
-  { text: "They'll" },
-  { text: "give" },
-  { text: "you" },
+  { text: "The" },
+  { text: "good" },
   { text: "30", box: true },
-  { text: "seconds.", box: true },
-  { text: "We" },
-  { text: "find" },
+  { text: "seconds", box: true },
+  { text: "are" },
+  { text: "already" },
+  { text: "on" },
+  { text: "your" },
+  { text: "phone." },
+  { text: "Auteur" },
+  { text: "finds" },
   { text: "them.", underline: true },
-];
+]
 
 /**
  * (lime) The manifesto. Its top edge is an arc that flattens as the hero scrolls away, and the words
@@ -123,6 +132,18 @@ export function Statement() {
         { opacity: 0.14 },
         { opacity: 1, ease: "none", stagger: 0.25, scrollTrigger: { trigger: "[data-mtext]", start: "top 78%", end: "bottom 50%", scrub: true } },
       );
+      const pct = root.current!.querySelector("[data-export-pct]");
+      gsap.to("[data-export]", {
+        scaleX: 1,
+        ease: "none",
+        scrollTrigger: {
+          trigger: "[data-mtext]",
+          start: "top 78%",
+          end: "bottom 40%",
+          scrub: true,
+          onUpdate: (st) => pct && (pct.textContent = `${Math.round(st.progress * 100)}%`),
+        },
+      });
       gsap.fromTo(
         "[data-underline]",
         { strokeDashoffset: 600 },
@@ -182,8 +203,19 @@ export function Statement() {
             )}
           </span>
         </p>
-        <p className="mx-auto mt-10 max-w-[520px] text-center text-[17px] leading-[1.45] md:text-[19px]">
-          Most of what you shot is setup, waiting and &ldquo;wait, is it recording?&rdquo;. The agent watches all of it and keeps the moments that move.
+        {/* An export bar that fills as the sentence lights up. */}
+        <div className="mx-auto mt-12 max-w-[420px]" aria-hidden>
+          <div className="label flex justify-between text-[10px] text-forest/70">
+            <span>exporting 1080×1920</span>
+            <span data-export-pct className="tabular-nums">0%</span>
+          </div>
+          <div className="mt-2 h-3 overflow-hidden rounded-full border-2 border-forest">
+            <div data-export className="h-full origin-left scale-x-0 bg-forest" />
+          </div>
+        </div>
+        <p className="mx-auto mt-10 max-w-[540px] text-center text-[17px] leading-[1.45] md:text-[19px]">
+          They&apos;re buried between shaky starts, long walks and &ldquo;wait, is it recording?&rdquo;. The agent watches every clip, keeps the moments that move, and
+          puts them on a timeline in the order they happened.
         </p>
       </div>
     </motion.section>

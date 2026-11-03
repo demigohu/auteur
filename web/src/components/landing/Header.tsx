@@ -4,14 +4,14 @@ import { ArrowUpRight } from "@phosphor-icons/react";
 import { motion, useReducedMotion } from "motion/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Logo } from "@/components/ui/Logo";
 import { useExperience } from "./experience";
 
 const NAV = [
-  { href: "#work", label: "Work" },
+  { href: "#work", label: "Test runs" },
   { href: "#agent", label: "Agent" },
-  { href: "#process", label: "Process" },
+  { href: "#process", label: "How it works" },
   { href: "#faq", label: "FAQ" },
 ];
 
@@ -54,52 +54,50 @@ export function Header() {
               onMouseEnter={() => play("tick")}
               className="hard inline-flex h-10 items-center gap-1.5 rounded-full bg-pink px-4 text-[14px] font-semibold whitespace-nowrap text-ink"
             >
-              Start editing <ArrowUpRight size={15} weight="bold" />
+              Start my first edit <ArrowUpRight size={15} weight="bold" />
             </Link>
           </div>
-          <PullTag />
+          <RecButton />
         </motion.div>
       </div>
     </header>
   );
 }
 
-/** A luggage tag on a string. Pull it down far enough and it opens sign-up; let go early and it swings back. */
-function PullTag() {
+/**
+ * A camera REC badge with a blinking dot and a running clock (it has been "recording" since you
+ * arrived). Pressing it starts the real thing: sign-up.
+ */
+function RecButton() {
   const router = useRouter();
-  const reduce = useReducedMotion();
-  const { play } = useExperience();
-  const [pulled, setPulled] = useState(false);
+  const { play, entered } = useExperience();
+  const [secs, setSecs] = useState(0);
+
+  useEffect(() => {
+    if (!entered) return;
+    const t = setInterval(() => setSecs((v) => v + 1), 1000);
+    return () => clearInterval(t);
+  }, [entered]);
 
   return (
-    <div className="relative -mt-4 hidden w-14 xl:block" aria-hidden={false}>
-      <div className="absolute top-0 left-1/2 h-6 w-[2px] -translate-x-1/2 bg-ink" />
-      <motion.button
-        type="button"
-        aria-label="Pull to sign up"
-        drag={reduce ? false : "y"}
-        dragConstraints={{ top: 0, bottom: 0 }}
-        dragElastic={{ top: 0, bottom: 0.9 }}
-        onDragEnd={(_, info) => {
-          if (info.offset.y > 90) {
-            setPulled(true);
-            play("whoosh");
-            setTimeout(() => router.push("/signup"), 350);
-          }
-        }}
-        onClick={() => router.push("/signup")}
-        animate={pulled ? { y: 400, rotate: 18, opacity: 0 } : { rotate: [0, -5, 4, -2, 0] }}
-        transition={pulled ? { duration: 0.5, ease: [0.6, 0, 0.8, 0.4] } : { duration: 3.6, repeat: Infinity, repeatDelay: 2.4, ease: "easeInOut" }}
-        style={{ transformOrigin: "50% 0%" }}
-        className="relative mt-6 flex h-[70px] w-14 cursor-grab flex-col items-center border-2 border-ink bg-paper pt-2 shadow-[0_3px_0_0_var(--ink)] [clip-path:polygon(0_0,100%_0,100%_86%,88%_100%,76%_88%,64%_100%,52%_88%,40%_100%,28%_88%,16%_100%,0_86%)] active:cursor-grabbing"
-      >
-        <span className="size-2 rounded-full border-2 border-ink" />
-        <span className="display mt-1 text-center text-[17px] leading-[0.85] text-ink">
-          Pull
-          <br />
-          me
-        </span>
-      </motion.button>
-    </div>
+    <button
+      type="button"
+      onMouseEnter={() => play("tick")}
+      onClick={() => {
+        play("clap");
+        router.push("/signup");
+      }}
+      aria-label="Start recording: create an account"
+      className="group hidden h-10 items-center gap-2 rounded-full border-2 border-ink bg-ink pr-3.5 pl-3 text-paper shadow-[0_3px_0_0_var(--ink)] transition-transform active:translate-y-0.5 xl:inline-flex"
+    >
+      <span className="relative grid size-3 place-items-center">
+        <span className="absolute inset-0 animate-ping rounded-full bg-[#ff3b30] opacity-60" />
+        <span className="relative size-3 rounded-full bg-[#ff3b30]" />
+      </span>
+      <span className="font-mono text-[12px] font-semibold tracking-[0.1em]">REC</span>
+      <span className="font-mono text-[12px] text-paper/60 tabular-nums group-hover:text-lime">
+        {String(Math.floor(secs / 60)).padStart(2, "0")}:{String(secs % 60).padStart(2, "0")}
+      </span>
+    </button>
   );
 }

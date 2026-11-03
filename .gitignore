@@ -1,3 +1,6 @@
 .DS_Store
 .env
 .env.local
+
+# Source art for web/public/assets (large PNGs); web/scripts/prepare_assets.py builds the served files from it.
+web/assets-src/

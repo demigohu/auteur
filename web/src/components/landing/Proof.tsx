@@ -40,7 +40,7 @@ const STATS = [
   { label: "Brief to export, in seconds", to: 167, suffix: "" },
 ];
 
-/** (05) The receipts: measured numbers, and a till receipt for the hours you didn't spend. */
+/** (05) The render log: measured numbers, and a printed log of the run. */
 export function Receipts() {
   const reduce = useReducedMotion();
   return (
@@ -48,17 +48,17 @@ export function Receipts() {
       <div className="mx-auto grid max-w-[1400px] gap-16 lg:grid-cols-[1fr_minmax(0,22rem)]">
         <div>
           <Fade>
-            <Kicker tone="ink">(05) The receipts</Kicker>
+            <Kicker tone="ink">(05) Render log</Kicker>
           </Fade>
           <RevealLines
             className="mt-6 text-[clamp(64px,10vw,180px)] leading-[0.84]"
             lines={[
-              { text: "We bring", className: "display" },
-              { text: "receipts.", className: "font-serif italic normal-case text-paper pb-[0.04em]" },
+              { text: "The render log.", className: "display" },
+              { text: "every number measured.", className: "font-serif italic normal-case text-paper pb-[0.04em]" },
             ]}
           />
           <p className="mt-6 max-w-[44ch] text-[17px] leading-relaxed text-ink/85">
-            Pretty demos don&apos;t ship videos. These come from Auteur&apos;s own runs and test fixtures, measured, not estimated.
+            Measured on our own test footage and fixtures. The scripts that produced them are in the repo.
           </p>
           <dl className="mt-14 grid gap-x-10 sm:grid-cols-2 lg:max-w-[760px]">
             {STATS.map((s) => (
@@ -82,11 +82,11 @@ export function Receipts() {
               transition={{ duration: 1.6, ease: [0.45, 0, 0.2, 1] }}
               className="bg-[#fbf9f4] px-6 pt-8 pb-10 font-mono text-[12px] text-ink shadow-[0_20px_40px_rgba(0,0,0,0.25)] [clip-path:polygon(0_0,100%_0,100%_100%,95%_97%,90%_100%,85%_97%,80%_100%,75%_97%,70%_100%,65%_97%,60%_100%,55%_97%,50%_100%,45%_97%,40%_100%,35%_97%,30%_100%,25%_97%,20%_100%,15%_97%,10%_100%,5%_97%,0_100%)]"
             >
-              <p className="text-center tracking-[0.2em]">AUTEUR · CUTTING ROOM</p>
+              <p className="text-center tracking-[0.2em]">AUTEUR · RENDER LOG</p>
               <p className="mt-1 text-center text-ink/50">run #12 · 9:16 · 30 fps</p>
               <div className="my-4 border-t border-dashed border-ink/40" />
               {[
-                ["TIMELINE SCRUBBING", "0:00"],
+                ["SCRUBBING", "0:00"],
                 ["RE-EXPORTS", "0"],
                 ["UMS LEFT IN", "0"],
                 ["CUTS OFF THE BEAT", "0"],
@@ -101,14 +101,14 @@ export function Receipts() {
               <div className="my-4 border-t border-dashed border-ink/40" />
               <p className="flex items-baseline justify-between">
                 <span>TOTAL</span>
-                <span className="display text-[24px]">One 30s video</span>
+                <span className="display text-[24px]">one 30s video</span>
               </p>
               <div className="mt-6 flex h-12 items-stretch justify-center gap-[2px]" aria-hidden>
                 {Array.from({ length: 46 }, (_, i) => (
                   <span key={i} className="bg-ink" style={{ width: [1, 2, 1, 3, 1, 2][i % 6] }} />
                 ))}
               </div>
-              <p className="mt-4 text-center font-hand text-[20px]">thank you, cut again</p>
+              <p className="mt-4 text-center font-hand text-[20px]">see you next shoot</p>
             </motion.div>
           </motion.div>
         </div>
@@ -155,7 +155,7 @@ const TOOLKIT = [
   },
 ];
 
-/** (06) Beyond the cut: a vertical title and color-banded rows that open one at a time. */
+/** (06) The toolkit: a vertical title and color-banded rows that open one at a time. */
 export function Toolkit() {
   const [open, setOpen] = useState(0);
   return (
@@ -167,9 +167,9 @@ export function Toolkit() {
       </div>
       <div>
         <div className="px-[var(--gutter)] py-14 lg:px-12">
-          <Kicker tone="paper">(06) Beyond the cut</Kicker>
+          <Kicker tone="paper">(06) The toolkit</Kicker>
           <p className="mt-5 max-w-[50ch] text-[17px] leading-relaxed text-paper/75">
-            Cutting is the loud part. These are the bits that make the cut look finished, and the agent uses all of them, not as add-ons.
+            Cutting is half the job. These finish the other half, and the agent reaches for them on its own.
           </p>
         </div>
         <ul>
@@ -334,10 +334,10 @@ export function Process() {
       <Heading
         kicker="(07) How it works"
         tone="ink"
-        title="How it"
-        accent="makes the cut."
+        title="How a brief"
+        accent="becomes a video."
         accentClass="text-tomato"
-        body="Five steps, no mystery. You can read the plan, watch every tool run, and undo any of it."
+        body="You can read the plan before anything changes, and undo any instruction afterwards."
       />
 
       <div className="mt-16 md:mt-24">

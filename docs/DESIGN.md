@@ -149,7 +149,7 @@ Landing (`/`), section by section, mirroring the reference's order:
 
 App surfaces:
 
-- **Sign in / Create account (`/login`, `/signup`).** The "say hi" layout: ink mat, rainbow arcs, big headline with a serif aside, mascot you can poke, paper form card with a lime offset shadow and a pill tab switch.
+- **Sign in / Create account (`/login`, `/signup`).** The "say hi" layout: ink mat, rainbow arcs, big headline with a serif aside, a mascot you can poke, and Clerk's `<SignIn>` / `<SignUp>` on the right, dressed in paper, ink and lime by `components/auth/appearance.ts`.
 - **Studio (`/studio`).** A video-editor home screen: sidebar (logo, New project, Home / Projects / Recipes, account card with sign out), search (`/` or ⌘K), "Pick a format" tiles (16:9, 9:16, 1:1, drop footage), recent projects as thumbnail cards (aspect badge, duration, rename/delete menu), and recipes (colored brief cards). Dropping files anywhere starts a project in the clips' own orientation. New project is a dialog: name, format, frame rate, footage, first brief for the agent.
 - **404.** Mascot, "CUT." in tomato, "*this scene never made the edit.*"
 
@@ -170,20 +170,34 @@ The editor keeps the brand but respects the footage:
 
 ## 6. Assets
 
-Every image lives in `web/public/assets/` and is loaded by file name, so replacing a file replaces it everywhere. Placeholders come from `web/scripts/make_placeholder_assets.py`.
+Source art lives in `web/assets-src/` (not committed: large PNGs). `web/scripts/prepare_assets.py` cuts the
+white backgrounds off stickers and the logo, makes the paper texture seamless, resizes everything and
+writes WebP to `web/public/assets/`, plus `src/app/icon.png`, `apple-icon.png` and `opengraph-image.png`.
+Re-run it after replacing any source file.
 
-| File | What it is | Spec |
-|---|---|---|
-| `paper-texture.png` | Embossed paper tile | 512 or 1024 px square, **seamless**, grayscale, mid-grey (#808080) means flat, lit from the top left |
-| `mascot.png` | The Auteur mascot (a soft 3D character with a face) | 1024 px square, transparent PNG, centered, soft contact shadow optional. Used in the intro, hero sticker, sign-in, "say hi" and 404 |
-| `polaroid.jpg` | A graded frame for the hero polaroid | 600 × 600 |
-| `phone-reel.jpg` | A vertical frame for the phone mockups | 540 × 960 |
-| `work-1.jpg` … `work-6.jpg` | Frames for the six "selected cuts" cards (day in my life, beat montage, blurred crowd, captions, LOG grade, music under speech) | 960 × 540 or 9:16, any |
-| `og.png` | Social share image | 1200 × 630 |
+| Served file | Use |
+|---|---|
+| `logo.png` | Wordmark in the header, studio, editor and auth (`components/ui/Logo.tsx`) |
+| `paper-texture.png` | Seamless grey tile under `.paper-texture` (overlay blend) |
+| `mascot.webp`, `mascot-wink.webp`, `mascot-wow.webp` | Leader, hero sticker, sign-up (wink on poke), sign-in, 404 |
+| `hero-1..3.webp` | The monitor tile in the headline, hard-cutting every 1.6s |
+| `polaroid.webp` | Hero polaroid sticker |
+| `sticker-clapper.webp`, `sticker-rec.webp`, `sticker-reel.webp` | Hero stickers |
+| `work-1..6.webp` | Test-run cards and their drawer |
+| `sfx/*.mp3` | pop (sticker drag), tick (hover), beep + clap (enter with sound), projector |
 
----
+## 7. Identity moments (ours, not the reference's)
 
-## 7. Don'ts
+The reference supplies the visual language; these moments are Auteur's own and should stay editing-themed:
+film-leader countdown with a shutter exit; playhead cursor with a scroll timecode (CUT on links, GRAB on
+stickers); REC badge with a running clock in the header; a monitor tile in the headline; film-strip ribbons
+with moving sprocket holes; an export bar that fills with the manifesto; "test runs" and a "render log"
+instead of client work and receipts.
+
+**Copy** follows the copywriting skill and `.agents/product-marketing.md` (proof points, claims we can't
+make yet, voice).
+
+## 8. Don'ts
 
 - No purple, no gradients behind text, no glassmorphism, no soft shadows.
 - No em dashes in UI copy.

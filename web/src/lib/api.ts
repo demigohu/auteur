@@ -1,3 +1,4 @@
+import { getToken } from "@clerk/nextjs";
 import type { Media, Schema, Timeline } from "./timeline";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -49,7 +50,6 @@ export type ProjectSummary = {
   media: number;
 };
 
-export type User = { id: string; email: string; name: string };
 
 export type NewProject = { name: string; aspect: Timeline["aspect"]; fps: 24 | 30 | 60 };
 
@@ -65,16 +65,12 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  // The session lives in an httpOnly cookie set by the API, so every call carries credentials.
-  const res = await fetch(`${API_URL}${path}`, { ...init, credentials: "include" });
-  if (res.status === 401 && typeof window !== "undefined" && !path.startsWith("/auth/")) {
-    // Clear the stale cookie first, or the proxy would bounce /login straight back here.
-    await fetch(`${API_URL}/auth/logout`, { method: "POST", credentials: "include" }).catch(() => {});
-    // A hard navigation on purpose: the proxy must see the cleared cookie. Not a router call, since
-    // this module runs outside React.
-    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-    window.location.assign(`/login?next=${encodeURIComponent(window.location.pathname)}`);
-  }
+  // Clerk's session token goes along as a bearer token; getToken waits for Clerk to load and refreshes
+  // the short-lived token as needed. Credentials too, for the __session cookie the event stream uses.
+  const token = typeof window === "undefined" ? null : await getToken().catch(() => null);
+  const headers = new Headers(init?.headers);
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const res = await fetch(`${API_URL}${path}`, { ...init, headers, credentials: "include" });
   if (!res.ok) {
     let detail = res.statusText;
     try {
@@ -95,10 +91,6 @@ const json = (body: unknown, method = "POST"): RequestInit => ({
 export const fileUrl = (path: string) => `${API_URL}${path}`;
 
 export const api = {
-  me: () => request<User>("/auth/me"),
-  signUp: (body: { name: string; email: string; password: string }) => request<User>("/auth/signup", json(body)),
-  signIn: (body: { email: string; password: string }) => request<User>("/auth/login", json(body)),
-  signOut: () => request<{ status: string }>("/auth/logout", { method: "POST" }),
   listProjects: () => request<ProjectSummary[]>("/projects"),
   createProject: (body: NewProject) => request<ProjectView>("/projects", json(body)),
   renameProject: (id: string, name: string) => request<ProjectView>(`/projects/${id}`, json({ name }, "PATCH")),

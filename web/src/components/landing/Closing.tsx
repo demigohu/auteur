@@ -3,14 +3,12 @@
 import { motion, useReducedMotion } from "motion/react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Chips, Field, SubmitButton } from "@/components/ui/form";
+import { Chips } from "@/components/ui/form";
 import { Logo } from "@/components/ui/Logo";
 import { RainbowArcs } from "@/components/ui/RainbowArcs";
-import { ApiError, api } from "@/lib/api";
 import { useExperience } from "./experience";
-import { Kicker } from "./primitives";
+import { Kicker, PillButton } from "./primitives";
 import { RevealLines } from "./reveal";
 
 const EASE_OUT = [0.16, 1, 0.3, 1] as const;
@@ -49,7 +47,7 @@ export function AgentNote() {
           <span className="display grid size-12 place-items-center rounded-full border-2 border-ink bg-sun text-[18px]">Au</span>
           <span>
             <span className="block text-[15px] font-semibold">Auteur agent</span>
-            <span className="block text-[13px] text-ink/65">Run #12 · 167 seconds · $0.53</span>
+            <span className="block text-[13px] text-ink/65">Run #12 · 167 seconds · $0.53 · translated from Indonesian</span>
           </span>
         </div>
       </div>
@@ -75,7 +73,7 @@ export function Faq() {
       <div className="mx-auto max-w-[1300px]">
         <div className="text-center">
           <Kicker tone="tomato">(09) FAQ</Kicker>
-          <RevealLines className="display mt-6 text-[clamp(64px,12vw,220px)] leading-[0.84] text-tomato" lines={[{ text: "Before you ask" }]} />
+          <RevealLines className="display mt-6 text-[clamp(64px,12vw,220px)] leading-[0.84] text-tomato" lines={[{ text: "Fair questions." }]} />
         </div>
         <dl className="mt-16 grid gap-x-12 md:grid-cols-2">
           {FAQ.map(([q, a], i) => (
@@ -107,38 +105,16 @@ const MAKING = [
 
 type Making = (typeof MAKING)[number]["value"];
 
-/** (10) Say hi: the sign-up form itself, so the last section is the first step. */
+/**
+ * (10) Say hi: pick what you're making, then sign up with Clerk; the new account lands in the studio
+ * with that recipe open.
+ */
 export function SayHi() {
-  const router = useRouter();
   const reduce = useReducedMotion();
   const { play } = useExperience();
   const [making, setMaking] = useState<Making>("vlog");
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [busy, setBusy] = useState(false);
   const [poked, setPoked] = useState(0);
-
-  async function submit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const f = new FormData(e.currentTarget);
-    const name = String(f.get("name") ?? "").trim();
-    const email = String(f.get("email") ?? "").trim();
-    const password = String(f.get("password") ?? "");
-    const found: Record<string, string> = {};
-    if (!name) found.name = "Tell us what to call you.";
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) found.email = "That doesn't look like an email address.";
-    if (password.length < 8) found.password = "Use at least 8 characters.";
-    setErrors(found);
-    if (Object.keys(found).length) return;
-    setBusy(true);
-    try {
-      await api.signUp({ name, email, password });
-      router.push(making === "none" ? "/studio" : `/studio?recipe=${making}`);
-    } catch (err) {
-      const message = err instanceof ApiError ? err.message : "Couldn't reach the server. Is the API running on port 8000?";
-      setErrors(err instanceof ApiError && err.status === 409 ? { email: message } : { form: message });
-      setBusy(false);
-    }
-  }
+  const studio = making === "none" ? "/studio" : `/studio?recipe=${making}`;
 
   return (
     <section id="start" className="mat relative overflow-hidden px-[var(--gutter)] pt-[clamp(120px,18vh,200px)] pb-[clamp(100px,14vh,160px)] text-paper">
@@ -148,12 +124,12 @@ export function SayHi() {
         <RevealLines
           className="mx-auto mt-6 max-w-[14ch] text-[clamp(60px,9.4vw,170px)] leading-[0.86]"
           lines={[
-            { text: "Got footage", className: "display" },
-            { text: "to cut?", className: "font-serif italic normal-case text-lime pb-[0.04em]" },
+            { text: "Upload your clips.", className: "display" },
+            { text: "say what you want.", className: "font-serif italic normal-case text-lime pb-[0.04em]" },
           ]}
         />
         <p className="mx-auto mt-6 max-w-[48ch] text-[17px] leading-relaxed text-paper/75">
-          Make an account and your first project opens with the right recipe. Five minutes of footage, no card, no strings.
+          Make an account and your first project opens with the recipe you pick. Up to five minutes of footage per project.
         </p>
       </div>
 
@@ -171,47 +147,37 @@ export function SayHi() {
               animate={reduce ? undefined : { scale: [1, 0.85, 1.08, 1], rotate: [0, -8, 5, 0] }}
               transition={{ duration: 0.6, ease: EASE_OUT }}
             >
-              <Image src="/assets/mascot.png" alt="" width={260} height={260} className="drop-shadow-[0_30px_40px_rgba(0,0,0,0.5)]" />
+              <Image
+                src={poked % 2 ? "/assets/mascot-wink.webp" : "/assets/mascot.webp"}
+                alt=""
+                width={260}
+                height={260}
+                className="drop-shadow-[0_30px_40px_rgba(0,0,0,0.5)]"
+              />
             </motion.button>
-            <p className="absolute -top-2 -right-24 rotate-[-8deg] font-hand text-[24px] text-lime">{poked ? "hehe. again?" : "poke me. i squeak."}</p>
+            <p className="absolute -top-2 -right-24 rotate-[-8deg] font-hand text-[24px] text-lime">{poked ? "again?" : "poke me."}</p>
           </div>
-          <p className="display mt-8 text-[44px]">Free while in beta</p>
-          <p className="label mt-1 text-[10px] text-paper/50">Built for the Meta AI developer hackathon</p>
+          <p className="label mt-8 text-[10px] text-paper/50">Built for the Meta AI developer hackathon</p>
         </div>
 
         <div className="relative">
           <RainbowArcs className="pointer-events-none absolute -right-40 -bottom-40 hidden size-[420px] lg:block" />
-          <form
-            onSubmit={submit}
-            noValidate
-            className="paper-texture relative rounded-[22px] border-2 border-ink bg-paper p-7 text-ink shadow-[10px_10px_0_0_var(--lime)] sm:p-9"
-          >
-            <div className="grid gap-6 sm:grid-cols-2">
-              <Field label="Your name" name="name" autoComplete="name" placeholder="Rosa Lindqvist" error={errors.name} />
-              <Field label="Email" name="email" type="email" autoComplete="email" placeholder="you@studio.com" error={errors.email} />
-            </div>
-            <div className="mt-6">
-              <Field label="Password" name="password" type="password" autoComplete="new-password" placeholder="8 characters or more" error={errors.password} />
-            </div>
-            <div className="mt-6">
-              <Chips label="What are you making?" options={MAKING} value={making} onChange={setMaking} />
-            </div>
-            {errors.form && (
-              <p role="alert" className="mt-5 rounded-[10px] border-2 border-ink bg-sun px-3 py-2 text-sm">
-                {errors.form}
-              </p>
-            )}
+          <div className="paper-texture relative rounded-[22px] border-2 border-ink bg-paper p-7 text-ink shadow-[10px_10px_0_0_var(--lime)] sm:p-9">
+            <Chips label="What are you making?" options={MAKING} value={making} onChange={setMaking} />
+            <p className="mt-6 text-[15px] leading-relaxed text-ink/70">
+              Sign up with Google or email. Your first project opens with this recipe: the format set and a first brief written for the agent.
+            </p>
             <div className="mt-8 flex flex-wrap items-center justify-between gap-4">
-              <SubmitButton busy={busy}>{busy ? "Creating account" : "Start editing"}</SubmitButton>
+              <PillButton href={`/signup?next=${encodeURIComponent(studio)}`}>Start my first edit</PillButton>
               <p className="rotate-[-3deg] font-hand text-[20px] text-ink/55">no spam, pinky promise.</p>
             </div>
             <p className="mt-6 text-[14px] text-ink/60">
               Already have an account?{" "}
-              <Link href="/login" className="font-semibold text-ink underline decoration-tomato decoration-2 underline-offset-4">
+              <Link href={`/login?next=${encodeURIComponent(studio)}`} className="font-semibold text-ink underline decoration-tomato decoration-2 underline-offset-4">
                 Sign in
               </Link>
             </p>
-          </form>
+          </div>
         </div>
       </div>
     </section>
@@ -225,7 +191,8 @@ export function Footer() {
         <div>
           <Logo />
           <p className="mt-5 max-w-[34ch] text-[14px] leading-relaxed text-paper/65">
-            A video editor with an agent that watches, listens, cuts and checks its own work. Shoot raw, then just say cut.
+            A video editor with an agent that watches your clips, cuts them on a timeline you can change, and checks the result before you see it. Built for the
+            Meta AI developer hackathon on Muse Spark, SAM 3.1 and Voice Transcribe.
           </p>
         </div>
         <FooterCol title="Sitemap" links={[["Work", "#work"], ["Agent", "#agent"], ["Process", "#process"], ["FAQ", "#faq"]]} />
@@ -236,7 +203,7 @@ export function Footer() {
         Auteur
       </p>
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-paper/15 pt-5 pr-16">
-        <p className="label text-[10px] text-paper/50">© 2026 Auteur Labs. Shoot raw. Just say cut.</p>
+        <p className="label text-[10px] text-paper/50">© 2026 Auteur Labs</p>
         <a href="#top" className="label text-[10px] text-paper/50 hover:text-paper">
           Back to top ↑
         </a>

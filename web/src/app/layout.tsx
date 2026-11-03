@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Anton, Caveat, Geist_Mono, Instrument_Serif, Inter_Tight } from "next/font/google";
+import { ClerkProvider } from "@clerk/nextjs";
+import { clerkAppearance } from "@/components/auth/appearance";
 import "./globals.css";
 
 // Type pairing from docs/DESIGN.md: Anton display, Instrument Serif italic accents, Inter Tight UI,
@@ -11,12 +13,11 @@ const mono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 const hand = Caveat({ variable: "--font-caveat", weight: ["400", "600"], subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: { default: "Auteur · The video editor you can talk to", template: "%s" },
-  description: "Auteur is a video editor with an agent that watches and listens to your footage, builds a timeline you can still edit, and checks its own work.",
+  title: { default: "Auteur · Say the edit, get the cut", template: "%s" },
+  description: "A video editor whose agent watches your clips, hears every word and builds the edit on a timeline you can change.",
   openGraph: {
-    title: "Auteur · Shoot raw. Just say cut.",
-    description: "A video editor with an agent that watches, listens, cuts and checks its own work. Built on Meta Muse Spark, SAM 3.1 and Voice.",
-    images: ["/assets/og.png"],
+    title: "Auteur · Say the edit, get the cut",
+    description: "A video editor whose agent watches your clips, hears every word and builds the edit on a timeline you can change. Built on Muse Spark, SAM 3.1 and Voice.",
   },
 };
 
@@ -26,7 +27,18 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="en"
       className={`${display.variable} ${serif.variable} ${sans.variable} ${mono.variable} ${hand.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <ClerkProvider
+          signInUrl="/login"
+          signUpUrl="/signup"
+          signInFallbackRedirectUrl="/studio"
+          signUpFallbackRedirectUrl="/studio"
+          afterSignOutUrl="/"
+          appearance={clerkAppearance}
+        >
+          {children}
+        </ClerkProvider>
+      </body>
     </html>
   );
 }

@@ -112,11 +112,11 @@ function ServiceList(props: { items: readonly (readonly [string, string])[]; pre
 }
 
 const AGENT_TOOLS = [
-  ["Watch", "Muse Spark looks at sampled frames: who's in shot, what's happening, which moments are alive."],
-  ["Listen", "Word-level transcript for subtitles, and for finding the ums worth cutting."],
-  ["Track", "SAM 3.1 follows a person, a face or a plate through every frame."],
-  ["Reframe", "Vertical and square versions that keep the subject in frame."],
-  ["Grade", "Exposure and white balance fixed, a look applied, every clip matched."],
+  ["Watch", "Muse Spark samples frames from every clip: who's in shot, what's happening, which moments have energy."],
+  ["Listen", "Word-level transcripts, used for subtitles and for finding the ums."],
+  ["Track", "SAM 3.1 follows a person, a face or a license plate through the whole clip."],
+  ["Reframe", "Vertical and square versions where the crop follows the subject."],
+  ["Grade", "Exposure and white balance fixed per clip, then every clip matched to the others."],
 ] as const;
 
 const DEMOS = [
@@ -301,12 +301,12 @@ export function AgentSection() {
   return (
     <section id="agent" className="paper-texture relative overflow-hidden bg-paper px-[var(--gutter)] pt-[12vw] pb-[11vw] text-ink">
       <Heading
-        kicker="(02) The agent · intent"
+        kicker="(02) The agent"
         tone="blue"
-        title="Tell it once."
-        accent="it does the rest."
+        title="You write one sentence."
+        accent="it writes the plan."
         accentClass="text-blue"
-        body="You already know what you want. Say it like you would to an editor. The agent plans the cut, uses the tools it needs, and hands back a timeline, not a black box."
+        body="Brief it the way you'd brief a friend who edits. The agent posts its plan before it touches your footage, then runs the tools it needs. Every step shows up in the log, so you can see what it did and why."
       />
       <div className="mt-16 grid gap-14 lg:mt-24 lg:grid-cols-12 lg:gap-12">
         <Fade className="lg:col-span-7">
@@ -321,11 +321,11 @@ export function AgentSection() {
 }
 
 const EDITOR_TOOLS = [
-  ["Timeline", "Four tracks: B-roll, main, text, music. Drag, trim, split, snap."],
-  ["Keyframes", "Speed ramps, volume and framing that move over time."],
-  ["Color", "Wheels, curves, LOG profiles and looks, previewed exactly as exported."],
-  ["Subtitles", "Five creator styles, every word editable on the text track."],
-  ["Undo a run", "Every agent instruction is one step back in the history."],
+  ["Timeline", "B-roll, main, text and music tracks. Drag, trim, split, snap."],
+  ["Keyframes", "Speed ramps, volume and framing that change over time."],
+  ["Color", "Wheels, curves, LOG profiles and looks. The preview uses the export's color math."],
+  ["Subtitles", "Five caption styles; fix any word on the text track."],
+  ["History", "Undo a single edit or a whole instruction."],
 ] as const;
 
 const FEED_COLORS = ["#ffc22e", "#c8f53c", "#2e3bff", "#ff8fcf", "#ff4f1f", "#1d1c1a"];
@@ -364,12 +364,12 @@ export function EditorSection() {
   return (
     <section ref={root} className="paper-texture relative overflow-hidden bg-blue px-[var(--gutter)] pt-[12vw] pb-[12vw] text-paper [--texture-strength:0.3]">
       <Heading
-        kicker="(03) The editor · control"
+        kicker="(03) The editor"
         tone="paper"
-        title="Every cut"
-        accent="stays yours."
+        title="The edit lands on a timeline."
+        accent="move anything."
         accentClass="text-pink"
-        body="Nobody wants a video they can't touch. Whatever the agent builds lands on a real timeline: move a clip, nudge a keyframe, or tell it to try again."
+        body="Most AI video apps hand you a finished file. Auteur hands you four tracks you can drag, trim and split, and each agent instruction undoes in one click."
         dark
       />
       <div className="mt-16 grid items-center gap-16 lg:mt-24 lg:grid-cols-12">
@@ -379,10 +379,10 @@ export function EditorSection() {
         <div data-phone-zone className="order-1 flex justify-center lg:order-2 lg:col-span-6">
           <div data-phone className="relative will-change-transform">
             <div data-bubble className="absolute top-[16%] -left-[10%] z-20 rounded-2xl rounded-br-sm border-2 border-ink bg-paper px-4 py-2.5 text-[14px] font-medium text-ink">
-              make it warmer. <span className="text-tomato">now.</span>
+              warmer, <span className="text-tomato">please</span>
             </div>
             <div data-bubble className="absolute top-[44%] -right-[10%] z-20 rounded-2xl rounded-bl-sm border-2 border-ink bg-pink px-4 py-2.5 text-[14px] font-medium text-ink">
-              cut on the drop??
+              cut on the drop
             </div>
             <div data-bubble className="absolute bottom-[16%] -left-[8%] z-20 rounded-2xl rounded-br-sm border-2 border-ink bg-lime px-4 py-2.5 text-[14px] font-medium text-ink">
               undo that one
@@ -406,7 +406,7 @@ export function EditorSection() {
                           </span>
                         </div>
                         <div className="relative mt-2 aspect-[4/5] overflow-hidden rounded-xl border-2 border-ink">
-                          <Image src="/assets/phone-reel.jpg" alt="An Auteur edit in a social feed" fill sizes="300px" className="object-cover" />
+                          <Image src="/assets/hero-3.webp" alt="An Auteur edit in a social feed" fill sizes="300px" className="object-cover" />
                           <p className="absolute inset-x-0 bottom-4 px-3 text-center font-[Montserrat] text-[20px] font-black text-paper uppercase [text-shadow:0_2px_0_#000]">
                             we <span className="text-lime">finally</span> made it
                           </p>
@@ -443,7 +443,7 @@ export function EditorSection() {
                   <div className="display text-[25px] leading-[0.88]">
                     checked.
                     <br />
-                    shipped.
+                    exported.
                   </div>
                 </div>
               </div>

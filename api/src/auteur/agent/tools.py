@@ -15,7 +15,7 @@ from pydantic import Field
 
 from typing import Literal
 
-from auteur import colorist, costs, subtitles
+from auteur import colorist, costs, reference, subtitles
 from auteur import grade as G
 from auteur.media import load_beats, media_dir
 from auteur.reframe import follow_keys, out_of_frame
@@ -23,7 +23,7 @@ from auteur.render import render
 from auteur.timeline import OpError, Project
 from auteur.timeline.history import TrackInfo
 from auteur.timeline.models import (
-    Aspect, Blur, Follow, Highlight, Model, OverlayLayout, TextLook, TextWord, Timeline, Transition, Zoom,
+    Aspect, Blur, Follow, Grade, Highlight, Model, OverlayLayout, TextLook, TextWord, Timeline, Transition, Zoom,
 )
 from auteur.timeline.ops import (
     MIN_CLIP, AddAudio, AddClip, AddOverlay, AddText, Delete, DeleteAudio, DeleteOverlay, DeleteText, Op, SetCrop,
@@ -57,6 +57,8 @@ class ToolContext:
     cost: float = 0.0
     frames: colorist.FrameCache = field(default_factory=dict)
     match_requested: bool = False
+    reference_id: str | None = None  # set by grade with a reference: the checker then measures the match
+    reference_fit: dict[str, float] = field(default_factory=dict)  # clip id -> distance the match reached
     beat_every: int | None = None  # set by potong_di_beat: the checker then keeps cuts on the beat
 
     def add_cost(self, usd: float) -> None:
@@ -435,6 +437,10 @@ def periksa(ctx: ToolContext, out: Path) -> tuple[list[str], list[Mark]]:
     # the exact grade the renderer applies, so no extra render is needed.
     graded = [(c, s) for c, s in zip(tl.clips, tl.clip_starts()) if not G.is_identity(c.grade)]
     lumas: list[tuple[str, float, float, float]] = []
+    ref_info = ctx.project.references.get(ctx.reference_id or "")
+    ref_features = (
+        reference.features(reference.load(ctx.project_dir / "refs" / f"{ref_info.id}.jpg")) if ref_info else None
+    )
     for c, start in graded:
         f = colorist.clip_frames(ctx.frames, ctx.project.media[c.media_id], c)
         before, after = G.stats(f), G.stats(G.apply(c.grade, f))
@@ -443,16 +449,27 @@ def periksa(ctx: ToolContext, out: Path) -> tuple[list[str], list[Mark]]:
             marks.append({"start": span[0], "end": span[1], "label": "Clipped highlights"})
             issues.append(
                 f"Clip {c.id}: the grade burns {after['clipped']:.0%} of the frame to pure white "
-                f"(source: {before['clipped']:.0%}). Call `grade` for it with penyesuaian "
-                f'{{"exposure": -0.2, "highlights": -0.3}} or a lower intensitas.'
+                f"(source: {before['clipped']:.0%}). Call `grade` for it with adjust "
+                f'{{"exposure": -0.2, "highlights": -0.3}} or a lower intensity.'
             )
         if after["crushed"] > 0.08 and after["crushed"] - before["crushed"] > 0.05:
             marks.append({"start": span[0], "end": span[1], "label": "Crushed shadows"})
             issues.append(
                 f"Clip {c.id}: the grade crushes {after['crushed']:.0%} of the frame to black "
-                f"(source: {before['crushed']:.0%}). Call `grade` for it with penyesuaian "
-                f'{{"shadows": 0.3}} or a lower intensitas.'
+                f"(source: {before['crushed']:.0%}). Call `grade` for it with adjust "
+                f'{{"shadows": 0.3}} or a lower intensity.'
             )
+        if ref_features is not None and c.id in ctx.reference_fit:
+            # Judged against what the match reached, not an absolute bar: a forest never gets as close to a
+            # beach sunset as to another forest. Only a later change that undid the match is a problem.
+            gap = reference.distance(reference.features(G.apply(c.grade, f)), ref_features)
+            if gap > ctx.reference_fit[c.id] + 0.12:
+                marks.append({"start": span[0], "end": span[1], "label": "Lost the reference look"})
+                issues.append(
+                    f"Clip {c.id} drifted from the look of {ref_info.name} (distance {gap:.2f}, the match reached "
+                    f"{ctx.reference_fit[c.id]:.2f}); a later edit overrode its grade. Call `grade` for it with "
+                    f"reference_id={ref_info.id}."
+                )
         lumas.append((c.id, after["luma"], *span))
     if ctx.match_requested:
         # Loose on purpose: a montage may cut from a night street to a stage; only real jumps count.
@@ -461,7 +478,7 @@ def periksa(ctx: ToolContext, out: Path) -> tuple[list[str], list[Mark]]:
                 marks.append({"start": s, "end": e, "label": "Color mismatch"})
                 issues.append(
                     f"Clips {a} and {b} differ in brightness ({la:.2f} vs {lb:.2f}) although they should "
-                    f"match. Call `grade` on all clips with samakan=true."
+                    f"match. Call `grade` on all clips with match=true."
                 )
 
     # Beat sync: once cuts were put on the beat, later trims must not knock them off it.
@@ -522,7 +539,12 @@ LOOK_ID = {"warm": "hangat", "black_white": "hitam_putih", "bright": "cerah", "c
 class WarnaArgs(ToolArgs):
     clip_ids: list[str] | None = Field(None, description="Clips to grade; omit for all")
     look: Look | None = Field(None, description="Preset look; omit for correction only")
-    intensity: float = Field(0.7, ge=0, le=1, description="How strongly the look is applied")
+    reference_id: str | None = Field(
+        None,
+        description="A reference image to match (the user's attached still, by id). Fits each clip's tone curve, "
+        "contrast, saturation, color cast and split-toning to it, measured; replaces `look`",
+    )
+    intensity: float = Field(0.7, ge=0, le=1, description="How strongly the look or the reference match is applied")
     auto_correct: bool = Field(True, description="First correct exposure and white balance from the footage")
     match: bool = Field(True, description="Match brightness and warmth across the clips")
     log: Literal["none", "apple_log", "slog3", "vlog", "generic"] = Field(
@@ -544,6 +566,8 @@ async def warna(ctx: ToolContext, a: WarnaArgs) -> str:
     unknown = set(a.adjust) - set(colorist.NUMERIC) - set(colorist.HUES)
     if unknown:
         raise ToolError(f"Unknown grade fields {sorted(unknown)}; use {colorist.NUMERIC}")
+    if a.reference_id is not None:
+        return await _grade_to_reference(ctx, a, clips)
     results = await asyncio.to_thread(
         colorist.grade_clips, ctx.project.media, clips, LOOK_ID.get(a.look, a.look) if a.look else None, a.intensity, a.auto_correct,
         a.match, a.adjust, ctx.frames, a.log,
@@ -559,6 +583,39 @@ async def warna(ctx: ToolContext, a: WarnaArgs) -> str:
         for cid, _, before, after in results
     ]
     return f"Graded {len(results)} clips ({label}, intensity {a.intensity}). Measured on sampled frames:\n" + "\n".join(lines)
+
+
+async def _grade_to_reference(ctx: ToolContext, a: WarnaArgs, clips: list) -> str:
+    ref_info = ctx.project.references.get(a.reference_id or "")
+    if ref_info is None:
+        raise ToolError(f"Reference image {a.reference_id!r} not found; use an id from the state message")
+    ref = reference.load(ctx.project_dir / "refs" / f"{ref_info.id}.jpg")
+    results = await asyncio.to_thread(
+        colorist.match_reference, ctx.project.media, clips, ref, a.intensity, a.auto_correct, ctx.frames, a.log,
+    )
+    grades = []
+    for cid, g, _, _ in results:
+        if a.adjust:
+            values = g.model_dump(exclude={"look", "log"})
+            for k, v in a.adjust.items():
+                values[k] = values[k] + v if k in colorist.NUMERIC else v
+            g = Grade(**colorist.clamp_grade(values), log=g.log)
+        grades.append((cid, g))
+    ctx.reference_id = ref_info.id
+    ctx.reference_fit.update({cid: after for cid, _, _, after in results})
+    ctx.commit(f"Color: match {ref_info.name}", [SetGrade(clip_ids=[cid], grade=g) for cid, g in grades])
+    lines = [f"  {cid}: {before:.2f} -> {after:.2f} ({reference.closeness(after)})" for cid, _, before, after in results]
+    return (
+        f"Matched {len(results)} clips to {ref_info.name} at strength {a.intensity}. The reference measures: "
+        f"{reference.describe(ref)}.\nDistance to the reference (0 = identical look):\n" + "\n".join(lines)
+        + "\nThe match copies tone and palette, not the scene's lighting. For grain, letterbox or vignette that "
+        "you see in the reference, use `cinematic_finish` or `adjust`."
+        + (
+            "\nSome clips stay far from the reference because their content differs from it (other colors in the "
+            "scene, not a grading problem). This is as close as the palette goes: tell the user, do not regrade."
+            if any(after >= 0.3 for *_, after in results) else ""
+        )
+    )
 
 
 # --- music ----------------------------------------------------------------------------------------

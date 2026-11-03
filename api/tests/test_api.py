@@ -154,3 +154,34 @@ def test_spend_cap_per_account(client: TestClient, monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(m, "settings", dataclasses.replace(m.settings, user_spend_cap_usd=0.5))
     r = client.post(f"/projects/{pid}/runs", json={"instruction": "make it short"})
     assert r.status_code == 429 and "$0.50" in r.json()["detail"]
+
+
+def png(color: tuple[int, int, int]) -> bytes:
+    import io
+
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGB", (64, 36), color).save(buf, "PNG")
+    return buf.getvalue()
+
+
+def test_reference_upload_grade_and_delete(client: TestClient, project: dict) -> None:
+    pid, mid = project["id"], project["media"][0]["id"]
+    client.post(f"/projects/{pid}/ops", json={"label": "Add", "ops": [{"op": "add_clip", "media_id": mid, "src_in": 0, "src_out": 3}]})
+    assert client.post(f"/projects/{pid}/references", files={"file": ("notes.txt", b"hello", "text/plain")}).status_code == 400
+
+    r = client.post(f"/projects/{pid}/references", files={"file": ("teal night.png", png((20, 70, 90)), "image/png")})
+    assert r.status_code == 200, r.text
+    [ref] = r.json()["references"]
+    assert ref["name"] == "teal night" and client.get(ref["url"]).status_code == 200
+
+    assert client.post(f"/projects/{pid}/grade", json={"reference_id": "ref_nope"}).status_code == 400
+    r = client.post(f"/projects/{pid}/grade", json={"reference_id": ref["id"], "intensity": 0.9})
+    assert r.status_code == 200, r.text
+    assert r.json()["history"][-1]["label"] == "Color: Match teal night"
+    graded = r.json()["timeline"]["clips"][0]["grade"]
+    assert graded["temperature"] < 0  # pulled toward the teal still
+
+    assert client.post(f"/projects/{pid}/runs", json={"instruction": "grade it", "reference_ids": ["ref_nope"]}).status_code == 400
+    assert client.delete(f"/projects/{pid}/references/{ref['id']}").json()["references"] == []

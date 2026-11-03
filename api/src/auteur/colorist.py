@@ -9,6 +9,7 @@ from statistics import median
 import numpy as np
 
 from auteur import grade as G
+from auteur import reference
 from auteur.timeline.models import Grade
 
 # Each look at full intensity. Numeric fields scale with intensity; hues are taken as-is.
@@ -152,3 +153,17 @@ def grade_clips(
         bases = match(bases, frames)
     grades = [combine(b, look, intensity, adjust, log) for b in bases]
     return [(c.id, g, s, G.stats(G.apply(g, f))) for c, g, s, f in zip(clips, grades, before, frames)]
+
+
+def match_reference(
+    media: dict, clips: list, ref: np.ndarray, strength: float, auto: bool, cache: FrameCache, log: str = "none",
+) -> list[tuple[str, Grade, float, float]]:
+    """Grades that make `clips` look like the reference image: (clip id, grade, distance before, after).
+    Starts from the same automatic correction as `grade_clips`, so exposure and white balance are sane
+    before the look is fitted."""
+    frames = [clip_frames(cache, media[c.media_id], c) for c in clips]
+    converted = Grade(log=log)
+    measured = [G.stats(G.apply(converted, f)) for f in frames]
+    bases = [(auto_correct(s) if auto else Grade()).model_copy(update={"log": log}) for s in measured]
+    matched = reference.match_clips(bases, frames, ref, strength)
+    return [(c.id, g.model_copy(update={"look": None}), before, after) for c, (g, before, after) in zip(clips, matched)]

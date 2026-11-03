@@ -5,10 +5,14 @@ timeline as locked). Every step is published on the event bus for the editor's l
 """
 
 import asyncio
+import base64
+import io
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from openai import AsyncOpenAI
+from PIL import Image
 
 from auteur import costs
 from auteur.agent.tools import TOOLS_BY_NAME, StopRun, ToolContext, ToolError, describe_timeline, parse_args, tool_specs
@@ -53,11 +57,25 @@ Keep the user's manual edits unless they ask otherwise; the history shows who ch
 - For any color request ("warm", "cinematic", "make it look like film", "fix the colors", "match \
 the clips"), use `grade`: pick the closest look, keep `intensity` around 0.5-0.8 unless asked for a \
 strong look, and keep `auto_correct` on. Read the measured results it returns.
+- When the user attaches a reference image ("grade it like this", "make it look like this still"), call \
+`grade` with its `reference_id` and `intensity` 0.8-0.9 instead of a look. Look at the image yourself too: \
+if it has letterbox bars, visible grain or a strong vignette, add them with `cinematic_finish` or `adjust`. \
+Tell the user the match copies palette and contrast, not the scene's lighting.
 - Finish with `render`. The checker also verifies the subject stays in frame and blurs do not \
 leak. If it FAILS, fix exactly what it reports (e.g. `reframe` those clips with a smaller `smoothing`) \
 and render again.
 - When done, reply briefly in the user's language: what you did and anything they should know. No markdown tables.
 """
+
+
+def reference_data_url(project_dir: Path, ref_id: str, longest: int = 768) -> str:
+    """A reference still as a JPEG data URL, small enough for the model to read cheaply."""
+    with Image.open(project_dir / "refs" / f"{ref_id}.jpg") as im:
+        im = im.convert("RGB")
+        im.thumbnail((longest, longest))
+        buf = io.BytesIO()
+        im.save(buf, "JPEG", quality=85)
+    return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
 def state_message(store: Store, project_id: str) -> str:
@@ -72,19 +90,23 @@ def state_message(store: Store, project_id: str) -> str:
     media = "\n".join(describe_media(m) for m in p.media.values()) or "  (none uploaded)"
     history = "\n".join(f"  {h}" for h in p.history_summary(15)) or "  (no edits yet)"
     tracks = "\n".join(f"  {t.id}: '{t.prompt}' on {t.media_id}" for t in p.tracks.values()) or "  (none)"
+    refs = "\n".join(f"  {r.id}: {r.name}" for r in p.references.values()) or "  (none)"
     return (
         f"Current project state.\nMedia:\n{media}\nTimeline:\n{describe_timeline(p)}\n"
-        f"Existing tracks (reuse them):\n{tracks}\nRecent edit history (oldest first):\n{history}"
+        f"Existing tracks (reuse them):\n{tracks}\nReference images uploaded to the project:\n{refs}\n"
+        f"Recent edit history (oldest first):\n{history}"
     )
 
 
-async def run_agent(store: Store, project_id: str, run_id: str, instruction: str, lock: asyncio.Lock) -> None:
+async def run_agent(
+    store: Store, project_id: str, run_id: str, instruction: str, lock: asyncio.Lock, reference_ids: list[str] | None = None,
+) -> None:
     def emit(event: dict[str, Any]) -> None:
         bus.publish(project_id, {**event, "run_id": run_id})
 
     status = "error"
     try:
-        status = await _run(store, project_id, run_id, instruction, lock, emit)
+        status = await _run(store, project_id, run_id, instruction, lock, emit, reference_ids or [])
     except asyncio.CancelledError:
         status = "cancelled"
         raise
@@ -94,12 +116,14 @@ async def run_agent(store: Store, project_id: str, run_id: str, instruction: str
         emit({"type": "run_finished", "status": status})
 
 
-async def _run(store: Store, project_id: str, run_id: str, instruction: str, lock: asyncio.Lock, emit) -> str:
+async def _run(
+    store: Store, project_id: str, run_id: str, instruction: str, lock: asyncio.Lock, emit, reference_ids: list[str],
+) -> str:
     async with lock:
         p = store.get(project_id)
-        p.chat.append(ChatMessage(role="user", text=instruction, run_id=run_id, at=datetime.now(UTC)))
+        p.chat.append(ChatMessage(role="user", text=instruction, run_id=run_id, at=datetime.now(UTC), images=reference_ids))
         store.save(p)
-        emit({"type": "run_started", "instruction": instruction})
+        emit({"type": "run_started", "instruction": instruction, "images": reference_ids})
 
         ctx = ToolContext(
             project=p, project_dir=store.project_dir(project_id), run_id=run_id, emit=emit,
@@ -108,7 +132,17 @@ async def _run(store: Store, project_id: str, run_id: str, instruction: str, loc
         items: list[dict[str, Any]] = [
             {"role": m.role, "content": m.text} for m in p.chat[-HISTORY_MESSAGES - 1 : -1]
         ]
-        items.append({"role": "user", "content": f"{state_message(store, project_id)}\n\nInstruction: {instruction}"})
+        text = f"{state_message(store, project_id)}\n\nInstruction: {instruction}"
+        if reference_ids:
+            # The attached stills go in as images, so the model sees the look (grain, bars, mood), and by
+            # id, so it can hand them to `grade` for the measured match.
+            content: list[dict[str, Any]] = [{"type": "input_text", "text": text + "\n\nAttached reference images:"}]
+            for rid in reference_ids:
+                content.append({"type": "input_text", "text": f"{rid} ({p.references[rid].name}):"})
+                content.append({"type": "input_image", "image_url": reference_data_url(store.project_dir(project_id), rid)})
+            items.append({"role": "user", "content": content})
+        else:
+            items.append({"role": "user", "content": text})
 
         client = AsyncOpenAI(api_key=settings.meta_api_key, base_url=settings.meta_base_url)
         status, reply = "done", ""

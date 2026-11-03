@@ -19,6 +19,7 @@ export type CheckMark = { start: number; end: number; label: string };
 export type RunState = {
   id: string;
   instruction: string;
+  images: string[];
   plan: { text: string; status: StepStatus }[];
   log: LogItem[];
   progress: number | null;
@@ -58,7 +59,9 @@ type EditorState = {
   undo: () => Promise<void>;
   redo: () => Promise<void>;
   upload: (files: File[]) => Promise<void>;
-  startRun: (instruction: string) => Promise<void>;
+  startRun: (instruction: string, referenceIds?: string[]) => Promise<void>;
+  uploadReference: (file: File) => Promise<string | null>;
+  deleteReference: (refId: string) => Promise<void>;
   stopRun: () => Promise<void>;
   undoRun: (runId: string) => Promise<void>;
   exportVideo: () => Promise<void>;
@@ -72,7 +75,14 @@ type EditorState = {
   setBefore: (on: boolean) => void;
   /** Local-only grade change for live slider feedback; the commit goes through applyOps. */
   previewGrade: (clipId: string, grade: Grade) => void;
-  applyLook: (o: { clipIds: string[] | null; look: string | null; intensity: number; auto: boolean; match: boolean }) => Promise<void>;
+  applyLook: (o: {
+    clipIds: string[] | null;
+    look: string | null;
+    intensity: number;
+    auto: boolean;
+    match: boolean;
+    referenceId?: string | null;
+  }) => Promise<void>;
   setTime: (t: number) => void;
   seek: (t: number) => void;
   setZoom: (px: number) => void;
@@ -110,7 +120,7 @@ export const useEditor = create<EditorState>((set, get) => {
     const run = get().run;
     if (e.type === "run_started") {
       set({
-        run: { id: e.run_id, instruction: String(e.instruction), plan: [], log: [], progress: null, cost: 0, status: "running" },
+        run: { id: e.run_id, instruction: String(e.instruction), images: (e.images as string[] | undefined) ?? [], plan: [], log: [], progress: null, cost: 0, status: "running" },
         tab: "agent",
         marks: [],
       });
@@ -250,18 +260,31 @@ export const useEditor = create<EditorState>((set, get) => {
         if (!(await act(`Uploading ${f.name}`, () => api.upload(id, f)))) break;
       }
     },
-    startRun: async (instruction) => {
+    startRun: async (instruction, referenceIds = []) => {
       const id = get().project?.id;
       if (!id) return;
       set({ error: null });
       try {
-        await api.startRun(id, instruction);
+        await api.startRun(id, instruction, referenceIds);
         // The run_started event arrives over SSE; mark busy right away so the timeline locks.
         const project = get().project;
         if (project) set({ project: { ...project, busy: true } });
       } catch (e) {
         set({ error: e instanceof Error ? e.message : String(e) });
       }
+    },
+    // Returns the new reference's id, so the caller can attach it to the next instruction.
+    uploadReference: async (file) => {
+      const project = get().project;
+      if (!project) return null;
+      const before = new Set(project.references.map((r) => r.id));
+      const ok = await act(`Attaching ${file.name}`, () => api.uploadReference(project.id, file));
+      if (!ok) return null;
+      return get().project?.references.find((r) => !before.has(r.id))?.id ?? null;
+    },
+    deleteReference: async (refId) => {
+      const id = get().project?.id;
+      if (id) await act("Removing reference", () => api.deleteReference(id, refId));
     },
     stopRun: async () => {
       const id = get().project?.id;
@@ -322,9 +345,12 @@ export const useEditor = create<EditorState>((set, get) => {
     },
     setShowTracks: (on) => set({ showTracks: on }),
     setBefore: (on) => set({ before: on }),
-    applyLook: async ({ clipIds, look, intensity, auto, match }) => {
+    applyLook: async ({ clipIds, look, intensity, auto, match, referenceId = null }) => {
       const id = get().project?.id;
-      if (id) await act("Applying color", () => api.grade(id, { clip_ids: clipIds, look, intensity, auto, match }));
+      if (id)
+        await act(referenceId ? "Matching the reference" : "Applying color", () =>
+          api.grade(id, { clip_ids: clipIds, look, intensity, auto, match, reference_id: referenceId }),
+        );
     },
     previewGrade: (clipId, grade) => {
       const project = get().project;

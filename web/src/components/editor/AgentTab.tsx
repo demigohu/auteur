@@ -8,7 +8,9 @@ import {
   CircleNotch,
   ShieldCheck,
   ShieldWarning,
+  ImageSquare,
   Stop,
+  X,
   XCircle,
 } from "@phosphor-icons/react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
@@ -51,6 +53,10 @@ export function AgentTab() {
   const run = useEditor((s) => s.run);
   const startRun = useEditor((s) => s.startRun);
   const stopRun = useEditor((s) => s.stopRun);
+  const uploadReference = useEditor((s) => s.uploadReference);
+  const [attached, setAttached] = useState<string[]>([]);
+  const [dragging, setDragging] = useState(false);
+  const picker = useRef<HTMLInputElement>(null);
   // A brief written in New project waits in sessionStorage until the editor opens.
   const [draft, setDraft] = useState(() => {
     try {
@@ -78,18 +84,31 @@ export function AgentTab() {
     try {
       sessionStorage.removeItem(briefKey(project?.id ?? ""));
     } catch {}
-    await startRun(t);
+    const refs = attached;
+    setAttached([]);
+    await startRun(t, refs);
   };
+
+  // Stills to grade toward: pasted screenshots, dropped files or picked ones. Each is uploaded right
+  // away and rides along with the next instruction.
+  const attach = async (files: Iterable<File>) => {
+    for (const f of files) {
+      if (!f.type.startsWith("image/") || attached.length >= 4) continue;
+      const id = await uploadReference(f.name ? f : new File([f], "screenshot.png", { type: f.type }));
+      if (id) setAttached((a) => (a.includes(id) ? a : [...a, id].slice(0, 4)));
+    }
+  };
+  const refsById = new Map((project?.references ?? []).map((r) => [r.id, r]));
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div ref={scroller} className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
         {history.map((m, i) => (
-          <ChatLine key={`${m.run_id}-${m.role}-${i}`} role={m.role} text={m.text} />
+          <ChatLine key={`${m.run_id}-${m.role}-${i}`} role={m.role} text={m.text} images={(m.images ?? []).map((id) => refsById.get(id)?.url).filter(Boolean) as string[]} />
         ))}
         {run && (
           <>
-            <ChatLine role="user" text={run.instruction} />
+            <ChatLine role="user" text={run.instruction} images={run.images.map((id) => refsById.get(id)?.url).filter(Boolean) as string[]} />
             <RunView run={run} />
             {runReply && run.status !== "running" && <ChatLine role="assistant" text={runReply.text} />}
           </>
@@ -104,7 +123,44 @@ export function AgentTab() {
           send(draft);
         }}
       >
-        <div className="rounded-[14px] border-2 border-edge bg-card shadow-[0_3px_0_0_var(--edge-shadow)] transition-shadow focus-within:shadow-[0_4px_0_0_var(--tomato)]">
+        <div
+          onDragOver={(e) => {
+            if (!e.dataTransfer.types.includes("Files")) return;
+            e.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(e) => {
+            if (!e.dataTransfer.files.length) return;
+            e.preventDefault();
+            setDragging(false);
+            attach(e.dataTransfer.files);
+          }}
+          className={`rounded-[14px] border-2 bg-card shadow-[0_3px_0_0_var(--edge-shadow)] transition-shadow focus-within:shadow-[0_4px_0_0_var(--tomato)] ${
+            dragging ? "border-dashed border-accent" : "border-edge"
+          }`}
+        >
+          {attached.length > 0 && (
+            <ul className="flex flex-wrap gap-2 px-3 pt-3" aria-label="Attached reference images">
+              {attached.map((id) => {
+                const r = refsById.get(id);
+                return r ? (
+                  <li key={id} className="group relative">
+                    {/* eslint-disable-next-line @next/next/no-img-element -- served by the API host */}
+                    <img src={fileUrl(r.url)} alt={r.name} className="h-14 w-20 rounded-[8px] border-2 border-edge object-cover" />
+                    <button
+                      type="button"
+                      aria-label={`Remove ${r.name}`}
+                      onClick={() => setAttached((a) => a.filter((x) => x !== id))}
+                      className="absolute -top-1.5 -right-1.5 grid size-5 place-items-center rounded-full border-2 border-edge bg-card text-card-text"
+                    >
+                      <X size={10} weight="bold" />
+                    </button>
+                  </li>
+                ) : null;
+              })}
+            </ul>
+          )}
           <label htmlFor="instruction" className="sr-only">
             Instruction for the agent
           </label>
@@ -112,6 +168,12 @@ export function AgentTab() {
             id="instruction"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
+            onPaste={(e) => {
+              const images = [...e.clipboardData.files].filter((f) => f.type.startsWith("image/"));
+              if (!images.length) return;
+              e.preventDefault();
+              attach(images);
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
@@ -119,12 +181,37 @@ export function AgentTab() {
               }
             }}
             rows={3}
-            placeholder={running ? "The agent is working..." : "Direct it like a human editor"}
+            placeholder={
+              running ? "The agent is working..." : attached.length ? "e.g. grade it like this still" : "Direct it like a human editor"
+            }
             disabled={running}
             className="block w-full resize-none bg-transparent px-3 pt-2.5 text-sm text-text placeholder:text-faint focus:outline-none disabled:opacity-60"
           />
           <div className="flex items-center justify-between px-2 pb-2">
-            <span className="label pl-1 text-[10px] text-faint">Enter to send</span>
+            <span className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => picker.current?.click()}
+                disabled={running || attached.length >= 4}
+                aria-label="Attach a reference image"
+                title="Attach a reference image (or paste a screenshot)"
+                className="grid size-8 place-items-center rounded-full text-muted transition hover:bg-raised hover:text-text disabled:opacity-40"
+              >
+                <ImageSquare size={16} />
+              </button>
+              <input
+                ref={picker}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                multiple
+                hidden
+                onChange={(e) => {
+                  attach(e.target.files ?? []);
+                  e.target.value = "";
+                }}
+              />
+              <span className="label text-[10px] text-faint">Enter to send · paste an image</span>
+            </span>
             {running ? (
               <button
                 type="button"
@@ -150,10 +237,20 @@ export function AgentTab() {
   );
 }
 
-function ChatLine({ role, text }: { role: "user" | "assistant"; text: string }) {
+function ChatLine({ role, text, images = [] }: { role: "user" | "assistant"; text: string; images?: string[] }) {
   if (role === "user") {
     return (
-      <div className="ml-6 rounded-[14px] rounded-br-[4px] border-2 border-edge bg-card px-3 py-2 text-sm leading-relaxed text-card-text">{text}</div>
+      <div className="ml-6 rounded-[14px] rounded-br-[4px] border-2 border-edge bg-card px-3 py-2 text-sm leading-relaxed text-card-text">
+        {images.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {images.map((url) => (
+              // eslint-disable-next-line @next/next/no-img-element -- served by the API host
+              <img key={url} src={fileUrl(url)} alt="Reference" className="h-16 rounded-[6px] border border-line object-cover" />
+            ))}
+          </div>
+        )}
+        {text}
+      </div>
     );
   }
   return <div className="whitespace-pre-wrap text-sm leading-relaxed text-text/90">{text}</div>;

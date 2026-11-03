@@ -1,8 +1,9 @@
 "use client";
 
-import { CaretRight, MagicWand } from "@phosphor-icons/react";
+import { CaretRight, MagicWand, Plus, X } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { fileUrl } from "@/lib/api";
 import { NEUTRAL_GRADE } from "@/lib/grade";
 import { useEditor } from "@/lib/store";
 import type { Clip, Grade } from "@/lib/timeline";
@@ -47,6 +48,10 @@ export function ColorPanel({ clip, locked }: { clip: Clip; locked: boolean }) {
   const applyLook = useEditor((s) => s.applyLook);
   const previewGrade = useEditor((s) => s.previewGrade);
   const clipCount = useEditor((s) => s.project?.timeline.clips.length ?? 1);
+  const references = useEditor((s) => s.project?.references ?? []);
+  const uploadReference = useEditor((s) => s.uploadReference);
+  const deleteReference = useEditor((s) => s.deleteReference);
+  const picker = useRef<HTMLInputElement>(null);
   const [grade, setGradeState] = useState<Grade>(clip.grade);
   const [intensity, setIntensity] = useState(0.7);
   const [auto, setAuto] = useState(true);
@@ -60,6 +65,8 @@ export function ColorPanel({ clip, locked }: { clip: Clip; locked: boolean }) {
   const commit = (g: Grade) => applyOps("Adjust clip color", [{ op: "set_grade", clip_ids: [clip.id], grade: { ...g, look: null } }]);
   const look = (id: string | null, k = intensity) =>
     applyLook({ clipIds: allClips ? null : [clip.id], look: id, intensity: k, auto, match: allClips });
+  const matchReference = (refId: string) =>
+    applyLook({ clipIds: allClips ? null : [clip.id], look: null, intensity: Math.max(intensity, 0.8), auto, match: allClips, referenceId: refId });
 
   const slider = (f: Field) => {
     const value = grade[f.key] as number;
@@ -119,10 +126,60 @@ export function ColorPanel({ clip, locked }: { clip: Clip; locked: boolean }) {
         ))}
       </div>
 
+      <div>
+        <p className="text-xs text-text">Match a reference image</p>
+        <p className="mt-0.5 text-[11px] leading-snug text-faint">Copies the palette and contrast of a still, not its lighting.</p>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {references.map((r) => (
+            <div key={r.id} className="group relative">
+              <button
+                type="button"
+                onClick={() => matchReference(r.id)}
+                title={`Match ${r.name}`}
+                className="block overflow-hidden rounded-[8px] border-2 border-line transition hover:border-text active:scale-[0.97]"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element -- served by the API host */}
+                <img src={fileUrl(r.url)} alt={r.name} className="h-12 w-[72px] object-cover" />
+              </button>
+              <button
+                type="button"
+                aria-label={`Remove ${r.name}`}
+                onClick={() => deleteReference(r.id)}
+                className="absolute -top-1.5 -right-1.5 hidden size-5 place-items-center rounded-full border-2 border-edge bg-card text-card-text group-hover:grid"
+              >
+                <X size={9} weight="bold" />
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={() => picker.current?.click()}
+            className="grid h-12 w-[72px] place-items-center rounded-[8px] border-2 border-dashed border-line-strong text-muted transition hover:border-text hover:text-text"
+            aria-label="Add a reference image"
+            title="Add a reference image"
+          >
+            <Plus size={14} weight="bold" />
+          </button>
+          <input
+            ref={picker}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            hidden
+            onChange={async (e) => {
+              const f = e.target.files?.[0];
+              e.target.value = "";
+              if (!f) return;
+              const id = await uploadReference(f);
+              if (id) matchReference(id);
+            }}
+          />
+        </div>
+      </div>
+
       <div className="space-y-1">
         <div className="flex items-center justify-between">
           <label htmlFor="look-intensity" className="text-xs text-text">
-            Look strength
+            Strength
           </label>
           <span className="font-mono text-[11px] tabular-nums text-muted">{Math.round(intensity * 100)}%</span>
         </div>

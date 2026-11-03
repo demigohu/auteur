@@ -17,7 +17,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.types import ASGIApp, Receive, Scope, Send
 from sse_starlette.sse import EventSourceResponse
 
-from auteur import colorist
+from auteur import colorist, reference
 from auteur.agent.loop import run_agent
 from auteur.config import settings
 from auteur.events import bus
@@ -26,7 +26,7 @@ from auteur.render import RenderError, render
 from auteur.auth import ClerkAuth
 from auteur.store import NotFound, Store
 from auteur.timeline import Media, Op, OpError, Project, Timeline
-from auteur.timeline.history import ChatMessage
+from auteur.timeline.history import ChatMessage, ReferenceImage
 from auteur.tracking import load_track
 from auteur.timeline.models import Aspect
 from auteur.timeline.ops import SetGrade, new_id
@@ -164,6 +164,12 @@ class TrackView(BaseModel):
     url: str
 
 
+class ReferenceView(BaseModel):
+    id: str
+    name: str
+    url: str
+
+
 class ProjectView(BaseModel):
     """What the editor needs: everything except the timeline snapshots stored in history."""
 
@@ -174,6 +180,7 @@ class ProjectView(BaseModel):
     history: list[CommitView]
     chat: list[ChatMessage]
     tracks: list[TrackView]
+    references: list[ReferenceView]
     speech: list[tuple[float, float]]
     spent: float
     last_render_url: str | None
@@ -211,6 +218,9 @@ class ProjectView(BaseModel):
             tracks=[
                 TrackView(id=t.id, media_id=t.media_id, prompt=t.prompt, url=f"/files/{p.id}/tracks/{t.id}.json")
                 for t in p.tracks.values()
+            ],
+            references=[
+                ReferenceView(id=r.id, name=r.name, url=f"/files/{p.id}/refs/{r.id}.jpg") for r in p.references.values()
             ],
             last_render_url=f"/files/{p.id}/{p.last_render}" if p.last_render else None,
             can_undo=bool(p.history),
@@ -266,6 +276,7 @@ class GradeRequest(BaseModel):
     intensity: float = Field(0.7, ge=0, le=1)
     auto: bool = True
     match: bool = True
+    reference_id: str | None = Field(None, description="Match this reference image instead of applying a look")
 
 
 class RenderRequest(BaseModel):
@@ -274,6 +285,7 @@ class RenderRequest(BaseModel):
 
 class RunRequest(BaseModel):
     instruction: str = Field(min_length=1, max_length=2000)
+    reference_ids: list[str] = Field(default_factory=list, max_length=4)
 
 
 class OpsRequest(BaseModel):
@@ -371,6 +383,42 @@ async def upload_media(project_id: str, file: UploadFile) -> ProjectView:
         return ProjectView.of(p, busy=False)
 
 
+MAX_REFERENCE_BYTES = 15 * 1024 * 1024
+
+
+@app.post("/projects/{project_id}/references")
+async def upload_reference(project_id: str, file: UploadFile) -> ProjectView:
+    """A still to grade toward: a film frame, a photo, a screenshot. Stored as a JPEG."""
+    async with ensure_idle(project_id):
+        p = load(project_id)
+        data = await file.read(MAX_REFERENCE_BYTES + 1)
+        if len(data) > MAX_REFERENCE_BYTES:
+            raise HTTPException(400, "Reference images can be up to 15 MB")
+        ref_id = new_id("ref")
+        with tempfile.NamedTemporaryFile() as tmp:
+            tmp.write(data)
+            tmp.flush()
+            try:
+                reference.save(Path(tmp.name), store.project_dir(p.id) / "refs" / f"{ref_id}.jpg")
+            except Exception:
+                raise HTTPException(400, "That file isn't an image Auteur can read (use JPG, PNG or WebP)") from None
+        name = Path(file.filename or "reference").stem[:60] or "reference"
+        p.references[ref_id] = ReferenceImage(id=ref_id, name=name)
+        store.save(p)
+        return ProjectView.of(p, busy=False)
+
+
+@app.delete("/projects/{project_id}/references/{ref_id}")
+async def delete_reference(project_id: str, ref_id: str) -> ProjectView:
+    async with ensure_idle(project_id):
+        p = load(project_id)
+        if p.references.pop(ref_id, None) is None:
+            raise HTTPException(404, f"Reference {ref_id} not found")
+        (store.project_dir(p.id) / "refs" / f"{ref_id}.jpg").unlink(missing_ok=True)
+        store.save(p)
+        return ProjectView.of(p, busy=False)
+
+
 @app.post("/projects/{project_id}/ops")
 async def apply_ops(project_id: str, body: OpsRequest) -> ProjectView:
     async with ensure_idle(project_id):
@@ -407,9 +455,13 @@ async def start_run(project_id: str, body: RunRequest, request: Request) -> dict
     lock = ensure_idle(project_id)
     if (run := _runs.get(project_id)) and not run[1].done():
         raise HTTPException(409, "The agent is already running")
+    p = load(project_id)
+    unknown = [r for r in body.reference_ids if r not in p.references]
+    if unknown:
+        raise HTTPException(400, f"Unknown reference images {unknown}")
     check_run_quota(request)
     run_id = new_id("run")
-    task = asyncio.create_task(run_agent(store, project_id, run_id, body.instruction, lock))
+    task = asyncio.create_task(run_agent(store, project_id, run_id, body.instruction, lock, body.reference_ids))
     _runs[project_id] = (run_id, task)
     return {"run_id": run_id}
 
@@ -471,10 +523,19 @@ async def grade_project(project_id: str, body: GradeRequest) -> ProjectView:
         clips = [c for c in p.timeline.clips if body.clip_ids is None or c.id in body.clip_ids]
         if not clips:
             raise HTTPException(400, "No clips to grade")
-        results = await asyncio.to_thread(
-            colorist.grade_clips, p.media, clips, body.look, body.intensity, body.auto, body.match, None, {},
-        )
-        label = colorist.LOOK_LABELS.get(body.look or "", "Correction")
+        if body.reference_id is not None:
+            if body.reference_id not in p.references:
+                raise HTTPException(400, f"Unknown reference image {body.reference_id!r}")
+            ref = reference.load(store.project_dir(p.id) / "refs" / f"{body.reference_id}.jpg")
+            results = await asyncio.to_thread(
+                colorist.match_reference, p.media, clips, ref, body.intensity, body.auto, {},
+            )
+            label = f"Match {p.references[body.reference_id].name}"
+        else:
+            results = await asyncio.to_thread(
+                colorist.grade_clips, p.media, clips, body.look, body.intensity, body.auto, body.match, None, {},
+            )
+            label = colorist.LOOK_LABELS.get(body.look or "", "Correction")
         try:
             p.commit("user", f"Color: {label}", [SetGrade(clip_ids=[cid], grade=g) for cid, g, _, _ in results])
         except OpError as e:

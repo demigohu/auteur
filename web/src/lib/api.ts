@@ -20,7 +20,10 @@ export type CommitView = {
 
 export type TrackView = { id: string; media_id: string; prompt: string; url: string };
 
-export type ChatMessage = { role: "user" | "assistant"; text: string; run_id: string; at: string };
+export type ChatMessage = { role: "user" | "assistant"; text: string; run_id: string; at: string; images?: string[] };
+
+/** A still the user wants the grade to look like. */
+export type ReferenceView = { id: string; name: string; url: string };
 
 export type ProjectView = {
   id: string;
@@ -30,6 +33,7 @@ export type ProjectView = {
   history: CommitView[];
   chat: ChatMessage[];
   tracks: TrackView[];
+  references: ReferenceView[];
   speech: [number, number][];
   spent: number;
   last_render_url: string | null;
@@ -104,10 +108,20 @@ export const api = {
   applyOps: (id: string, label: string, ops: OpInput[]) => request<ProjectView>(`/projects/${id}/ops`, json({ label, ops })),
   undo: (id: string) => request<ProjectView>(`/projects/${id}/undo`, { method: "POST" }),
   redo: (id: string) => request<ProjectView>(`/projects/${id}/redo`, { method: "POST" }),
-  startRun: (id: string, instruction: string) => request<{ run_id: string }>(`/projects/${id}/runs`, json({ instruction })),
+  startRun: (id: string, instruction: string, referenceIds: string[] = []) =>
+    request<{ run_id: string }>(`/projects/${id}/runs`, json({ instruction, reference_ids: referenceIds })),
+  uploadReference: (id: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<ProjectView>(`/projects/${id}/references`, { method: "POST", body: form });
+  },
+  deleteReference: (id: string, refId: string) => request<ProjectView>(`/projects/${id}/references/${refId}`, { method: "DELETE" }),
   stopRun: (id: string) => request<{ stopped: boolean }>(`/projects/${id}/runs/stop`, { method: "POST" }),
   undoRun: (id: string, runId: string) => request<ProjectView>(`/projects/${id}/runs/${runId}/undo`, { method: "POST" }),
-  grade: (id: string, body: { clip_ids: string[] | null; look: string | null; intensity: number; auto: boolean; match: boolean }) =>
+  grade: (
+    id: string,
+    body: { clip_ids: string[] | null; look: string | null; intensity: number; auto: boolean; match: boolean; reference_id?: string | null },
+  ) =>
     request<ProjectView>(`/projects/${id}/grade`, json(body)),
   render: (id: string, final: boolean) => request<ProjectView>(`/projects/${id}/render`, json({ final })),
 };

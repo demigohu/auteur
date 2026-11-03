@@ -31,6 +31,14 @@ class ChatMessage(Model):
     text: str
     run_id: str
     at: datetime
+    images: list[str] = Field(default_factory=list, description="Reference image ids attached to the message")
+
+
+class ReferenceImage(Model):
+    """A still the user wants the grade to look like; the file is <project_dir>/refs/<id>.jpg."""
+
+    id: str
+    name: str
 
 
 class TrackInfo(Model):
@@ -52,6 +60,7 @@ class Project(Model):
     chat: list[ChatMessage] = Field(default_factory=list)
     last_render: str | None = Field(None, description="Path of the latest render, relative to the project dir")
     tracks: dict[str, TrackInfo] = Field(default_factory=dict)
+    references: dict[str, ReferenceImage] = Field(default_factory=dict)
     spent: float = Field(0, description="Meta Model API spend in USD across all runs")
 
     def commit(self, author: Author, label: str, ops: list[Op], run_id: str | None = None) -> Commit:

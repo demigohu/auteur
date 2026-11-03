@@ -11,7 +11,7 @@ from typing import Literal
 from pydantic import Field
 
 from auteur.timeline.models import Media, Model, Timeline
-from auteur.timeline.ops import Op, apply, new_id
+from auteur.timeline.ops import Op, OpError, apply, new_id
 
 Author = Literal["agent", "user"]
 
@@ -74,6 +74,12 @@ class TrackInfo(Model):
 SceneStatus = Literal["draft", "building", "ready", "failed"]
 
 
+class LutInfo(Model):
+    id: str
+    name: str
+    size: int = Field(description="LUT_3D_SIZE")
+
+
 class StoryScene(Model):
     """One scene of a video made in code: Muse Wonder writes it as a Remotion component, and its render
     becomes an ordinary (silent) media file on the timeline."""
@@ -115,6 +121,7 @@ class Project(Model):
     references: dict[str, ReferenceImage] = Field(default_factory=dict)
     last_check: CheckResult | None = None
     storyboard: Storyboard | None = None
+    luts: dict[str, LutInfo] = Field(default_factory=dict, description="3D LUTs (.cube) uploaded to the project")
     spent: float = Field(0, description="Meta Model API spend in USD across all runs")
 
     def commit(self, author: Author, label: str, ops: list[Op], run_id: str | None = None) -> Commit:
@@ -123,6 +130,8 @@ class Project(Model):
         tl = before
         for op in ops:
             tl = apply(tl, op, self.media)
+        if missing := {c.lut.lut_id for c in tl.clips if c.lut} - set(self.luts):
+            raise OpError(f"Unknown LUTs {sorted(missing)}; upload a .cube first (project has {sorted(self.luts)})")
         c = Commit(
             id=new_id("commit"), author=author, label=label, ops=ops, run_id=run_id,
             at=datetime.now(UTC), before=before,

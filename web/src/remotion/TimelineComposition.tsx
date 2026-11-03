@@ -8,8 +8,10 @@ import type { AudioItem, Clip, Grade, Overlay, Timeline, Transition } from "@/li
 import { isIdentity, NEUTRAL_GRADE, saturationMatrix, tableValues, vignetteAt } from "@/lib/grade";
 import { cropAt, volumeAt } from "@/lib/keys";
 import { boxAt, type NormBox, type TrackData } from "@/lib/tracks";
-import { cropWindow } from "@/lib/crop";
+import { cropWindow, fitSize } from "@/lib/crop";
+import { poseAt } from "@/lib/animate";
 import { overlayRect } from "@/lib/overlay";
+import { incoming, outgoing, overlaps } from "@/lib/transitions";
 import { TextLayer } from "./TextLayer";
 
 export type CompositionProps = {
@@ -21,6 +23,8 @@ export type CompositionProps = {
   raw: boolean;
   /** Timeline ranges with speech, for ducking music in the preview. */
   speech: [number, number][];
+  /** ProjectView.clip_previews: prepared variants for reversed and LUT clips. */
+  clipPreviews?: Record<string, string | null>;
 };
 
 const ACCENT = "#eea53f";
@@ -54,7 +58,15 @@ function Vignette({ grade }: { grade: Grade }) {
 
 type Place = (b: NormBox) => { left: number; top: number; width: number; height: number };
 
-type Joins = { crossIn: number; crossOut: number; dipIn: Transition | null; dipOut: Transition | null };
+/** How a clip meets its neighbours: overlapping transitions in and out (xfade kinds), or dips. */
+type Joins = {
+  crossIn: number;
+  crossOut: number;
+  inKind: Transition["kind"] | null;
+  outKind: Transition["kind"] | null;
+  dipIn: Transition | null;
+  dipOut: Transition | null;
+};
 
 function ClipLayer(props: {
   clip: Clip;
@@ -63,37 +75,65 @@ function ClipLayer(props: {
   showTracks: boolean;
   raw: boolean;
   joins: Joins;
+  /** A prepared variant to play (reversed and/or with the LUT baked in); null while it is made. */
+  variant?: string | null;
 }) {
   const { media, tracks, showTracks, raw, joins } = props;
+  // Reversed and LUT clips play from a prepared file; until it exists, the plain preview stands in.
+  const playsVariant = !raw && Boolean(props.variant);
+  const preparing = !raw && props.variant === null;
+  const backwards = playsVariant && props.clip.reverse;
+  const src = playsVariant ? props.variant! : media.preview_url;
+  // The reversed file holds the whole media backwards: this clip's range sits at mirrored times.
+  const startAt = backwards ? media.duration - props.clip.src_out : props.clip.src_in;
   const clip = raw ? { ...props.clip, crop: [], effects: [], grade: NEUTRAL_GRADE, zoom: null } : props.clip;
   const frame = useCurrentFrame();
   const { fps, width: W, height: H } = useVideoConfig();
   const local = frame / fps;
   const duration = clipDuration(clip);
   const ramp = (x: number) => Math.min(1, Math.max(0, x));
-  // Crossfades blend this clip in over the previous one (it is drawn on top); audio ramps both ways.
-  const opacity = joins.crossIn ? ramp(local / joins.crossIn) : 1;
+  // Overlapping transitions draw this clip in over the previous one (it is drawn on top) and may move the
+  // outgoing one (slides, zoom); audio crossfades both ways. lib/transitions mirrors ffmpeg's xfade.
+  const qIn = joins.crossIn ? ramp(local / joins.crossIn) : 1;
+  const qOut = joins.crossOut ? ramp((local - (duration - joins.crossOut)) / joins.crossOut) : 0;
+  const inStyle = joins.inKind && qIn < 1 ? incoming(joins.inKind, qIn, W, H) : {};
+  const outStyle = joins.outKind && qOut > 0 ? outgoing(joins.outKind, qOut) : {};
+  const layer = { ...outStyle, ...inStyle, transform: [inStyle.transform, outStyle.transform].filter(Boolean).join(" ") || undefined };
   const dipInAmount = joins.dipIn ? 1 - ramp(local / (joins.dipIn.duration / 2)) : 0;
   const dipOutAmount = joins.dipOut ? ramp((local - (duration - joins.dipOut.duration / 2)) / (joins.dipOut.duration / 2)) : 0;
   const audioIn = joins.crossIn ? ramp(local / joins.crossIn) : joins.dipIn ? 1 - dipInAmount : 1;
   const audioOut = joins.crossOut ? ramp((duration - local) / joins.crossOut) : joins.dipOut ? 1 - dipOutAmount : 1;
-  const tf = raw ? null : clip.transform;
-  // Same order as render.transform_filters: flip and scale, rotate, then move (CSS applies right to left).
-  const placed = tf
-    ? `translate(${tf.x * 100}%, ${tf.y * 100}%) rotate(${tf.rotation}deg) scale(${tf.scale * (tf.flip_h ? -1 : 1)}, ${tf.scale * (tf.flip_v ? -1 : 1)})`
-    : undefined;
+  // The pose at this moment: transform, keyframes and in/out animations (lib/animate = render.pose_filters).
+  // Same order as the export: flip and scale, rotate, then move (CSS applies right to left).
+  const pose = raw ? null : poseAt(clip, local);
+  const flipX = clip.transform?.flip_h ? -1 : 1;
+  const flipY = clip.transform?.flip_v ? -1 : 1;
+  const placed =
+    pose && (pose.x || pose.y || pose.rotation || pose.scale !== 1 || flipX < 0 || flipY < 0)
+      ? `translate(${pose.x * 100}%, ${pose.y * 100}%) rotate(${pose.rotation}deg) scale(${pose.scale * flipX}, ${pose.scale * flipY})`
+      : undefined;
   const zoom = clip.zoom ? clip.zoom.start + (clip.zoom.end - clip.zoom.start) * Math.min(local / Math.max(duration, 1e-3), 1) : 1;
 
   // Cut the edges (crop_rect), cover-fit what is left into the output frame, then pan to the crop center
   // inside it (mirrors render.cut_edges + crop_filter()).
   const [ex, ey, ew, eh] = cropWindow(raw ? null : clip.crop_rect, media.width, media.height);
-  const scale = Math.max(W / ew, H / eh);
+  const fitted = clip.fit === "fit" && !raw;
+  // Fill: cover the frame and pan. Fit: the whole picture, centered (render.fit_size), over a backdrop.
+  const [fw, fh] = fitSize(ew, eh, W, H);
+  const scale = fitted ? fw / ew : Math.max(W / ew, H / eh);
   const vw = media.width * scale;
   const vh = media.height * scale;
   const { cx, cy } = cropAt(clip.crop, frame / fps);
-  const left = Math.min(-ex * scale, Math.max(W - (ex + ew) * scale, W / 2 - cx * vw));
-  const top = Math.min(-ey * scale, Math.max(H - (ey + eh) * scale, H / 2 - cy * vh));
-  const t = clip.src_in + local * clip.speed;
+  const left = fitted
+    ? Math.floor((W - fw) / 2) - ex * scale
+    : Math.min(-ex * scale, Math.max(W - (ex + ew) * scale, W / 2 - cx * vw));
+  const top = fitted
+    ? Math.floor((H - fh) / 2) - ey * scale
+    : Math.min(-ey * scale, Math.max(H - (ey + eh) * scale, H / 2 - cy * vh));
+  // The backdrop of a fitted clip: the same picture covering the frame, centered, then blurred.
+  const cover = Math.max(W / ew, H / eh);
+  // The source moment on screen (for tracked boxes); a reversed clip runs from its out point back.
+  const t = clip.reverse && !raw ? clip.src_out - local * clip.speed : clip.src_in + local * clip.speed;
   const filterId = `grade-${clip.id}`;
   // Source-normalized box -> output pixels, through the same cover + pan as the video itself.
   const place: Place = (b) => ({ left: left + b[0] * vw, top: top + b[1] * vh, width: (b[2] - b[0]) * vw, height: (b[3] - b[1]) * vh });
@@ -104,20 +144,44 @@ function ClipLayer(props: {
   const kept = new Set(clip.effects.flatMap((e) => (e.kind === "blur" ? e.exclude_ids.map((o) => `${e.track_id}:${o}`) : [])));
 
   const audible = !clip.muted && clip.speed === 1 && clip.volume > 0;
+  // The clip's own sound fades (render: afade with the longest of these, a dip, or 20 ms).
+  const soundFade =
+    (clip.audio_fade_in ? ramp(local / clip.audio_fade_in) : 1) * (clip.audio_fade_out ? ramp((duration - local) / clip.audio_fade_out) : 1);
   return (
-    <AbsoluteFill style={{ overflow: "hidden", backgroundColor: "#000", opacity }}>
-     <AbsoluteFill style={{ transform: placed }}>
+    <AbsoluteFill style={{ overflow: "hidden", backgroundColor: "#000", ...layer, WebkitMaskImage: layer.maskImage }}>
+     <AbsoluteFill style={{ transform: placed, opacity: pose && pose.opacity < 1 ? pose.opacity : undefined }}>
      <AbsoluteFill style={{ overflow: "hidden", transform: zoom !== 1 ? `scale(${zoom})` : undefined }}>
+      {fitted && clip.backdrop.kind === "color" && <AbsoluteFill style={{ background: clip.backdrop.color }} />}
+      {fitted && clip.backdrop.kind === "blur" && (
+        <Video
+          src={fileUrl(src)}
+          trimBefore={Math.round(startAt * fps)}
+          playbackRate={clip.speed}
+          muted
+          objectFit="fill"
+          style={{
+            position: "absolute",
+            left: (W - ew * cover) / 2 - ex * cover,
+            top: (H - eh * cover) / 2 - ey * cover,
+            width: media.width * cover,
+            height: media.height * cover,
+            // Like ffmpeg's gblur, CSS blur darkens toward the frame's edges (both blur in black from outside).
+            filter: `${isIdentity(clip.grade) ? "" : `url(#${filterId}) `}blur(${clip.backdrop.blur * H}px)`,
+          }}
+        />
+      )}
       <Video
-        src={fileUrl(media.preview_url)}
-        trimBefore={Math.round(clip.src_in * fps)}
+        src={fileUrl(src)}
+        trimBefore={Math.round(startAt * fps)}
         playbackRate={clip.speed}
         muted={!audible}
-        volume={audible ? clip.volume * volumeAt(clip.volume_keys, local) * audioIn * audioOut : 0}
+        volume={audible ? clip.volume * volumeAt(clip.volume_keys, local) * audioIn * audioOut * soundFade : 0}
         objectFit="fill"
         style={{
           position: "absolute", left, top, width: vw, height: vh,
           filter: isIdentity(clip.grade) ? undefined : `url(#${filterId})`,
+          // A fitted clip shows only its window (crop_rect); a filled one is clipped by the frame itself.
+          clipPath: fitted ? `inset(${ey * scale}px ${(media.width - ex - ew) * scale}px ${(media.height - ey - eh) * scale}px ${ex * scale}px)` : undefined,
         }}
       />
       {!isIdentity(clip.grade) && <GradeFilter id={filterId} grade={clip.grade} />}
@@ -146,6 +210,12 @@ function ClipLayer(props: {
         )}
      </AbsoluteFill>
      </AbsoluteFill>
+      {preparing && (
+        <span style={{ position: "absolute", top: H * 0.03, left: W * 0.03, padding: `${H * 0.006}px ${H * 0.012}px`, borderRadius: H * 0.01,
+          background: "rgba(0,0,0,0.6)", color: "#fff", font: `600 ${Math.round(H * 0.022)}px Montserrat, sans-serif` }}>
+          Preparing {clip.reverse ? "reverse" : "LUT"} preview...
+        </span>
+      )}
       {/* After zoom and transform, over the whole frame, as the export multiplies it in. */}
       {clip.grade.vignette > 0 && <Vignette grade={clip.grade} />}
       {joins.dipIn && dipInAmount > 0 && (
@@ -158,6 +228,11 @@ function ClipLayer(props: {
   );
 }
 
+// Overlay.blend -> CSS; render.BLEND uses ffmpeg's modes of the same name ("addition" for add).
+const BLEND_CSS: Record<Overlay["blend"], React.CSSProperties["mixBlendMode"]> = {
+  normal: "normal", screen: "screen", multiply: "multiply", overlay: "overlay", lighten: "lighten", darken: "darken", add: "plus-lighter",
+};
+
 function OverlayLayer({ item, media }: { item: Overlay; media: MediaView }) {
   const { fps, width: W, height: H } = useVideoConfig();
   const [x, y, w, h] = overlayRect(item, W, H);
@@ -167,7 +242,13 @@ function OverlayLayer({ item, media }: { item: Overlay; media: MediaView }) {
   const vh = media.height * scale;
   const filterId = `grade-${item.id}`;
   return (
-    <div data-overlay-id={item.id} style={{ position: "absolute", left: x, top: y, width: w, height: h, overflow: "hidden" }}>
+    <div
+      data-overlay-id={item.id}
+      style={{
+        position: "absolute", left: x, top: y, width: w, height: h, overflow: "hidden",
+        opacity: item.opacity, mixBlendMode: BLEND_CSS[item.blend],
+      }}
+    >
       <Video
         src={fileUrl(media.preview_url)}
         trimBefore={Math.round(item.src_in * fps)}
@@ -293,22 +374,25 @@ function TrackBox({ rect, label, strong }: { rect: ReturnType<Place>; label: str
   );
 }
 
-export function TimelineComposition({ timeline, media, tracks, showTracks, raw, speech }: CompositionProps) {
+export function TimelineComposition({ timeline, media, tracks, showTracks, raw, speech, clipPreviews = {} }: CompositionProps) {
   const { fps } = useVideoConfig();
   const starts = clipStarts(timeline.clips);
   const total = timelineDuration(timeline.clips);
-  const kindOf = (i: number) => timeline.clips[i]?.transition?.kind;
   return (
     <AbsoluteFill style={{ backgroundColor: "#09090b" }}>
       {/* Absolute placement (not a Series) so crossfading clips can overlap; later clips draw on top. */}
       {timeline.clips.map((clip, i) => {
         const m = media[clip.media_id];
         const next = timeline.clips[i + 1];
+        const into = i > 0 && overlaps(clip.transition) ? clip.transition : null;
+        const outOf = overlaps(next?.transition) ? next!.transition! : null;
         const joins: Joins = {
-          crossIn: i > 0 && kindOf(i) === "crossfade" ? clip.transition!.duration : 0,
-          crossOut: kindOf(i + 1) === "crossfade" ? next!.transition!.duration : 0,
-          dipIn: clip.transition && clip.transition.kind !== "crossfade" ? clip.transition : null,
-          dipOut: next?.transition && next.transition.kind !== "crossfade" ? next.transition : null,
+          crossIn: into?.duration ?? 0,
+          crossOut: outOf?.duration ?? 0,
+          inKind: into?.kind ?? null,
+          outKind: outOf?.kind ?? null,
+          dipIn: clip.transition && !overlaps(clip.transition) ? clip.transition : null,
+          dipOut: next?.transition && !overlaps(next.transition) ? next.transition : null,
         };
         return (
           <Sequence
@@ -318,7 +402,9 @@ export function TimelineComposition({ timeline, media, tracks, showTracks, raw, 
             durationInFrames={toFrames(clipDuration(clip), fps)}
             premountFor={fps}
           >
-            {m ? <ClipLayer clip={clip} media={m} tracks={tracks} showTracks={showTracks && !raw} raw={raw} joins={joins} /> : null}
+            {m ? (
+              <ClipLayer clip={clip} media={m} tracks={tracks} showTracks={showTracks && !raw} raw={raw} joins={joins} variant={clipPreviews[clip.id]} />
+            ) : null}
           </Sequence>
         );
       })}

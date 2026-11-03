@@ -117,12 +117,26 @@ class VolumeKey(Model):
     v: float = Field(ge=0, le=2)
 
 
-class Transition(Model):
-    """How a clip enters from the previous one. A crossfade overlaps the two clips by `duration`;
-    dips fade out to a color and back in without overlapping."""
+TransitionKind = Literal[
+    "crossfade", "dip_black", "dip_white", "slide_left", "slide_right", "slide_up", "slide_down",
+    "wipe_left", "wipe_right", "circle", "zoom",
+]
+DIPS = ("dip_black", "dip_white")
 
-    kind: Annotated[Literal["crossfade", "dip_black", "dip_white"], BeforeValidator(_legacy)]
+
+class Transition(Model):
+    """How a clip enters from the previous one. Dips fade out to a color and back in without
+    overlapping; every other kind overlaps the two clips by `duration` (ffmpeg xfade)."""
+
+    kind: Annotated[TransitionKind, BeforeValidator(_legacy)] = Field(
+        description="crossfade blends; slide_* pushes the old clip out; wipe_* reveals the new one with a moving edge; "
+        "circle opens from the center; zoom zooms into the old clip and fades to the new; dip_* dip through a color"
+    )
     duration: float = Field(0.5, ge=0.1, le=2)
+
+    @property
+    def overlaps(self) -> bool:
+        return self.kind not in DIPS
 
 
 class Zoom(Model):
@@ -148,6 +162,21 @@ class CropRect(Model):
         return x, y, cw - cw % 2, ch - ch % 2
 
 
+class ClipLut(Model):
+    """A LUT uploaded to the project (.cube), applied before the grade."""
+
+    lut_id: str
+    intensity: float = Field(1, ge=0, le=1)
+
+
+class Backdrop(Model):
+    """What fills the frame around a clip shown whole (fit): the clip itself, filled and blurred, or a color."""
+
+    kind: Literal["blur", "color"] = "blur"
+    color: str = Field("#000000", pattern=r"^#[0-9a-fA-F]{6}$")
+    blur: float = Field(0.04, ge=0.005, le=0.2, description="Gaussian blur sigma as a fraction of the frame height")
+
+
 class Transform(Model):
     """Where the (cropped) frame sits in the output: scaled and rotated about its center, flipped, then
     moved. Uncovered parts of the output are black. Applied after crop and zoom."""
@@ -156,12 +185,34 @@ class Transform(Model):
     y: float = Field(0, ge=-1, le=1, description="Vertical offset as a fraction of the output height (+ = down)")
     scale: float = Field(1, ge=0.1, le=4)
     rotation: float = Field(0, ge=-180, le=180, description="Degrees, clockwise")
+    opacity: float = Field(1, ge=0, le=1, description="Over black")
     flip_h: bool = False
     flip_v: bool = False
 
     @property
     def is_identity(self) -> bool:
         return self == Transform()
+
+
+class TransformKey(Model):
+    """The clip's pose at a clip-local time (timeline seconds); straight lines between keys."""
+
+    t: float = Field(ge=0)
+    x: float = Field(0, ge=-1, le=1)
+    y: float = Field(0, ge=-1, le=1)
+    scale: float = Field(1, ge=0.1, le=4)
+    rotation: float = Field(0, ge=-360, le=360)
+    opacity: float = Field(1, ge=0, le=1)
+
+
+AnimKind = Literal["fade", "zoom_in", "zoom_out", "slide_left", "slide_right", "slide_up", "slide_down", "spin"]
+
+
+class ClipAnim(Model):
+    """An entrance or exit: zoom_in grows from small, zoom_out shrinks from big; slide_* moves that way."""
+
+    kind: AnimKind
+    duration: float = Field(0.5, ge=0.1, le=3)
 
 
 class Clip(Model):
@@ -173,14 +224,27 @@ class Clip(Model):
     grade: Grade = Field(default_factory=Grade)
     crop: list[CropKey] = Field(default_factory=list, description="Empty = centered crop; times are clip-local timeline seconds")
     crop_rect: CropRect | None = Field(None, description="Edges of the source cut off before it fills the frame")
+    fit: Literal["fill", "fit"] = Field(
+        "fill", description="fill crops to the frame; fit shows the whole picture over a backdrop (e.g. landscape in 9:16)"
+    )
+    backdrop: Backdrop = Field(default_factory=Backdrop, description="Behind a clip shown with fit")
     follow: Follow | None = None
     zoom: Zoom | None = None
     transform: Transform | None = Field(None, description="Position, scale, rotation and flip in the frame; None = fill the frame")
+    transform_keys: list[TransformKey] = Field(
+        default_factory=list, description="Animated position/scale/rotation/opacity; overrides those of `transform` (flips stay)"
+    )
+    anim_in: ClipAnim | None = None
+    anim_out: ClipAnim | None = None
     transition: Transition | None = Field(None, description="Transition into this clip from the previous one")
     effects: list[Effect] = Field(default_factory=list)
     muted: bool = False
     volume: float = Field(1.0, ge=0, le=2)
     volume_keys: list[VolumeKey] = Field(default_factory=list, description="Volume over time, multiplied with `volume`")
+    reverse: bool = Field(False, description="Play the clip backwards (sound too)")
+    lut: ClipLut | None = None
+    audio_fade_in: float = Field(0, ge=0, le=10, description="Seconds the clip's sound fades in")
+    audio_fade_out: float = Field(0, ge=0, le=10, description="Seconds the clip's sound fades out")
 
     @property
     def src_duration(self) -> float:
@@ -207,6 +271,9 @@ class Clip(Model):
 OverlayLayout = Literal["full", "kanan_atas", "kiri_atas", "kanan_bawah", "kiri_bawah"]
 
 
+BlendMode = Literal["normal", "screen", "multiply", "overlay", "lighten", "darken", "add"]
+
+
 class OverlayBox(Model):
     """A B-roll picture placed freely: its center, and its size as a fraction of the frame (same shape)."""
 
@@ -225,6 +292,8 @@ class Overlay(Model):
     start: float = Field(ge=0)
     layout: OverlayLayout = Field("full", description="full covers the frame; the corners are picture-in-picture")
     box: OverlayBox | None = Field(None, description="Free position and size; overrides `layout` when set")
+    opacity: float = Field(1, ge=0, le=1)
+    blend: BlendMode = Field("normal", description="How the B-roll mixes with the picture under it")
     grade: Grade = Field(default_factory=Grade)
     muted: bool = True
 
@@ -262,6 +331,15 @@ class Finish(Model):
     grain: float = Field(0, ge=0, le=1, description="Film grain amount")
 
 
+class TextAnim(Model):
+    """How a text enters or leaves: fade, pop (grows in), slide_up (rises in), words (one word at a time)."""
+
+    kind: Literal["fade", "pop", "slide_up", "words"]
+    duration: float = Field(0.4, ge=0.1, le=3)
+
+
+TextFont = Literal["montserrat", "anton", "bebas", "poppins", "dmserif", "instrument", "marker", "mono"]
+
 TextLook = Annotated[Literal["clean", "bold", "karaoke", "box", "pop"], BeforeValidator(_legacy)]
 
 
@@ -286,6 +364,16 @@ class TextItem(Model):
     words: list[TextWord] = Field(default_factory=list)
     x: float = Field(0.5, ge=0, le=1, description="Center, normalized to output frame")
     y: float = Field(0.85, ge=0, le=1)
+    font: TextFont = Field("montserrat", description="anton/bebas: condensed caps; poppins: round sans; dmserif/instrument: serif; marker: hand-drawn; mono: typewriter")
+    text_color: str = Field("#FFFFFF", pattern=r"^#[0-9a-fA-F]{6}$")
+    size: float | None = Field(None, ge=0.02, le=0.3, description="Font size as a fraction of the frame height; null = the look's")
+    outline: float | None = Field(None, ge=0, le=0.3, description="Outline width as a fraction of the font size; null = the look's")
+    outline_color: str = Field("#000000", pattern=r"^#[0-9a-fA-F]{6}$")
+    shadow: bool | None = Field(None, description="Drop shadow; null = the look's")
+    background: str | None = Field(None, pattern=r"^#[0-9a-fA-F]{6}$", description="Box behind the text")
+    background_opacity: float = Field(0.65, ge=0, le=1)
+    anim_in: TextAnim | None = None
+    anim_out: TextAnim | None = None
 
 
 class Timeline(Model):
@@ -314,7 +402,7 @@ class Timeline(Model):
         """Timeline start of each clip; a crossfade pulls a clip back over the end of the previous one."""
         starts, t = [], 0.0
         for i, c in enumerate(self.clips):
-            if i and c.transition and c.transition.kind == "crossfade":
+            if i and c.transition and c.transition.overlaps:
                 t -= c.transition.duration
             starts.append(round(t, 3))
             t += c.duration

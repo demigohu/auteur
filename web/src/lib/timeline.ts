@@ -29,7 +29,14 @@ export interface Schema {
     | SetZoom
     | SetTransform
     | SetCropRect
+    | SetFit
+    | SetReverse
+    | SetLut
+    | SetTransformKeys
+    | SetClipAnim
     | SetVolume
+    | SetAudioFade
+    | DetachAudio
     | AddOverlay
     | UpdateOverlay
     | DeleteOverlay
@@ -70,6 +77,12 @@ export interface Project {
   };
   last_check: CheckResult | null;
   storyboard: Storyboard | null;
+  /**
+   * 3D LUTs (.cube) uploaded to the project
+   */
+  luts: {
+    [k: string]: LutInfo;
+  };
   /**
    * Meta Model API spend in USD across all runs
    */
@@ -141,12 +154,23 @@ export interface Clip {
    * Edges of the source cut off before it fills the frame
    */
   crop_rect: CropRect | null;
+  /**
+   * fill crops to the frame; fit shows the whole picture over a backdrop (e.g. landscape in 9:16)
+   */
+  fit: "fill" | "fit";
+  backdrop: Backdrop;
   follow: Follow | null;
   zoom: Zoom | null;
   /**
    * Position, scale, rotation and flip in the frame; None = fill the frame
    */
   transform: Transform | null;
+  /**
+   * Animated position/scale/rotation/opacity; overrides those of `transform` (flips stay)
+   */
+  transform_keys: TransformKey[];
+  anim_in: ClipAnim | null;
+  anim_out: ClipAnim | null;
   /**
    * Transition into this clip from the previous one
    */
@@ -158,6 +182,19 @@ export interface Clip {
    * Volume over time, multiplied with `volume`
    */
   volume_keys: VolumeKey[];
+  /**
+   * Play the clip backwards (sound too)
+   */
+  reverse: boolean;
+  lut: ClipLut | null;
+  /**
+   * Seconds the clip's sound fades in
+   */
+  audio_fade_in: number;
+  /**
+   * Seconds the clip's sound fades out
+   */
+  audio_fade_out: number;
 }
 /**
  * Color adjustments, all 0 = untouched. Ranges are the safe bounds the renderer accepts.
@@ -244,6 +281,17 @@ export interface CropRect {
   bottom: number;
 }
 /**
+ * Behind a clip shown with fit
+ */
+export interface Backdrop {
+  kind: "blur" | "color";
+  color: string;
+  /**
+   * Gaussian blur sigma as a fraction of the frame height
+   */
+  blur: number;
+}
+/**
  * The tracked object a clip's crop keys follow; the checker verifies it stays in frame.
  *
  * This interface was referenced by `Schema`'s JSON-Schema
@@ -284,18 +332,60 @@ export interface Transform {
    * Degrees, clockwise
    */
   rotation: number;
+  /**
+   * Over black
+   */
+  opacity: number;
   flip_h: boolean;
   flip_v: boolean;
 }
 /**
- * How a clip enters from the previous one. A crossfade overlaps the two clips by `duration`;
- * dips fade out to a color and back in without overlapping.
+ * The clip's pose at a clip-local time (timeline seconds); straight lines between keys.
+ *
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "TransformKey".
+ */
+export interface TransformKey {
+  t: number;
+  x: number;
+  y: number;
+  scale: number;
+  rotation: number;
+  opacity: number;
+}
+/**
+ * An entrance or exit: zoom_in grows from small, zoom_out shrinks from big; slide_* moves that way.
+ *
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "ClipAnim".
+ */
+export interface ClipAnim {
+  kind: "fade" | "zoom_in" | "zoom_out" | "slide_left" | "slide_right" | "slide_up" | "slide_down" | "spin";
+  duration: number;
+}
+/**
+ * How a clip enters from the previous one. Dips fade out to a color and back in without
+ * overlapping; every other kind overlaps the two clips by `duration` (ffmpeg xfade).
  *
  * This interface was referenced by `Schema`'s JSON-Schema
  * via the `definition` "Transition".
  */
 export interface Transition {
-  kind: "crossfade" | "dip_black" | "dip_white";
+  /**
+   * crossfade blends; slide_* pushes the old clip out; wipe_* reveals the new one with a moving edge; circle opens from the center; zoom zooms into the old clip and fades to the new; dip_* dip through a color
+   */
+  kind:
+    | "crossfade"
+    | "dip_black"
+    | "dip_white"
+    | "slide_left"
+    | "slide_right"
+    | "slide_up"
+    | "slide_down"
+    | "wipe_left"
+    | "wipe_right"
+    | "circle"
+    | "zoom";
   duration: number;
 }
 /**
@@ -346,6 +436,16 @@ export interface VolumeKey {
   v: number;
 }
 /**
+ * A LUT uploaded to the project (.cube), applied before the grade.
+ *
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "ClipLut".
+ */
+export interface ClipLut {
+  lut_id: string;
+  intensity: number;
+}
+/**
  * A B-roll clip on the second video track, at an absolute timeline time.
  *
  * This interface was referenced by `Schema`'s JSON-Schema
@@ -365,6 +465,11 @@ export interface Overlay {
    * Free position and size; overrides `layout` when set
    */
   box: OverlayBox | null;
+  opacity: number;
+  /**
+   * How the B-roll mixes with the picture under it
+   */
+  blend: "normal" | "screen" | "multiply" | "overlay" | "lighten" | "darken" | "add";
   grade: Grade;
   muted: boolean;
 }
@@ -415,6 +520,31 @@ export interface TextItem {
    */
   x: number;
   y: number;
+  /**
+   * anton/bebas: condensed caps; poppins: round sans; dmserif/instrument: serif; marker: hand-drawn; mono: typewriter
+   */
+  font: "montserrat" | "anton" | "bebas" | "poppins" | "dmserif" | "instrument" | "marker" | "mono";
+  text_color: string;
+  /**
+   * Font size as a fraction of the frame height; null = the look's
+   */
+  size: number | null;
+  /**
+   * Outline width as a fraction of the font size; null = the look's
+   */
+  outline: number | null;
+  outline_color: string;
+  /**
+   * Drop shadow; null = the look's
+   */
+  shadow: boolean | null;
+  /**
+   * Box behind the text
+   */
+  background: string | null;
+  background_opacity: number;
+  anim_in: TextAnim | null;
+  anim_out: TextAnim | null;
 }
 /**
  * One spoken word of a subtitle, in timeline seconds, for word-by-word looks.
@@ -427,6 +557,16 @@ export interface TextWord {
   start: number;
   end: number;
   emphasis: boolean;
+}
+/**
+ * How a text enters or leaves: fade, pop (grows in), slide_up (rises in), words (one word at a time).
+ *
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "TextAnim".
+ */
+export interface TextAnim {
+  kind: "fade" | "pop" | "slide_up" | "words";
+  duration: number;
 }
 /**
  * Music on the audio track, at an absolute timeline time.
@@ -491,7 +631,14 @@ export interface Commit {
     | SetZoom
     | SetTransform
     | SetCropRect
+    | SetFit
+    | SetReverse
+    | SetLut
+    | SetTransformKeys
+    | SetClipAnim
     | SetVolume
+    | SetAudioFade
+    | DetachAudio
     | AddOverlay
     | UpdateOverlay
     | DeleteOverlay
@@ -587,6 +734,31 @@ export interface AddText {
   words: TextWord[];
   x: number;
   y: number;
+  /**
+   * anton/bebas: condensed caps; poppins: round sans; dmserif/instrument: serif; marker: hand-drawn; mono: typewriter
+   */
+  font: "montserrat" | "anton" | "bebas" | "poppins" | "dmserif" | "instrument" | "marker" | "mono";
+  text_color: string;
+  /**
+   * Font size as a fraction of the frame height; null = the look's
+   */
+  size: number | null;
+  /**
+   * Outline width as a fraction of the font size; null = the look's
+   */
+  outline: number | null;
+  outline_color: string;
+  /**
+   * Drop shadow; null = the look's
+   */
+  shadow: boolean | null;
+  /**
+   * Box behind the text
+   */
+  background: string | null;
+  background_opacity: number;
+  anim_in: TextAnim | null;
+  anim_out: TextAnim | null;
 }
 /**
  * This interface was referenced by `Schema`'s JSON-Schema
@@ -602,6 +774,34 @@ export interface UpdateText {
   color: string | null;
   x: number | null;
   y: number | null;
+  font: ("montserrat" | "anton" | "bebas" | "poppins" | "dmserif" | "instrument" | "marker" | "mono") | null;
+  text_color: string | null;
+  /**
+   * null (sent explicitly) = back to the look's size
+   */
+  size: number | null;
+  /**
+   * null (sent explicitly) = back to the look's outline
+   */
+  outline: number | null;
+  outline_color: string | null;
+  /**
+   * null (sent explicitly) = back to the look's shadow
+   */
+  shadow: boolean | null;
+  /**
+   * null (sent explicitly) removes the box
+   */
+  background: string | null;
+  background_opacity: number | null;
+  /**
+   * null (sent explicitly) removes the entrance
+   */
+  anim_in: TextAnim | null;
+  /**
+   * null (sent explicitly) removes the exit
+   */
+  anim_out: TextAnim | null;
 }
 /**
  * This interface was referenced by `Schema`'s JSON-Schema
@@ -721,12 +921,113 @@ export interface SetCropRect {
 }
 /**
  * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "SetFit".
+ */
+export interface SetFit {
+  op: "set_fit";
+  clip_id: string;
+  fit: "fill" | "fit";
+  /**
+   * Blur or color behind a fitted clip; omit to keep the current one
+   */
+  backdrop: Backdrop1 | null;
+}
+/**
+ * What fills the frame around a clip shown whole (fit): the clip itself, filled and blurred, or a color.
+ *
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "Backdrop".
+ */
+export interface Backdrop1 {
+  kind: "blur" | "color";
+  color: string;
+  /**
+   * Gaussian blur sigma as a fraction of the frame height
+   */
+  blur: number;
+}
+/**
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "SetReverse".
+ */
+export interface SetReverse {
+  op: "set_reverse";
+  clip_id: string;
+  reverse: boolean;
+}
+/**
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "SetLut".
+ */
+export interface SetLut {
+  op: "set_lut";
+  clip_id: string;
+  /**
+   * A LUT uploaded to the project, with intensity; null removes it
+   */
+  lut: ClipLut | null;
+}
+/**
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "SetTransformKeys".
+ */
+export interface SetTransformKeys {
+  op: "set_transform_keys";
+  clip_id: string;
+  /**
+   * Empty removes the animation (the static transform applies again)
+   */
+  keys: TransformKey[];
+}
+/**
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "SetClipAnim".
+ */
+export interface SetClipAnim {
+  op: "set_clip_anim";
+  clip_id: string;
+  /**
+   * Entrance, or null for none
+   */
+  anim_in: ClipAnim | null;
+  /**
+   * Exit, or null for none
+   */
+  anim_out: ClipAnim | null;
+}
+/**
+ * This interface was referenced by `Schema`'s JSON-Schema
  * via the `definition` "SetVolume".
  */
 export interface SetVolume {
   op: "set_volume";
   clip_id: string;
   volume: number;
+}
+/**
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "SetAudioFade".
+ */
+export interface SetAudioFade {
+  op: "set_audio_fade";
+  clip_id: string;
+  fade_in: number;
+  fade_out: number;
+}
+/**
+ * Move a clip's sound to the music track (as its own item, still in sync) and mute the clip, so the
+ * sound can be trimmed, moved or faded on its own.
+ *
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "DetachAudio".
+ */
+export interface DetachAudio {
+  op: "detach_audio";
+  clip_id: string;
+  /**
+   * Id for the new audio item; generated if omitted
+   */
+  id: string | null;
 }
 /**
  * This interface was referenced by `Schema`'s JSON-Schema
@@ -762,6 +1063,8 @@ export interface UpdateOverlay {
    * Free position and size (drag on the canvas)
    */
   box: OverlayBox | null;
+  opacity: number | null;
+  blend: ("normal" | "screen" | "multiply" | "overlay" | "lighten" | "darken" | "add") | null;
   grade: Grade | null;
 }
 /**
@@ -1011,4 +1314,16 @@ export interface StoryScene {
    */
   status: "draft" | "building" | "ready" | "failed";
   error: string | null;
+}
+/**
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "LutInfo".
+ */
+export interface LutInfo {
+  id: string;
+  name: string;
+  /**
+   * LUT_3D_SIZE
+   */
+  size: number;
 }

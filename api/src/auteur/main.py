@@ -17,16 +17,16 @@ from starlette.concurrency import run_in_threadpool
 from starlette.types import ASGIApp, Receive, Scope, Send
 from sse_starlette.sse import EventSourceResponse
 
-from auteur import colorist, exporter, fetch, motion, reference
+from auteur import colorist, derived, exporter, fetch, freeze, motion, reference
 from auteur.agent.loop import run_agent, run_tool
 from auteur.config import settings
 from auteur.events import bus
-from auteur.media import MAX_TOTAL_SECONDS, MediaError, ingest
+from auteur.media import MAX_TOTAL_SECONDS, MediaError, ingest, make_waveform
 from auteur.render import RenderError, render
 from auteur.auth import ClerkAuth
 from auteur.store import NotFound, Store
 from auteur.timeline import Media, Op, OpError, Project, Timeline
-from auteur.timeline.history import ChatMessage, CheckResult, ReferenceImage, Storyboard
+from auteur.timeline.history import ChatMessage, CheckResult, LutInfo, ReferenceImage, Storyboard
 from auteur.tracking import load_track
 from auteur.timeline.models import Aspect
 from auteur.timeline.ops import SetGrade, new_id
@@ -145,6 +145,7 @@ class MediaView(Media):
     preview_url: str
     thumb_url: str
     filmstrip_url: str | None
+    waveform_url: str | None = Field(None, description="Picture of the sound, ~40 px per second")
     beats: list[float] | None = None
 
 
@@ -194,6 +195,10 @@ class ProjectView(BaseModel):
     chat: list[ChatMessage]
     tracks: list[TrackView]
     references: list[ReferenceView]
+    luts: list[LutInfo]
+    clip_previews: dict[str, str | None] = Field(
+        description="Clips the editor plays from a prepared variant (reversed, or with a LUT): its url, or null while it is being made"
+    )
     last_check: CheckResult | None
     storyboard: Storyboard | None
     export: exporter.ExportView | None
@@ -224,6 +229,11 @@ class ProjectView(BaseModel):
                         None,
                     ),
                     beats=media_beats(p, m),
+                    waveform_url=(
+                        f"{base}/{m.id}/filmstrip.png" if m.kind == "audio"
+                        else f"{base}/{m.id}/waveform.png" if (store.project_dir(p.id) / "media" / m.id / "waveform.png").exists()
+                        else None
+                    ),
                 )
                 for m in p.media.values()
             ],
@@ -241,6 +251,8 @@ class ProjectView(BaseModel):
             ],
             last_check=p.last_check,
             storyboard=p.storyboard,
+            luts=list(p.luts.values()),
+            clip_previews=clip_previews(p),
             export=_exports[p.id].view() if p.id in _exports else None,
             max_export_height=settings.max_export_height or None,
             last_render_url=f"/files/{p.id}/{p.last_render}" if p.last_render else None,
@@ -367,8 +379,41 @@ async def delete_project(project_id: str) -> dict[str, str]:
 
 
 @app.get("/projects/{project_id}")
-def get_project(project_id: str) -> ProjectView:
-    return ProjectView.of(load(project_id))
+async def get_project(project_id: str) -> ProjectView:
+    p = load(project_id)
+    backfill_waveforms(p)
+    return ProjectView.of(p)
+
+
+_waveforms_pending: set[str] = set()
+
+
+def backfill_waveforms(p: Project) -> None:
+    """Footage uploaded before clip waveforms existed gets them in the background; the editor hears
+    about it as a "project" event."""
+    missing = [
+        m for m in p.media.values()
+        if m.kind == "video" and m.has_audio and m.id not in _waveforms_pending
+        and not (store.project_dir(p.id) / "media" / m.id / "waveform.png").exists()
+    ]
+    if not missing:
+        return
+    _waveforms_pending.update(m.id for m in missing)
+
+    async def run() -> None:
+        try:
+            for m in missing:
+                out = store.project_dir(p.id) / "media" / m.id / "waveform.png"
+                await asyncio.to_thread(make_waveform, Path(m.path), out, m.duration)
+        except MediaError:
+            pass
+        finally:
+            _waveforms_pending.difference_update(m.id for m in missing)
+        bus.publish(p.id, {"type": "project"}, replay=False)
+
+    task = asyncio.create_task(run())
+    _background.add(task)
+    task.add_done_callback(_background.discard)
 
 
 async def add_media(p: Project, upload: Path, name: str) -> ProjectView:
@@ -454,6 +499,91 @@ async def upload_reference(project_id: str, file: UploadFile) -> ProjectView:
                 raise HTTPException(400, "That file isn't an image Auteur can read (use JPG, PNG or WebP)") from None
         name = Path(file.filename or "reference").stem[:60] or "reference"
         p.references[ref_id] = ReferenceImage(id=ref_id, name=name)
+        store.save(p)
+        return ProjectView.of(p, busy=False)
+
+
+_variants_pending: set[tuple[str, str]] = set()
+
+
+def clip_previews(p: Project) -> dict[str, str | None]:
+    """The prepared preview of every reversed or LUT clip; missing ones are made in the background and
+    announced with a "project" event when ready."""
+    out: dict[str, str | None] = {}
+    todo = []
+    for c in p.timeline.clips:
+        name = derived.preview_name(c)
+        if name is None or c.media_id not in p.media:
+            continue
+        path = store.project_dir(p.id) / "media" / c.media_id / name
+        if path.exists():
+            out[c.id] = f"/files/{p.id}/media/{c.media_id}/{name}"
+            continue
+        out[c.id] = None
+        if (c.media_id, name) not in _variants_pending:
+            _variants_pending.add((c.media_id, name))
+            todo.append(c)
+    if todo:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            _variants_pending.difference_update((c.media_id, derived.preview_name(c)) for c in todo)
+            return out
+
+        async def run() -> None:
+            for c in todo:
+                key = (c.media_id, derived.preview_name(c))
+                try:
+                    m = p.media[c.media_id]
+                    d = store.project_dir(p.id) / "media" / m.id
+                    await asyncio.to_thread(derived.make_variant, d, m, c, store.project_dir(p.id) / "luts")
+                except (derived.DerivedError, OSError):
+                    pass  # the editor keeps the plain preview; the export reports real problems
+                finally:
+                    _variants_pending.discard(key)
+                bus.publish(p.id, {"type": "project"}, replay=False)
+
+        task = loop.create_task(run())
+        _background.add(task)
+        task.add_done_callback(_background.discard)
+    return out
+
+
+MAX_LUT_BYTES = 8 * 1024 * 1024
+
+
+@app.post("/projects/{project_id}/luts")
+async def upload_lut(project_id: str, file: UploadFile) -> ProjectView:
+    """A 3D LUT (.cube) for the project; clips use it with set_lut."""
+    data = await file.read(MAX_LUT_BYTES + 1)
+    if len(data) > MAX_LUT_BYTES:
+        raise HTTPException(400, "LUT files go up to 8 MB")
+    try:
+        size, _ = derived.parse_cube(data.decode("utf-8", errors="replace"))
+    except derived.DerivedError as e:
+        raise HTTPException(400, f"Not a usable .cube LUT: {e}") from None
+    async with ensure_idle(project_id):
+        p = load(project_id)
+        lut_id = new_id("lut")
+        d = store.project_dir(p.id) / "luts"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / f"{lut_id}.cube").write_bytes(data)
+        name = Path(file.filename or "LUT").stem[:60] or "LUT"
+        p.luts[lut_id] = LutInfo(id=lut_id, name=name, size=size)
+        store.save(p)
+        return ProjectView.of(p, busy=False)
+
+
+@app.delete("/projects/{project_id}/luts/{lut_id}")
+async def delete_lut(project_id: str, lut_id: str) -> ProjectView:
+    async with ensure_idle(project_id):
+        p = load(project_id)
+        if lut_id not in p.luts:
+            raise HTTPException(404, f"LUT {lut_id} not found")
+        if any(c.lut and c.lut.lut_id == lut_id for c in p.timeline.clips):
+            raise HTTPException(400, "Clips still use this LUT; remove it from them first")
+        p.luts.pop(lut_id)
+        (store.project_dir(p.id) / "luts" / f"{lut_id}.cube").unlink(missing_ok=True)
         store.save(p)
         return ProjectView.of(p, busy=False)
 
@@ -641,6 +771,24 @@ async def cancel_export(project_id: str, export_id: str) -> dict[str, bool]:
     job.cancel.set()
     return {"cancelled": True}
 
+
+class FreezeRequest(BaseModel):
+    at: float = Field(ge=0, description="Timeline time of the frame to hold")
+    duration: float = Field(2, ge=0.2, le=30)
+
+
+@app.post("/projects/{project_id}/clips/{clip_id}/freeze")
+async def freeze_frame(project_id: str, clip_id: str, body: FreezeRequest) -> ProjectView:
+    """Hold the frame at the playhead: the clip splits there and a still of that frame goes in between."""
+    async with ensure_idle(project_id):
+        p = load(project_id)
+        try:
+            ops = await asyncio.to_thread(freeze.freeze, p, store.project_dir(p.id), clip_id, body.at, body.duration)
+            p.commit("user", f"Freeze frame {body.duration:g}s", ops)
+        except (freeze.FreezeError, OpError) as e:
+            raise HTTPException(400, str(e)) from None
+        store.save(p)
+        return ProjectView.of(p, busy=False)
 
 @app.post("/projects/{project_id}/runs/stop")
 async def stop_run(project_id: str) -> dict[str, bool]:

@@ -14,7 +14,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from auteur import grade
+from auteur import animate, derived, grade
 from auteur.effects import apply_effects
 from auteur.textlayer import text_track
 from auteur.tracking import Track
@@ -40,15 +40,15 @@ class Encode:
     audio_only: bool = False  # MP3 of the mixed soundtrack, no video stream
 
 
-def _lerp_expr(keys: list[tuple[float, float]]) -> str:
-    """Piecewise-linear ffmpeg expression of `t` through (time, value) keys."""
+def _lerp_expr(keys: list[tuple[float, float]], var: str = "t", digits: int = 2) -> str:
+    """Piecewise-linear ffmpeg expression of `var` (t, or T in geq) through (time, value) keys."""
     if len(keys) == 1:
-        return f"{keys[0][1]:.2f}"
-    expr = f"{keys[-1][1]:.2f}"
+        return f"{keys[0][1]:.{digits}f}"
+    expr = f"{keys[-1][1]:.{digits}f}"
     for (t0, v0), (t1, v1) in reversed(list(zip(keys, keys[1:]))):
-        seg = f"{v0:.2f}+({v1 - v0:.2f})*(t-{t0:.3f})/{max(t1 - t0, 1e-3):.3f}"
-        expr = f"if(lt(t\\,{t1:.3f})\\,{seg}\\,{expr})"
-    return f"if(lt(t\\,{keys[0][0]:.3f})\\,{keys[0][1]:.2f}\\,{expr})"
+        seg = f"{v0:.{digits}f}+({v1 - v0:.{digits}f})*({var}-{t0:.3f})/{max(t1 - t0, 1e-3):.3f}"
+        expr = f"if(lt({var}\\,{t1:.3f})\\,{seg}\\,{expr})"
+    return f"if(lt({var}\\,{keys[0][0]:.3f})\\,{keys[0][1]:.{digits}f}\\,{expr})"
 
 
 def crop_window(m: Media, out_w: int, out_h: int) -> tuple[int, int]:
@@ -70,10 +70,21 @@ def crop_filter(m: Media, keys: list[CropKey], out_w: int, out_h: int, zoom: Zoo
     ys = [(k.t, min(max(k.cy * m.height - ch / 2, 0), m.height - ch)) for k in keys]
     f = f"crop={cw}:{ch}:x='{_lerp_expr(xs)}':y='{_lerp_expr(ys)}',scale={out_w}:{out_h}"
     if zoom:
-        z = f"({zoom.start:.4f}+({zoom.end - zoom.start:.4f})*min(t/{max(duration, 1e-3):.3f}\\,1))"
-        f += (f",scale=w='2*trunc({out_w}*{z}/2)':h='2*trunc({out_h}*{z}/2)':eval=frame"
-              f",crop={out_w}:{out_h}:(iw-{out_w})/2:(ih-{out_h})/2")
+        f += "," + zoom_filter(zoom, out_w, out_h, duration)
     return f
+
+
+def zoom_filter(zoom: Zoom, out_w: int, out_h: int, duration: float) -> str:
+    """Ken Burns: scale the frame up over the clip and crop the center back out. `t` is clip-local."""
+    z = f"({zoom.start:.4f}+({zoom.end - zoom.start:.4f})*min(t/{max(duration, 1e-3):.3f}\\,1))"
+    return (f"scale=w='2*trunc({out_w}*{z}/2)':h='2*trunc({out_h}*{z}/2)':eval=frame"
+            f",crop={out_w}:{out_h}:(iw-{out_w})/2:(ih-{out_h})/2")
+
+
+def fit_size(w: int, h: int, out_w: int, out_h: int) -> tuple[int, int]:
+    """The whole w x h picture scaled to fit inside the frame (even sizes); fitSize in the preview."""
+    s = min(out_w / w, out_h / h)
+    return max(2, round(w * s / 2) * 2), max(2, round(h * s / 2) * 2)
 
 
 def transform_filters(t: Transform, out_w: int, out_h: int) -> list[str]:
@@ -107,6 +118,51 @@ def cut_edges(m: Media, rect: CropRect, keys: list[CropKey]) -> tuple[str, Media
     moved = [k.model_copy(update={"cx": min(max((k.cx * m.width - x) / w, 0), 1), "cy": min(max((k.cy * m.height - y) / h, 0), 1)})
              for k in keys]
     return f"crop={w}:{h}:{x}:{y}", inner, moved
+
+
+# Overlapping transitions -> ffmpeg xfade names; TimelineComposition.tsx draws each the same way.
+XFADE = {
+    "crossfade": "fade", "slide_left": "slideleft", "slide_right": "slideright", "slide_up": "slideup",
+    "slide_down": "slidedown", "wipe_left": "wipeleft", "wipe_right": "wiperight", "circle": "circleopen", "zoom": "zoomin",
+}
+
+
+# Overlay.blend -> ffmpeg blend modes; TimelineComposition.tsx uses the CSS mix-blend-mode of the same name.
+BLEND = {"screen": "screen", "multiply": "multiply", "overlay": "overlay", "lighten": "lighten", "darken": "darken", "add": "addition"}
+
+
+def pose_filters(c, out_w: int, out_h: int) -> list[str]:
+    """The clip's transform, keyframes and in/out animations (animate.effective_keys) as filters. A pose
+    that never changes uses the plain transform filters; a moving one the same steps driven by `t`."""
+    keys = animate.effective_keys(c)
+    flips = [f for f, on in (("hflip", c.transform and c.transform.flip_h), ("vflip", c.transform and c.transform.flip_v)) if on]
+    if animate.is_static(keys):
+        p = keys[0][1]
+        static = Transform(x=p.x, y=p.y, scale=p.scale, rotation=max(-180, min(180, p.rotation)),
+                           flip_h=bool(c.transform and c.transform.flip_h), flip_v=bool(c.transform and c.transform.flip_v))
+        f = [] if static.is_identity else transform_filters(static, out_w, out_h)
+        if p.opacity < 1:
+            o = f"{p.opacity:.4f}"
+            f.append(f"lutyuv=y='val*{o}':u='128+(val-128)*{o}':v='128+(val-128)*{o}'")
+        return f
+    s = _lerp_expr([(t, p.scale) for t, p in keys], digits=4)
+    r = _lerp_expr([(t, p.rotation) for t, p in keys], digits=3)
+    dx = _lerp_expr([(t, p.x * out_w) for t, p in keys])
+    dy = _lerp_expr([(t, p.y * out_h) for t, p in keys])
+    # A canvas big enough for the largest size plus the farthest move, so crop never leaves it.
+    pw = round((out_w * max(1, max(p.scale for _, p in keys)) + 2 * max(abs(p.x) * out_w for _, p in keys)) / 2) * 2 + 4
+    ph = round((out_h * max(1, max(p.scale for _, p in keys)) + 2 * max(abs(p.y) * out_h for _, p in keys)) / 2) * 2 + 4
+    f = [
+        *flips,
+        f"scale=w='max(2\\,2*trunc({out_w}*({s})/2))':h='max(2\\,2*trunc({out_h}*({s})/2))':eval=frame",
+        f"pad=w={pw}:h={ph}:x='(ow-iw)/2':y='(oh-ih)/2':color=black:eval=frame",
+        f"rotate='({r})*PI/180':ow={pw}:oh={ph}:c=black",
+        f"crop={out_w}:{out_h}:x='({pw}-{out_w})/2-({dx})':y='({ph}-{out_h})/2-({dy})'",
+    ]
+    if any(p.opacity < 1 for _, p in keys):
+        o = _lerp_expr([(t, p.opacity) for t, p in keys], var="T", digits=4)
+        f.append(f"geq=lum='lum(X\\,Y)*({o})':cb='128+(cb(X\\,Y)-128)*({o})':cr='128+(cr(X\\,Y)-128)*({o})'")
+    return f
 
 
 LAYOUT_BOX = {  # x, y of the top-left corner as fractions; picture-in-picture is 34% of the width
@@ -159,21 +215,44 @@ def build_command(
     chains: list[str] = []
     for i, c in enumerate(tl.clips):
         m = media[c.media_id]
-        src = media_input(Path(m.path))
+        if c.reverse:
+            # Backwards: trim the reversed copy at mirrored times (sound comes from it too).
+            src = media_input(derived.reversed_source(Path(m.path).parent, m))
+            a_in, a_out = derived.mirrored(c, m)
+        else:
+            src = media_input(Path(m.path))
+            a_in, a_out = c.src_in, c.src_out
         if c.id in video_override:
             vsrc, start, end = media_input(video_override[c.id]), 0.0, c.src_duration
         else:
-            vsrc, start, end = src, c.src_in, c.src_out
+            vsrc, start, end = src, a_in, a_out
         nxt = tl.clips[i + 1] if i + 1 < len(tl.clips) else None
-        dip_in = c.transition if c.transition and c.transition.kind != "crossfade" else None
-        dip_out = nxt.transition if nxt and nxt.transition and nxt.transition.kind != "crossfade" else None
+        dip_in = c.transition if c.transition and not c.transition.overlaps else None
+        dip_out = nxt.transition if nxt and nxt.transition and not nxt.transition.overlaps else None
         tone = grade.ffmpeg_filters(c.grade, grade.write_cube(c.grade, workdir / f"grade_{i}.cube"))
+        if c.lut:
+            lut = Path(m.path).resolve().parents[2] / "luts" / f"{c.lut.lut_id}.cube"  # <project>/media/<id>/source.*
+            if not lut.exists():
+                raise RenderError(f"LUT {c.lut.lut_id!r} of clip {c.id!r} is missing")
+            # The LUT comes before the grade, at its intensity (blended into the table).
+            tone = [f"lut3d=file='{derived.scaled_lut(lut, c.lut.intensity, workdir / f'lut_{i}.cube')}'", *tone]
         edges, framed, keys = cut_edges(m, c.crop_rect, c.crop) if c.crop_rect else (None, m, c.crop)
-        v = [
-            f"trim=start={start}:end={end}", f"setpts=(PTS-STARTPTS)/{c.speed}", f"fps={fps}",
-            *tone, *([edges] if edges else []), crop_filter(framed, keys, out_w, out_h, c.zoom, c.duration),
-            *(transform_filters(c.transform, out_w, out_h) if c.transform else []), "setsar=1",
-        ]
+        pre = [f"trim=start={start}:end={end}", f"setpts=(PTS-STARTPTS)/{c.speed}", f"fps={fps}", *tone, *([edges] if edges else [])]
+        after = [*pose_filters(c, out_w, out_h), "setsar=1"]
+        if c.fit == "fit":
+            # The whole picture over a backdrop: the clip itself filled and blurred, or a flat color.
+            fw, fh = fit_size(framed.width, framed.height, out_w, out_h)
+            bd = c.backdrop
+            back = f"gblur=sigma={bd.blur * out_h:.2f}" if bd.kind == "blur" else f"drawbox=c={bd.color}:t=fill"
+            chains.append(f"[{vsrc}:v]{','.join(pre)},split[fs{i}][fb{i}]")
+            chains.append(f"[fb{i}]{crop_filter(framed, [], out_w, out_h)},{back}[bg{i}]")
+            chains.append(f"[fs{i}]scale={fw}:{fh}[fg{i}]")
+            chains.append(f"[bg{i}][fg{i}]overlay={(out_w - fw) // 2}:{(out_h - fh) // 2}[base{i}]")
+            head = f"[base{i}]"
+            v = [*([zoom_filter(c.zoom, out_w, out_h, c.duration)] if c.zoom else []), *after]
+        else:
+            head = f"[{vsrc}:v]"
+            v = [*pre, crop_filter(framed, keys, out_w, out_h, c.zoom, c.duration), *after]
         # A dip fades this clip out to the color and the next one in from it, half the duration each.
         if dip_in:
             v.append(f"fade=t=in:d={dip_in.duration / 2:.3f}:color={'black' if dip_in.kind == 'dip_black' else 'white'}")
@@ -184,21 +263,23 @@ def build_command(
             # Multiply by the same radial mask the preview draws (grade.vignette_factor).
             mask = grade.write_vignette_mask(c.grade, out_w, out_h, workdir / f"vignette_{i}.png")
             mi = add_input(["-loop", "1", "-framerate", str(fps), "-t", f"{c.duration:.3f}", "-i", str(mask)])
-            chains.append(f"[{vsrc}:v]{','.join(v)},format=gbrp[pre{i}]")
+            chains.append(f"{head}{','.join(v)},format=gbrp[pre{i}]")
             chains.append(f"[{mi}:v]format=gbrp[vm{i}]")
             chains.append(f"[pre{i}][vm{i}]blend=all_mode=multiply:shortest=1,format=yuv420p[v{i}]")
         else:
-            chains.append(f"[{vsrc}:v]{','.join(v)},format=yuv420p[v{i}]")
+            chains.append(f"{head}{','.join(v)},format=yuv420p[v{i}]")
 
         if m.has_audio and c.has_sound:
+            # The longest of: the clip's own fade, half a dip, or 20 ms against clicks at the cut.
+            fade_in = max(c.audio_fade_in, dip_in.duration / 2 if dip_in else 0.02)
+            fade_out = max(c.audio_fade_out, dip_out.duration / 2 if dip_out else 0.02)
             a = [
-                f"atrim=start={c.src_in}:end={c.src_out}", "asetpts=PTS-STARTPTS",
+                f"atrim=start={a_in}:end={a_out}", "asetpts=PTS-STARTPTS",
                 "aresample=48000", "aformat=channel_layouts=stereo",
                 (f"volume='{c.volume:.3f}*({_lerp_expr([(k.t, k.v) for k in c.volume_keys])})':eval=frame"
                  if c.volume_keys else f"volume={c.volume:.3f}"),
-                f"afade=t=in:d={dip_in.duration / 2 if dip_in else 0.02:.3f}",
-                f"afade=t=out:st={max(c.duration - (dip_out.duration / 2 if dip_out else 0.02), 0):.3f}"
-                f":d={dip_out.duration / 2 if dip_out else 0.02:.3f}",
+                f"afade=t=in:d={fade_in:.3f}",
+                f"afade=t=out:st={max(c.duration - fade_out, 0):.3f}:d={fade_out:.3f}",
             ]
             chains.append(f"[{src}:a]{','.join(a)}[a{i}]")
         else:
@@ -208,8 +289,10 @@ def build_command(
     vacc, aacc = "v0", "a0"
     for i in range(1, len(tl.clips)):
         tr = tl.clips[i].transition
-        if tr and tr.kind == "crossfade":
-            chains.append(f"[{vacc}][v{i}]xfade=transition=fade:duration={tr.duration:.3f}:offset={starts[i]:.3f}[vj{i}]")
+        if tr and tr.overlaps:
+            chains.append(
+                f"[{vacc}][v{i}]xfade=transition={XFADE[tr.kind]}:duration={tr.duration:.3f}:offset={starts[i]:.3f}[vj{i}]"
+            )
             chains.append(f"[{aacc}][a{i}]acrossfade=d={tr.duration:.3f}[aj{i}]")
         else:
             chains.append(f"[{vacc}][v{i}]concat=n=2:v=1:a=0[vj{i}]")
@@ -224,14 +307,33 @@ def build_command(
         oi = media_input(Path(m.path))
         x, y, w, h = overlay_rect(o.layout, out_w, out_h, o.box)
         tone = grade.ffmpeg_filters(o.grade, grade.write_cube(o.grade, workdir / f"broll_{j}.cube"))
-        chains.append(
-            f"[{oi}:v]trim=start={o.src_in}:end={o.src_out},setpts=PTS-STARTPTS+{o.start:.3f}/TB,fps={fps},"
-            f"{','.join([*tone, crop_filter(m, [], w, h)])},setsar=1,format=yuv420p[ov{j}]"
-        )
-        chains.append(
-            f"[{vacc}][ov{j}]overlay=x={x}:y={y}:enable='between(t,{o.start:.3f},{min(o.end, tl.duration):.3f})'"
-            f":eof_action=pass[vo{j}]"
-        )
+        end = min(o.end, tl.duration)
+        picture = f"trim=start={o.src_in}:end={o.src_out},setpts=PTS-STARTPTS,fps={fps},{','.join([*tone, crop_filter(m, [], w, h)])},setsar=1"
+        if o.blend == "normal":
+            alpha = f",format=yuva420p,colorchannelmixer=aa={o.opacity:.3f}" if o.opacity < 1 else ",format=yuv420p"
+            chains.append(f"[{oi}:v]{picture},setpts=PTS+{o.start:.3f}/TB{alpha}[ov{j}]")
+            chains.append(
+                f"[{vacc}][ov{j}]overlay=x={x}:y={y}:enable='between(t,{o.start:.3f},{end:.3f})':eof_action=pass[vo{j}]"
+            )
+        else:
+            # Blend modes mix in RGB (as CSS mix-blend-mode does) over the part of the frame the B-roll covers.
+            # The B-roll is padded in time to start at 0, so both blend inputs line up frame for frame.
+            x0, y0 = max(x, 0), max(y, 0)
+            x1, y1 = min(x + w, out_w), min(y + h, out_h)
+            if x1 - x0 < 2 or y1 - y0 < 2:
+                continue  # entirely off screen
+            cw, ch = x1 - x0, y1 - y0
+            chains.append(
+                f"[{oi}:v]{picture},crop={cw}:{ch}:{x0 - x}:{y0 - y},tpad=start_duration={o.start:.3f}:color=black,format=gbrp[ov{j}]"
+            )
+            chains.append(f"[{vacc}]split[vb{j}][vr{j}]")
+            chains.append(f"[vr{j}]crop={cw}:{ch}:{x0}:{y0},format=gbrp[reg{j}]")
+            chains.append(
+                f"[ov{j}][reg{j}]blend=all_mode={BLEND[o.blend]}:all_opacity={o.opacity:.3f},format=yuv420p[mix{j}]"
+            )
+            chains.append(
+                f"[vb{j}][mix{j}]overlay=x={x0}:y={y0}:enable='between(t,{o.start:.3f},{end:.3f})':eof_action=pass[vo{j}]"
+            )
         vacc = f"vo{j}"
 
     # Finishing: cinema bars and film grain, under the text.

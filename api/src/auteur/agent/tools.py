@@ -680,7 +680,7 @@ async def potong_di_beat(ctx: ToolContext, a: PotongDiBeatArgs) -> str:
     for i in range(len(scratch.clips) - 1):
         starts = scratch.clip_starts()
         clip, nxt = scratch.clips[i], scratch.clips[i + 1]
-        overlap = nxt.transition.duration if nxt.transition and nxt.transition.kind == "crossfade" else 0
+        overlap = nxt.transition.duration if nxt.transition and nxt.transition.overlaps else 0
         cut = starts[i + 1]
         candidates = [g for g in grid if g > starts[i] + 0.5]
         if not candidates:
@@ -704,12 +704,21 @@ async def potong_di_beat(ctx: ToolContext, a: PotongDiBeatArgs) -> str:
 
 # --- transitions, speed, zoom, cinematic_finish ---------------------------------------------------
 
-TRANSITION_LABEL = {"crossfade": "crossfade", "dip_black": "dip to black", "dip_white": "dip to white", "cut": "hard cut"}
+TRANSITION_LABEL = {
+    "crossfade": "crossfade", "dip_black": "dip to black", "dip_white": "dip to white", "cut": "hard cut",
+    "slide_left": "slide left", "slide_right": "slide right", "slide_up": "slide up", "slide_down": "slide down",
+    "wipe_left": "wipe left", "wipe_right": "wipe right", "circle": "circle", "zoom": "zoom",
+}
 
 
 class TransisiArgs(ToolArgs):
-    kind: Literal["crossfade", "dip_black", "dip_white", "cut"] = Field(
-        description="crossfade blends clips; dip_black/dip_white dip through black/white; cut removes transitions (hard cut)"
+    kind: Literal[
+        "crossfade", "dip_black", "dip_white", "slide_left", "slide_right", "slide_up", "slide_down",
+        "wipe_left", "wipe_right", "circle", "zoom", "cut",
+    ] = Field(
+        description="crossfade blends clips (calm, cinematic); dip_black/dip_white dip through black/white; slide_* "
+        "push the old shot out (energetic, social); wipe_* reveal with a moving edge; circle opens from the center; "
+        "zoom punches into the old shot; cut removes transitions (hard cut)"
     )
     duration: float = Field(0.5, ge=0.1, le=2)
     clip_ids: list[str] | None = Field(None, description="Clips that get the transition INTO them; omit for every cut")
@@ -726,8 +735,8 @@ async def transisi(ctx: ToolContext, a: TransisiArgs) -> str:
         if a.kind == "cut":
             ops.append(SetTransition(clip_id=cid, transition=None))
             continue
-        if i == 0 and a.kind == "crossfade":
-            continue
+        if i == 0 and a.kind not in ("dip_black", "dip_white"):
+            continue  # the first clip has nothing to overlap with
         limit = min(tl.clips[i].duration, tl.clips[i - 1].duration if i else tl.clips[i].duration) / 2
         ops.append(SetTransition(clip_id=cid, transition=Transition(kind=a.kind, duration=round(min(a.duration, limit), 2))))
     if not ops:
@@ -1075,6 +1084,25 @@ async def build_scenes(ctx: ToolContext, a: BuildScenesArgs) -> str:
     return f"Built scenes:\n{summary}{tail}\n\n" + describe_timeline(p)
 
 
+# --- freeze_frame ----------------------------------------------------------------------------------
+
+class FreezeArgs(ToolArgs):
+    clip_id: str
+    at: float = Field(ge=0, description="Timeline time of the frame to hold")
+    duration: float = Field(2, ge=0.2, le=30, description="Seconds to hold it")
+
+
+async def freeze_frame(ctx: ToolContext, a: FreezeArgs) -> str:
+    from auteur import freeze  # noqa: PLC0415
+
+    try:
+        ops = await asyncio.to_thread(freeze.freeze, ctx.project, ctx.project_dir, a.clip_id, a.at, a.duration)
+    except freeze.FreezeError as e:
+        raise ToolError(str(e)) from None
+    ctx.commit(f"Freeze frame {a.duration:g}s", ops)
+    return f"Held the frame at {a.at:.2f}s for {a.duration:g}s.\n" + describe_timeline(ctx.project)
+
+
 TOOLS = [
     Tool("plan", "Show the edit plan to the user. Call this first, once, before editing.", RencanaArgs, rencana),
     Tool("listen", "Transcribe media with per-turn and estimated per-word times; filler words are marked.", DengarArgs, dengar),
@@ -1109,11 +1137,14 @@ TOOLS = [
     ),
     Tool("cut_on_beat", "Move the cuts between clips onto the music's beat grid. Call after `assemble` and `music`.",
          PotongDiBeatArgs, potong_di_beat),
-    Tool("transitions", "Set transitions between clips: crossfade, dip to black/white, or plain cuts.", TransisiArgs, transisi),
+    Tool("transitions", "Set transitions between clips: crossfade, slide, wipe, circle, zoom, dip to black/white, or plain cuts.",
+         TransisiArgs, transisi),
     Tool("speed", "Change clip speed: slow motion (0.5) or sped up (2-4), or a speed ramp into it with "
          "ramp_mulai. Sped/slowed clips are muted.",
          KecepatanArgs, kecepatan),
     Tool("zoom", "Slow push-in (or pull-out) over clips, Ken Burns style.", ZoomArgs, zoom),
+    Tool("freeze_frame", "Hold the picture at a moment of a clip for a few seconds (a still of that frame goes in), "
+         "e.g. to land a beat or put a title over a stopped shot.", FreezeArgs, freeze_frame),
     Tool("cinematic_finish", "Cinema finishing for the whole video: letterbox bars and film grain.", SinematikArgs, sinematik),
     Tool(
         "broll",
@@ -1126,9 +1157,12 @@ TOOLS = [
     Tool(
         "edit_timeline",
         "Apply low-level timeline ops (trim, split, move, delete, text, grade, crop, aspect...). "
-        "Use for revisions and anything the other tools don't cover (set_transform moves/scales/rotates/flips a clip in "
-        "the frame, set_crop_rect cuts its edges, update_overlay.box places B-roll freely). With linkage on, text and "
-        "B-roll follow the clip they sit on when clips are cut, trimmed or moved. Times: `split.at` is timeline time; "
+        "Use for revisions and anything the other tools don't cover: set_transform (move/scale/rotate/flip/opacity), "
+        "set_transform_keys (animate those), set_clip_anim (entrance/exit: fade, zoom, slide, spin), set_crop_rect (cut "
+        "edges), set_fit (whole picture over a blurred or colored backdrop, e.g. landscape footage in 9:16), set_reverse, "
+        "set_lut (a project LUT), set_audio_fade, detach_audio, update_overlay (box, opacity, blend), and text style "
+        "(font, text_color, size, outline, shadow, background, anim_in/anim_out). With linkage on, text and B-roll follow "
+        "the clip they sit on when clips are cut, trimmed or moved. Times: `split.at` is timeline time; "
         "`src_in`/`src_out` are source seconds; grade values are -1..1 (exposure -2..2), subtle is ±0.1-0.3.",
         UbahArgs, ubah_timeline,
     ),

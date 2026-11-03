@@ -1,4 +1,5 @@
 import type { Clip } from "./timeline";
+import { DIPS } from "./transitions";
 
 /** 00:12:07 style timecode (minutes:seconds:frames) for the editor's readouts. */
 export function timecode(seconds: number, fps: number): string {
@@ -15,9 +16,9 @@ export const toFrames = (seconds: number, fps: number) => Math.max(1, Math.round
 export const clipDuration = (c: Pick<Clip, "src_in" | "src_out" | "speed">) => (c.src_out - c.src_in) / (c.speed ?? 1);
 
 const overlap = (c: Pick<Clip, "transition">, i: number) =>
-  i > 0 && c.transition?.kind === "crossfade" ? c.transition.duration : 0;
+  i > 0 && c.transition && !DIPS.has(c.transition.kind) ? c.transition.duration : 0;
 
-/** Timeline start of each clip; a crossfade pulls a clip back over the previous one (Timeline.clip_starts). */
+/** Timeline start of each clip; an overlapping transition pulls a clip back over the previous one (Timeline.clip_starts). */
 export function clipStarts(clips: Pick<Clip, "src_in" | "src_out" | "speed" | "transition">[]): number[] {
   let t = 0;
   return clips.map((c, i) => {

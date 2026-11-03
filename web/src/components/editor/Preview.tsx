@@ -37,8 +37,9 @@ export function Preview() {
       showTracks,
       raw: before,
       speech: project?.speech ?? [],
+      clipPreviews: project?.clip_previews ?? {},
     }),
-    [timeline, project?.media, project?.speech, tracks, showTracks, before],
+    [timeline, project?.media, project?.speech, project?.clip_previews, tracks, showTracks, before],
   );
 
   useEffect(() => {

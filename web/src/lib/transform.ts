@@ -1,7 +1,7 @@
 /** Math for moving, scaling and rotating a clip on the preview canvas (Clip.transform, api models.Transform). */
 import type { Transform } from "./timeline";
 
-export const IDENTITY: Transform = { x: 0, y: 0, scale: 1, rotation: 0, flip_h: false, flip_v: false };
+export const IDENTITY: Transform = { x: 0, y: 0, scale: 1, rotation: 0, opacity: 1, flip_h: false, flip_v: false };
 
 export type Rect = { left: number; top: number; width: number; height: number };
 export type Point = { x: number; y: number };
@@ -46,4 +46,4 @@ export function rotateBy(t: Transform, center: Point, from: Point, to: Point, sn
 }
 
 export const isIdentity = (t: Transform | null | undefined) =>
-  !t || (t.x === 0 && t.y === 0 && t.scale === 1 && t.rotation === 0 && !t.flip_h && !t.flip_v);
+  !t || (t.x === 0 && t.y === 0 && t.scale === 1 && t.rotation === 0 && t.opacity === 1 && !t.flip_h && !t.flip_v);

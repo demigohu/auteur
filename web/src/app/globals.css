@@ -14,6 +14,51 @@
   src: url("/fonts/montserrat-900.ttf") format("truetype");
 }
 
+/* Text fonts (same files as api/assets/fonts). One file each, declared at the normal weight so the
+   browser never synthesizes a bolder version that the export wouldn't have. */
+@font-face {
+  font-family: "Auteur Anton";
+  font-weight: 400;
+  font-display: block;
+  src: url("/fonts/Anton-Regular.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Auteur Bebas";
+  font-weight: 400;
+  font-display: block;
+  src: url("/fonts/BebasNeue-Regular.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Auteur Poppins";
+  font-weight: 400;
+  font-display: block;
+  src: url("/fonts/Poppins-Bold.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Auteur DM Serif";
+  font-weight: 400;
+  font-display: block;
+  src: url("/fonts/DMSerifDisplay-Regular.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Auteur Instrument";
+  font-weight: 400;
+  font-display: block;
+  src: url("/fonts/InstrumentSerif-Regular.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Auteur Marker";
+  font-weight: 400;
+  font-display: block;
+  src: url("/fonts/PermanentMarker-Regular.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Auteur Mono";
+  font-weight: 400;
+  font-display: block;
+  src: url("/fonts/SpaceMono-Bold.ttf") format("truetype");
+}
+
 /*
  * Tokens from docs/DESIGN.md. Brand colors are fixed; the semantic tokens (--bg, --panel, --text,
  * --accent...) describe the paper theme and are redefined by .theme-ink for the dark areas that sit

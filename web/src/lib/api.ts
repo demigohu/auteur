@@ -7,6 +7,8 @@ export type MediaView = Media & {
   preview_url: string;
   thumb_url: string;
   filmstrip_url: string | null;
+  /** Picture of the sound (~40 px per second), for clips with audio and music. */
+  waveform_url: string | null;
   beats: number[] | null;
 };
 
@@ -65,6 +67,9 @@ export type ProjectView = {
   last_check: CheckResult | null;
   storyboard: Storyboard | null;
   export: ExportView | null;
+  luts: { id: string; name: string; size: number }[];
+  /** Clips played from a prepared variant (reversed or with a LUT): its url, or null while it is made. */
+  clip_previews: Record<string, string | null>;
   /** Largest export the server makes (short side), or null for no limit. */
   max_export_height: number | null;
   speech: [number, number][];
@@ -167,6 +172,14 @@ export const api = {
       xhr.send(form);
     });
   },
+  uploadLut: (id: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<ProjectView>(`/projects/${id}/luts`, { method: "POST", body: form });
+  },
+  deleteLut: (id: string, lutId: string) => request<ProjectView>(`/projects/${id}/luts/${lutId}`, { method: "DELETE" }),
+  freezeFrame: (id: string, clipId: string, at: number, duration: number) =>
+    request<ProjectView>(`/projects/${id}/clips/${clipId}/freeze`, json({ at, duration })),
   importLink: (id: string, url: string) => request<ProjectView>(`/projects/${id}/media/link`, json({ url })),
   applyOps: (id: string, label: string, ops: OpInput[]) => request<ProjectView>(`/projects/${id}/ops`, json({ label, ops })),
   undo: (id: string) => request<ProjectView>(`/projects/${id}/undo`, { method: "POST" }),

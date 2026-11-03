@@ -4,6 +4,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useEditor } from "@/lib/store";
 import { clipDuration, clipStarts } from "@/lib/time";
 import type { Overlay, Transform } from "@/lib/timeline";
+import { poseAt } from "@/lib/animate";
+import { upsertKey } from "@/lib/keys";
 import { boxOf, overlayRect } from "@/lib/overlay";
 import { centerOf, fitRect, IDENTITY, moveBy, type Point, rotateBy, scaleBy } from "@/lib/transform";
 
@@ -23,6 +25,7 @@ export function CanvasTransform({ width: W, height: H }: { width: number; height
   const time = useEditor((s) => s.time);
   const before = useEditor((s) => s.before);
   const previewTransform = useEditor((s) => s.previewTransform);
+  const previewTransformKeys = useEditor((s) => s.previewTransformKeys);
   const applyOps = useEditor((s) => s.applyOps);
 
   useEffect(() => {
@@ -40,7 +43,16 @@ export function CanvasTransform({ width: W, height: H }: { width: number; height
   const active = clip && !before && !project?.busy && size.w > 0;
 
   const frame = fitRect(size.w, size.h, W, H);
-  const t = clip?.transform ?? IDENTITY;
+  // The pose on screen now (keyframes and animations included); a keyframed clip is edited at the playhead.
+  const at = clip ? time - starts[onScreen] : 0;
+  const keyed = Boolean(clip?.transform_keys.length);
+  const pose = clip ? poseAt(clip, at) : null;
+  const t: Transform = pose ? { ...(clip?.transform ?? IDENTITY), x: pose.x, y: pose.y, scale: pose.scale, rotation: pose.rotation } : IDENTITY;
+  const withKey = (next: Transform) =>
+    upsertKey(clip!.transform_keys, {
+      t: Number(at.toFixed(3)), x: next.x, y: next.y, scale: next.scale,
+      rotation: Math.max(-360, Math.min(360, next.rotation)), opacity: pose?.opacity ?? 1,
+    });
   const center = centerOf(frame, t);
   const bw = frame.width * t.scale;
   const bh = frame.height * t.scale;
@@ -67,13 +79,15 @@ export function CanvasTransform({ width: W, height: H }: { width: number; height
           ? scaleBy(d.start, d.center, d.from, p)
           : rotateBy(d.start, d.center, d.from, p, e.shiftKey);
     d.last = next;
-    previewTransform(clip.id, next);
+    if (keyed) previewTransformKeys(clip.id, withKey(next));
+    else previewTransform(clip.id, next);
   };
   const end = () => {
     const d = drag.current;
     drag.current = null;
     if (!d || !clip || JSON.stringify(d.last) === JSON.stringify(d.start)) return;
-    applyOps(LABEL[d.mode], [{ op: "set_transform", clip_id: clip.id, transform: d.last }]);
+    if (keyed) applyOps(`${LABEL[d.mode]} (keyframe)`, [{ op: "set_transform_keys", clip_id: clip.id, keys: withKey(d.last) }]);
+    else applyOps(LABEL[d.mode], [{ op: "set_transform", clip_id: clip.id, transform: d.last }]);
   };
 
   return (

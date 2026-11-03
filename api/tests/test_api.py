@@ -424,3 +424,63 @@ def test_export_at_a_set_bitrate(client: TestClient, project: dict) -> None:
             rate = int(subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v", "-show_entries", "stream=bit_rate",
                                        "-of", "csv=p=0", str(out)], capture_output=True, text=True, check=True).stdout)
             assert 0.6 * mbps * 1e6 < rate < 1.4 * mbps * 1e6, (mbps, rate)
+
+
+def test_clip_sound_fades_detaches_and_has_a_waveform(client: TestClient, project: dict) -> None:
+    pid, mid = project["id"], project["media"][0]["id"]
+    assert project["media"][0]["waveform_url"].endswith("/waveform.png")
+    assert client.get(project["media"][0]["waveform_url"]).headers["content-type"] == "image/png"
+    view = client.post(f"/projects/{pid}/ops", json={"label": "Add", "ops": [
+        {"op": "add_clip", "id": "c1", "media_id": mid, "src_in": 0.5, "src_out": 3.5},
+        {"op": "set_audio_fade", "clip_id": "c1", "fade_in": 0.5, "fade_out": 1},
+    ]}).json()
+    assert (view["timeline"]["clips"][0]["audio_fade_in"], view["timeline"]["clips"][0]["audio_fade_out"]) == (0.5, 1)
+    view = client.post(f"/projects/{pid}/ops", json={"label": "Detach", "ops": [{"op": "detach_audio", "clip_id": "c1"}]}).json()
+    [sound] = view["timeline"]["audio"]
+    assert view["timeline"]["clips"][0]["muted"] is True
+    assert (sound["media_id"], sound["src_in"], sound["src_out"], sound["start"], sound["duck"]) == (mid, 0.5, 3.5, 0, False)
+    assert (sound["fade_in"], sound["fade_out"]) == (0.5, 1)
+    again = client.post(f"/projects/{pid}/ops", json={"label": "Detach", "ops": [{"op": "detach_audio", "clip_id": "c1"}]})
+    assert again.status_code == 400  # already muted: nothing left to detach
+
+
+def test_lut_upload_and_use_through_the_api(client: TestClient, project: dict, tmp_path: Path) -> None:
+    pid, mid = project["id"], project["media"][0]["id"]
+    from auteur import derived
+
+    cube = derived.write_cube(2, 1 - derived.identity(2), tmp_path / "Invert.cube")
+    with cube.open("rb") as f:
+        view = client.post(f"/projects/{pid}/luts", files={"file": ("Invert.cube", f, "text/plain")}).json()
+    [lut] = view["luts"]
+    assert (lut["name"], lut["size"]) == ("Invert", 2)
+    bad = client.post(f"/projects/{pid}/ops", json={"label": "x", "ops": [
+        {"op": "add_clip", "id": "c1", "media_id": mid, "src_in": 0, "src_out": 2},
+        {"op": "set_lut", "clip_id": "c1", "lut": {"lut_id": "lut_nope", "intensity": 1}},
+    ]})
+    assert bad.status_code == 400 and "Unknown LUTs" in bad.json()["detail"]
+    view = client.post(f"/projects/{pid}/ops", json={"label": "x", "ops": [
+        {"op": "add_clip", "id": "c1", "media_id": mid, "src_in": 0, "src_out": 2},
+        {"op": "set_lut", "clip_id": "c1", "lut": {"lut_id": lut["id"], "intensity": 0.5}},
+        {"op": "set_reverse", "clip_id": "c1", "reverse": True},
+    ]}).json()
+    assert "c1" in view["clip_previews"]  # a variant is (being) prepared for the editor
+    assert client.delete(f"/projects/{pid}/luts/{lut['id']}").status_code == 400  # still in use
+    with (tmp_path / "x.cube").open("w") as f:
+        f.write("LUT_1D_SIZE 4\n")
+    with (tmp_path / "x.cube").open("rb") as f:
+        assert client.post(f"/projects/{pid}/luts", files={"file": ("x.cube", f, "text/plain")}).status_code == 400
+
+
+def test_freeze_frame_holds_the_moment(client: TestClient, project: dict) -> None:
+    pid, mid = project["id"], project["media"][0]["id"]
+    client.post(f"/projects/{pid}/ops", json={"label": "Add", "ops": [
+        {"op": "add_clip", "id": "c1", "media_id": mid, "src_in": 0, "src_out": 4},
+        {"op": "set_transform", "clip_id": "c1", "transform": {"scale": 0.8}},
+    ]})
+    view = client.post(f"/projects/{pid}/clips/c1/freeze", json={"at": 1.5, "duration": 2}).json()
+    first, held, rest = view["timeline"]["clips"]
+    still = next(m for m in view["media"] if m["id"] == held["media_id"])
+    assert (first["src_out"], rest["src_in"]) == (1.5, 1.5)  # split at the frame
+    assert (still["image"], held["src_out"], held["transform"]["scale"]) == ("still", 2, 0.8)
+    assert view["history"][-1]["label"] == "Freeze frame 2s"
+    assert client.post(f"/projects/{pid}/clips/c1/freeze", json={"at": 9, "duration": 2}).status_code == 400

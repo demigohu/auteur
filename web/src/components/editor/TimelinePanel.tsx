@@ -12,6 +12,7 @@ import {
   MagnifyingGlassPlus,
   Robot,
   Scissors,
+  Snowflake,
   TextT,
   Trash,
 } from "@phosphor-icons/react";
@@ -70,6 +71,7 @@ export function TimelinePanel() {
   const [drag, setDrag] = useState<Drag | null>(null);
   const [snap, setSnap] = useState(true);
   const linkage = useEditor((st) => st.project?.timeline.linkage ?? true);
+  const freezeFrame = useEditor((st) => st.freezeFrame);
   const [dropAt, setDropAt] = useState<{ track: "V1" | "V2" | "A1"; t: number } | null>(null);
   const [viewW, setViewW] = useState(1200);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -298,6 +300,9 @@ export function TimelinePanel() {
       <div className="flex h-10 shrink-0 items-center gap-1 border-b border-line px-2">
         <ToolButton label="Split at playhead (S)" onClick={splitAtPlayhead} disabled={locked}>
           <Scissors size={15} />
+        </ToolButton>
+        <ToolButton label="Freeze frame at playhead, 2s (F)" onClick={() => freezeFrame(2)} disabled={locked || !clips.length}>
+          <Snowflake size={15} />
         </ToolButton>
         <ToolButton label="Duplicate clip (⌘D)" onClick={duplicate} disabled={locked || !selectedClipId}>
           <Copy size={15} />
@@ -649,6 +654,17 @@ function ClipBlock(props: {
       }}
     >
       {media && <Filmstrip media={media} clip={clip} width={props.width} px={props.px} />}
+      {media?.waveform_url && !clip.muted && clip.speed === 1 && (
+        // The clip's own sound, along the bottom like CapCut; the used part of the source only.
+        <span
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-3 opacity-70"
+          style={{
+            backgroundImage: `url(${fileUrl(media.waveform_url)})`,
+            backgroundSize: `${media.duration * props.px}px 100%`,
+            backgroundPosition: `${-clip.src_in * props.px}px 0`,
+          }}
+        />
+      )}
       {clip.transition && (
         <span
           title={`Transition: ${clip.transition.kind}, ${clip.transition.duration}s`}
@@ -708,11 +724,11 @@ function MusicContent({ item, media, px }: { item: AudioItem; media: MediaView |
   const beats = (media?.beats ?? []).filter((b) => b >= item.src_in && b <= item.src_out).map((b) => b - item.src_in);
   return (
     <>
-      {media?.filmstrip_url && (
+      {media?.waveform_url && (
         <span
           className="pointer-events-none absolute inset-0 opacity-80"
           style={{
-            backgroundImage: `url(${fileUrl(media.filmstrip_url)})`,
+            backgroundImage: `url(${fileUrl(media.waveform_url)})`,
             backgroundSize: `${total * px}px 100%`,
             backgroundPosition: `${-item.src_in * px}px 0`,
           }}

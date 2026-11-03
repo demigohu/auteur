@@ -92,6 +92,8 @@ function useShortcuts() {
       } else if (mod && e.key.toLowerCase() === "d" && s.selectedClipId) {
         e.preventDefault();
         s.applyOps("Duplicate clip", [{ op: "duplicate_clip", clip_id: s.selectedClipId }]);
+      } else if (e.key.toLowerCase() === "f" && !mod) {
+        s.freezeFrame(2);
       } else if (e.key.toLowerCase() === "t" && !mod) {
         const t = Number(s.time.toFixed(2));
         s.applyOps("Add text", [{ op: "add_text", text: "Title", start: t, end: Number((t + 2).toFixed(2)), style: "title", y: 0.2 }]);

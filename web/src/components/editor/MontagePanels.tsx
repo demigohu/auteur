@@ -1,11 +1,13 @@
 "use client";
 
 import { Trash } from "@phosphor-icons/react";
+import { useRef } from "react";
 import { useEditor } from "@/lib/store";
 import { cropAt, upsertKey, volumeAt } from "@/lib/keys";
 import { clipDuration, clipStarts } from "@/lib/time";
 import type { AudioItem, Clip, CropKey, Overlay, Transform, Transition, VolumeKey } from "@/lib/timeline";
 import { cropWindow } from "@/lib/crop";
+import { poseAt } from "@/lib/animate";
 import { IDENTITY } from "@/lib/transform";
 
 const SPEEDS = [0.25, 0.5, 0.75, 1, 1.5, 2, 4];
@@ -14,6 +16,14 @@ const TRANSITIONS: { id: Transition["kind"] | "cut"; label: string }[] = [
   { id: "crossfade", label: "Crossfade" },
   { id: "dip_black", label: "Black" },
   { id: "dip_white", label: "White" },
+  { id: "slide_left", label: "Slide ←" },
+  { id: "slide_right", label: "Slide →" },
+  { id: "slide_up", label: "Slide ↑" },
+  { id: "slide_down", label: "Slide ↓" },
+  { id: "wipe_left", label: "Wipe ←" },
+  { id: "wipe_right", label: "Wipe →" },
+  { id: "circle", label: "Circle" },
+  { id: "zoom", label: "Zoom" },
 ];
 const LAYOUTS: { id: Overlay["layout"]; label: string }[] = [
   { id: "full", label: "Full" },
@@ -113,6 +123,225 @@ export function ClipTransform({ clip, locked }: { clip: Clip; locked: boolean })
 const TOGGLE = (on: boolean) =>
   `rounded-full border-2 px-2.5 py-0.5 font-mono text-[11px] transition active:scale-[0.97] ${on ? "border-edge bg-text text-bg" : "border-line text-muted hover:border-line-strong hover:text-text"}`;
 
+const ANIMS: { value: string; label: string }[] = [
+  { value: "none", label: "None" },
+  { value: "fade", label: "Fade" },
+  { value: "zoom_in", label: "Zoom in" },
+  { value: "zoom_out", label: "Zoom out" },
+  { value: "slide_left", label: "Slide ←" },
+  { value: "slide_right", label: "Slide →" },
+  { value: "slide_up", label: "Slide ↑" },
+  { value: "slide_down", label: "Slide ↓" },
+  { value: "spin", label: "Spin" },
+];
+
+/** Keyframes for position, size, rotation and opacity (set at the playhead; drag on the canvas to pose),
+ * and entrance/exit animations. Both run through lib/animate, as the export does through animate.py. */
+export function ClipKeyframes({ clip, locked }: { clip: Clip; locked: boolean }) {
+  const applyOps = useEditor((s) => s.applyOps);
+  const seek = useEditor((s) => s.seek);
+  const start = useEditor((s) => {
+    const clips = s.project?.timeline.clips ?? [];
+    return clipStarts(clips)[clips.findIndex((c) => c.id === clip.id)] ?? 0;
+  });
+  const time = useEditor((s) => s.time);
+  const local = time - start;
+  const inside = local >= 0 && local <= clipDuration(clip);
+  const keys = clip.transform_keys;
+  const here = keys.find((k) => Math.abs(k.t - local) < 1 / 60);
+  const pose = poseAt(clip, Math.min(Math.max(local, 0), clipDuration(clip)));
+  const setKeys = (next: Clip["transform_keys"], label: string) => applyOps(label, [{ op: "set_transform_keys", clip_id: clip.id, keys: next }]);
+  const keyHere = (patch: Partial<Clip["transform_keys"][number]> = {}) =>
+    upsertKey(keys, { t: Number(local.toFixed(3)), x: pose.x, y: pose.y, scale: pose.scale, rotation: pose.rotation, opacity: pose.opacity, ...patch });
+  const anim = (which: "anim_in" | "anim_out", kind: string, duration?: number) => {
+    const current = clip[which];
+    const next = kind === "none" ? null : { kind: kind as NonNullable<Clip["anim_in"]>["kind"], duration: duration ?? current?.duration ?? 0.5 };
+    applyOps(which === "anim_in" ? "Entrance" : "Exit", [{
+      op: "set_clip_anim", clip_id: clip.id, anim_in: which === "anim_in" ? next : clip.anim_in, anim_out: which === "anim_out" ? next : clip.anim_out,
+    }]);
+  };
+  return (
+    <fieldset disabled={locked} className="space-y-3 disabled:opacity-50">
+      <legend className="display mb-2.5 text-[19px] text-text">Animation</legend>
+      <div className="space-y-1.5">
+        <p className="text-xs text-text">Keyframes {keys.length ? `(${keys.length})` : ""}</p>
+        {keys.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {keys.map((k) => (
+              <button key={k.t} type="button" onClick={() => seek(start + k.t)} title="Go to this keyframe"
+                className={`rounded-full border-2 px-2 py-0.5 font-mono text-[10px] ${here?.t === k.t ? "border-accent text-accent" : "border-line text-muted hover:text-text"}`}>
+                ◆ {k.t.toFixed(2)}s
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="flex flex-wrap gap-1.5">
+          <button type="button" disabled={!inside} onClick={() => setKeys(keyHere(), "Add keyframe")}
+            className="rounded-full border-2 border-line px-2.5 py-0.5 text-[11px] text-muted hover:border-line-strong hover:text-text disabled:opacity-40">
+            ◆ {here ? "Update" : "Add"} keyframe at playhead
+          </button>
+          {here && (
+            <button type="button" onClick={() => setKeys(keys.filter((k) => k !== here), "Remove keyframe")}
+              className="rounded-full border-2 border-line px-2.5 py-0.5 text-[11px] text-muted hover:text-danger">
+              Remove this one
+            </button>
+          )}
+          {keys.length > 0 && (
+            <button type="button" onClick={() => setKeys([], "Clear keyframes")}
+              className="rounded-full px-2 py-0.5 text-[11px] text-faint underline-offset-2 hover:text-text hover:underline">
+              Clear all
+            </button>
+          )}
+        </div>
+        <p className="text-[11px] text-faint">
+          {inside
+            ? keys.length
+              ? "Move the playhead, then drag the clip on the preview: that pose becomes a keyframe."
+              : "Add a keyframe, move the playhead, drag the clip on the preview: it animates between them."
+            : "Put the playhead inside this clip."}
+        </p>
+      </div>
+      <Slider
+        key={`opacity-${pose.opacity}-${here?.t}`}
+        id="clip-opacity"
+        label={keys.length ? "Opacity (keyframe at playhead)" : "Opacity"}
+        value={pose.opacity}
+        min={0}
+        max={1}
+        step={0.05}
+        format={(v) => `${Math.round(v * 100)}%`}
+        onCommit={(v) =>
+          keys.length
+            ? inside && setKeys(keyHere({ opacity: v }), "Opacity keyframe")
+            : applyOps("Clip opacity", [{ op: "set_transform", clip_id: clip.id, transform: { ...(clip.transform ?? IDENTITY), opacity: v } }])
+        }
+      />
+      {(["anim_in", "anim_out"] as const).map((which) => (
+        <div key={which} className="space-y-1.5">
+          <p className="text-xs text-text">{which === "anim_in" ? "Entrance" : "Exit"}</p>
+          <Segmented options={ANIMS} value={clip[which]?.kind ?? "none"} onChange={(v) => anim(which, v)} />
+          {clip[which] && (
+            <Slider id={`${which}-len`} label="Length" value={clip[which]!.duration} min={0.1} max={3} step={0.1}
+              format={(v) => `${v.toFixed(1)}s`} onCommit={(v) => anim(which, clip[which]!.kind, v)} />
+          )}
+        </div>
+      ))}
+    </fieldset>
+  );
+}
+
+/** A 3D LUT (.cube) uploaded to the project, before the grade, at an intensity. */
+export function ClipLutPanel({ clip, locked }: { clip: Clip; locked: boolean }) {
+  const applyOps = useEditor((s) => s.applyOps);
+  const luts = useEditor((s) => s.project?.luts ?? EMPTY_LUTS);
+  const uploadLut = useEditor((s) => s.uploadLut);
+  const deleteLut = useEditor((s) => s.deleteLut);
+  const preparing = useEditor((s) => s.project?.clip_previews[clip.id] === null);
+  const input = useRef<HTMLInputElement>(null);
+  const set = (lut: Clip["lut"], label: string) => applyOps(label, [{ op: "set_lut", clip_id: clip.id, lut }]);
+  return (
+    <fieldset disabled={locked} className="space-y-3 disabled:opacity-50">
+      <legend className="display mb-2.5 text-[19px] text-text">LUT</legend>
+      <div className="flex flex-wrap gap-1.5">
+        <button type="button" aria-pressed={!clip.lut} onClick={() => clip.lut && set(null, "Remove LUT")}
+          className={`rounded-full border-2 px-2.5 py-0.5 font-mono text-[11px] ${!clip.lut ? "border-edge bg-text text-bg" : "border-line text-muted hover:text-text"}`}>
+          None
+        </button>
+        {luts.map((l) => (
+          <span key={l.id} className="flex items-center">
+            <button type="button" aria-pressed={clip.lut?.lut_id === l.id}
+              onClick={() => set({ lut_id: l.id, intensity: clip.lut?.intensity ?? 1 }, `LUT ${l.name}`)}
+              className={`rounded-l-full border-2 px-2.5 py-0.5 font-mono text-[11px] ${clip.lut?.lut_id === l.id ? "border-edge bg-text text-bg" : "border-line text-muted hover:text-text"}`}>
+              {l.name}
+            </button>
+            <button type="button" aria-label={`Delete LUT ${l.name}`} title="Delete from the project" onClick={() => deleteLut(l.id)}
+              className="rounded-r-full border-2 border-l-0 border-line px-1.5 py-0.5 text-[11px] text-faint hover:text-danger">
+              ×
+            </button>
+          </span>
+        ))}
+        <button type="button" onClick={() => input.current?.click()}
+          className="rounded-full border-2 border-dashed border-line-strong px-2.5 py-0.5 text-[11px] text-muted hover:text-text">
+          + Upload .cube
+        </button>
+        <input ref={input} type="file" accept=".cube" hidden
+          onChange={async (e) => {
+            const f = e.target.files?.[0];
+            e.target.value = "";
+            if (f && (await uploadLut(f))) {
+              const added = useEditor.getState().project?.luts.at(-1);
+              if (added) set({ lut_id: added.id, intensity: 1 }, `LUT ${added.name}`);
+            }
+          }} />
+      </div>
+      {clip.lut && (
+        <Slider id="lut-intensity" label="Intensity" value={clip.lut.intensity} min={0} max={1} step={0.05}
+          format={(v) => `${Math.round(v * 100)}%`} onCommit={(v) => set({ ...clip.lut!, intensity: v }, "LUT intensity")} />
+      )}
+      {preparing && <p className="text-[11px] text-faint">Preparing the preview with this look...</p>}
+    </fieldset>
+  );
+}
+
+const EMPTY_LUTS: { id: string; name: string; size: number }[] = [];
+
+/** Fill (crop to the frame) or fit (the whole picture over a blurred or colored backdrop). */
+export function ClipFit({ clip, locked }: { clip: Clip; locked: boolean }) {
+  const applyOps = useEditor((s) => s.applyOps);
+  const bd = clip.backdrop;
+  const set = (label: string, fit: Clip["fit"], backdrop?: Partial<Clip["backdrop"]>) =>
+    applyOps(label, [{ op: "set_fit", clip_id: clip.id, fit, ...(backdrop ? { backdrop: { ...bd, ...backdrop } } : {}) }]);
+  return (
+    <fieldset disabled={locked} className="space-y-3 disabled:opacity-50">
+      <legend className="display mb-2.5 text-[19px] text-text">Frame</legend>
+      <Segmented
+        options={[
+          { value: "fill", label: "Fill (crop)" },
+          { value: "fit", label: "Fit (whole picture)" },
+        ]}
+        value={clip.fit}
+        onChange={(v) => set(v === "fit" ? "Fit the frame" : "Fill the frame", v as Clip["fit"])}
+      />
+      {clip.fit === "fit" && (
+        <>
+          <Segmented
+            options={[
+              { value: "blur", label: "Blurred backdrop" },
+              { value: "color", label: "Color" },
+            ]}
+            value={bd.kind}
+            onChange={(v) => set("Backdrop", "fit", { kind: v as "blur" | "color" })}
+          />
+          {bd.kind === "blur" ? (
+            <Slider id="backdrop-blur" label="Blur" value={bd.blur} min={0.005} max={0.2} step={0.005}
+              format={(v) => `${Math.round(v * 1000) / 10}%`} onCommit={(v) => set("Backdrop blur", "fit", { blur: v })} />
+          ) : (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {["#000000", "#FFFFFF", "#111827", "#C6FF3E", "#FF5A28", "#FF8AD8", "#5AB0FF"].map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  aria-label={`Backdrop ${c}`}
+                  onClick={() => set("Backdrop color", "fit", { color: c })}
+                  className={`size-5 rounded-full border-2 ${bd.color.toUpperCase() === c ? "border-accent" : "border-line"}`}
+                  style={{ background: c }}
+                />
+              ))}
+              <input
+                type="color"
+                aria-label="Backdrop: any color"
+                defaultValue={bd.color}
+                onBlur={(e) => e.target.value.toUpperCase() !== bd.color.toUpperCase() && set("Backdrop color", "fit", { color: e.target.value.toUpperCase() })}
+                className="size-6 cursor-pointer rounded-full border-0 bg-transparent p-0"
+              />
+            </div>
+          )}
+        </>
+      )}
+    </fieldset>
+  );
+}
+
 /** Cut the edges of the source; what is left fills the frame. */
 export function ClipCrop({ clip, locked }: { clip: Clip; locked: boolean }) {
   const applyOps = useEditor((s) => s.applyOps);
@@ -162,11 +391,21 @@ export function ClipMotion({ clip, isFirst, locked }: { clip: Clip; isFirst: boo
           onChange={(v) => applyOps(`Speed ${v}x`, [{ op: "set_speed", clip_id: clip.id, speed: v }])}
         />
         {clip.speed !== 1 && <p className="text-[11px] text-faint">Clip audio is muted while its speed is changed.</p>}
+        <label className="flex items-center gap-2 text-xs text-text">
+          <input
+            type="checkbox"
+            checked={clip.reverse}
+            disabled={clip.effects.length > 0}
+            onChange={(e) => applyOps(e.target.checked ? "Reverse" : "Play forward", [{ op: "set_reverse", clip_id: clip.id, reverse: e.target.checked }])}
+          />
+          Play backwards{clip.effects.length > 0 ? " (not with tracked effects)" : ""}
+        </label>
       </div>
       <div className="space-y-1.5">
         <p className="text-xs text-text">Transition in</p>
         <Segmented
-          options={TRANSITIONS.filter((t) => !(isFirst && t.id === "crossfade")).map((t) => ({ value: t.id, label: t.label }))}
+          // The first clip has nothing to overlap with: only a dip (fade in from a color) fits there.
+          options={TRANSITIONS.filter((t) => !isFirst || t.id === "cut" || t.id.startsWith("dip_")).map((t) => ({ value: t.id, label: t.label }))}
           value={kind}
           onChange={(v) =>
             applyOps(`Transition: ${v}`, [
@@ -224,6 +463,7 @@ export function ClipMotion({ clip, isFirst, locked }: { clip: Clip; isFirst: boo
         onCommit={(v) => applyOps("Clip volume", [{ op: "set_volume", clip_id: clip.id, volume: v }])}
       />
       <VolumeKeys clip={clip} />
+      <ClipSound clip={clip} />
       <div className="space-y-1.5">
         <p className="text-xs text-text">Speed ramp at playhead</p>
         <div className="flex gap-1.5">
@@ -279,6 +519,17 @@ export function OverlayInspector({ item, locked }: { item: Overlay; locked: bool
             : "Or drag it on the preview; the corner resizes it."}
         </p>
       </div>
+      <Slider id="broll-opacity" label="Opacity" value={item.opacity} min={0} max={1} step={0.05}
+        format={(v) => `${Math.round(v * 100)}%`}
+        onCommit={(v) => applyOps("B-roll opacity", [{ op: "update_overlay", overlay_id: item.id, opacity: v }])} />
+      <div className="space-y-1.5">
+        <p className="text-xs text-text">Blend</p>
+        <Segmented
+          options={(["normal", "screen", "multiply", "overlay", "lighten", "darken", "add"] as const).map((b) => ({ value: b, label: b[0].toUpperCase() + b.slice(1) }))}
+          value={item.blend}
+          onChange={(v) => applyOps(`Blend ${v}`, [{ op: "update_overlay", overlay_id: item.id, blend: v }])}
+        />
+      </div>
       <button
         type="button"
         onClick={() => {
@@ -324,6 +575,35 @@ export function MusicInspector({ item, locked }: { item: AudioItem; locked: bool
         <Trash size={13} /> Delete music
       </button>
     </fieldset>
+  );
+}
+
+/** Fades on the clip's own sound, and moving that sound to the music track to edit it apart. */
+function ClipSound({ clip }: { clip: Clip }) {
+  const applyOps = useEditor((s) => s.applyOps);
+  const media = useEditor((s) => s.project?.media.find((m) => m.id === clip.media_id));
+  const max = Math.min(5, clipDuration(clip) / 2);
+  const fade = (fade_in: number, fade_out: number, label: string) =>
+    applyOps(label, [{ op: "set_audio_fade", clip_id: clip.id, fade_in, fade_out }]);
+  if (!media?.has_audio) return null;
+  return (
+    <div className="space-y-2">
+      <div className="grid grid-cols-2 gap-3">
+        <Slider id="fade-in" label="Sound fade in" value={Math.min(clip.audio_fade_in, max)} min={0} max={max} step={0.1}
+          format={(v) => `${v.toFixed(1)}s`} onCommit={(v) => fade(v, clip.audio_fade_out, "Sound fade in")} />
+        <Slider id="fade-out" label="Sound fade out" value={Math.min(clip.audio_fade_out, max)} min={0} max={max} step={0.1}
+          format={(v) => `${v.toFixed(1)}s`} onCommit={(v) => fade(clip.audio_fade_in, v, "Sound fade out")} />
+      </div>
+      <button
+        type="button"
+        disabled={clip.muted || clip.speed !== 1}
+        title={clip.speed !== 1 ? "Only at normal speed" : clip.muted ? "The clip is muted" : undefined}
+        onClick={() => applyOps("Detach audio", [{ op: "detach_audio", clip_id: clip.id }])}
+        className="rounded-full border-2 border-line px-2.5 py-1 text-[11px] text-muted transition hover:border-line-strong hover:text-text active:scale-[0.98] disabled:opacity-40"
+      >
+        Detach audio to the music track
+      </button>
+    </div>
   );
 }
 

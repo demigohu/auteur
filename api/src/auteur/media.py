@@ -163,7 +163,16 @@ def ingest(project_dir: Path, media_id: str, name: str, upload: Path) -> Media:
         "-frames:v", "1", "-vf", "scale=320:-2", str(d / "thumb.jpg"),
     ])
     make_filmstrip(source, d / "filmstrip.jpg", info["duration"])
+    if info["has_audio"]:
+        make_waveform(source, d / "waveform.png", info["duration"])
     return Media(id=media_id, name=name, path=str(source), image=image, **info)
+
+
+def make_waveform(source: Path, out: Path, duration: float) -> None:
+    """The sound as a picture for timeline blocks: about 40 px per second, 90 px high."""
+    width = max(200, min(4000, round(duration * 40)))
+    _run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(source), "-filter_complex",
+          f"aformat=channel_layouts=mono,showwavespic=s={width}x90:colors=#eea53f", "-frames:v", "1", str(out)])
 
 
 def _ingest_audio(d: Path, media_id: str, name: str, source: Path, info: dict) -> Media:
@@ -172,10 +181,7 @@ def _ingest_audio(d: Path, media_id: str, name: str, source: Path, info: dict) -
 
     _run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(source), "-vn", "-c:a", "aac", "-b:a", "160k",
           "-movflags", "+faststart", str(d / "preview.m4a")])
-    width = max(200, min(4000, round(info["duration"] * 40)))
-    _run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(source), "-filter_complex",
-          f"aformat=channel_layouts=mono,showwavespic=s={width}x90:colors=#eea53f", "-frames:v", "1",
-          str(d / "filmstrip.png")])
+    make_waveform(source, d / "filmstrip.png", info["duration"])
     (d / "beats.json").write_text(analyze(source).model_dump_json())
     return Media(id=media_id, name=name, path=str(source), **info)
 

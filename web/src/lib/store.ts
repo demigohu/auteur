@@ -66,6 +66,10 @@ type EditorState = {
   redo: () => Promise<void>;
   upload: (files: File[]) => Promise<void>;
   importLink: (url: string) => Promise<boolean>;
+  /** Hold the frame under the playhead for `duration` seconds. */
+  freezeFrame: (duration?: number) => Promise<boolean>;
+  uploadLut: (file: File) => Promise<boolean>;
+  deleteLut: (lutId: string) => Promise<boolean>;
   startRun: (instruction: string, referenceIds?: string[]) => Promise<void>;
   uploadReference: (file: File) => Promise<string | null>;
   editStoryboard: (body: StoryboardEdit) => Promise<boolean>;
@@ -89,6 +93,8 @@ type EditorState = {
   previewGrade: (clipId: string, grade: Grade) => void;
   /** Local-only transform while dragging on the canvas; the commit goes through applyOps. */
   previewTransform: (clipId: string, transform: Transform | null) => void;
+  /** Local-only keyframes while dragging a keyframed clip on the canvas. */
+  previewTransformKeys: (clipId: string, keys: Clip["transform_keys"]) => void;
   /** Local-only text position while dragging it on the canvas. */
   previewTextPosition: (textId: string, x: number, y: number) => void;
   /** Local-only B-roll box while dragging it on the canvas. */
@@ -300,6 +306,23 @@ export const useEditor = create<EditorState>((set, get) => {
         if (!(await act(`Uploading ${f.name}`, () => api.upload(id, f)))) break;
       }
     },
+    uploadLut: (file) => {
+      const id = get().project?.id;
+      return id ? act(`Adding LUT ${file.name}`, () => api.uploadLut(id, file)) : Promise.resolve(false);
+    },
+    deleteLut: (lutId) => {
+      const id = get().project?.id;
+      return id ? act("Removing LUT", () => api.deleteLut(id, lutId)) : Promise.resolve(false);
+    },
+    freezeFrame: (duration = 2) => {
+      const { project, time } = get();
+      if (!project) return Promise.resolve(false);
+      const clips = project.timeline.clips;
+      const starts = clipStarts(clips);
+      const i = clips.findIndex((c, k) => time >= starts[k] && time < starts[k] + clipDuration(c));
+      if (i < 0) return Promise.resolve(false);
+      return act("Freezing the frame", () => api.freezeFrame(project.id, clips[i].id, Number(time.toFixed(3)), duration));
+    },
     importLink: (url) => {
       const id = get().project?.id;
       return id ? act("Importing from link", () => api.importLink(id, url)) : Promise.resolve(false);
@@ -437,6 +460,12 @@ export const useEditor = create<EditorState>((set, get) => {
       if (!project) return;
       const texts = project.timeline.texts.map((t) => (t.id === textId ? { ...t, x, y } : t));
       set({ project: { ...project, timeline: { ...project.timeline, texts } } });
+    },
+    previewTransformKeys: (clipId, keys) => {
+      const project = get().project;
+      if (!project) return;
+      const clips = project.timeline.clips.map((c) => (c.id === clipId ? { ...c, transform_keys: keys } : c));
+      set({ project: { ...project, timeline: { ...project.timeline, clips } } });
     },
     previewTransform: (clipId, transform) => {
       const project = get().project;

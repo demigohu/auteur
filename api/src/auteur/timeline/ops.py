@@ -11,8 +11,9 @@ from uuid import uuid4
 from pydantic import Field, TypeAdapter
 
 from auteur.timeline.models import (
-    Aspect, AudioItem, Clip, CropKey, Effect, Follow, Grade, Media, Model, Overlay, OverlayLayout, TextItem,
-    CropRect, OverlayBox, TextLook, TextWord, Timeline, Transform, Transition, VolumeKey, Zoom,
+    Aspect, AudioItem, Backdrop, BlendMode, Clip, ClipAnim, ClipLut, CropKey, CropRect, Effect, Follow, Grade, Media,
+    Model, Overlay, OverlayBox, OverlayLayout, TextAnim, TextFont, TextItem, TextLook, TextWord, Timeline, Transform,
+    TransformKey, Transition, VolumeKey, Zoom,
 )
 
 MIN_CLIP = 0.1  # seconds; shorter clips are unwatchable and break ffmpeg concat
@@ -72,6 +73,19 @@ class AddText(Model):
     words: list[TextWord] = Field(default_factory=list)
     x: float = Field(0.5, ge=0, le=1)
     y: float = Field(0.85, ge=0, le=1)
+    font: TextFont = Field("montserrat", description="anton/bebas: condensed caps; poppins: round sans; dmserif/instrument: serif; marker: hand-drawn; mono: typewriter")
+    text_color: str = Field("#FFFFFF", pattern=r"^#[0-9a-fA-F]{6}$")
+    size: float | None = Field(None, ge=0.02, le=0.3, description="Font size as a fraction of the frame height; null = the look's")
+    outline: float | None = Field(None, ge=0, le=0.3, description="Outline width as a fraction of the font size; null = the look's")
+    outline_color: str = Field("#000000", pattern=r"^#[0-9a-fA-F]{6}$")
+    shadow: bool | None = Field(None, description="Drop shadow; null = the look's")
+    background: str | None = Field(None, pattern=r"^#[0-9a-fA-F]{6}$", description="Box behind the text")
+    background_opacity: float = Field(0.65, ge=0, le=1)
+    anim_in: TextAnim | None = None
+    anim_out: TextAnim | None = None
+
+
+RESETTABLE_TEXT_FIELDS = {"size", "outline", "shadow", "background", "anim_in", "anim_out"}
 
 
 class UpdateText(Model):
@@ -84,6 +98,16 @@ class UpdateText(Model):
     color: str | None = Field(None, pattern=r"^#[0-9a-fA-F]{6}$")
     x: float | None = Field(None, ge=0, le=1)
     y: float | None = Field(None, ge=0, le=1)
+    font: TextFont | None = None
+    text_color: str | None = Field(None, pattern=r"^#[0-9a-fA-F]{6}$")
+    size: float | None = Field(None, ge=0.02, le=0.3, description="null (sent explicitly) = back to the look's size")
+    outline: float | None = Field(None, ge=0, le=0.3, description="null (sent explicitly) = back to the look's outline")
+    outline_color: str | None = Field(None, pattern=r"^#[0-9a-fA-F]{6}$")
+    shadow: bool | None = Field(None, description="null (sent explicitly) = back to the look's shadow")
+    background: str | None = Field(None, pattern=r"^#[0-9a-fA-F]{6}$", description="null (sent explicitly) removes the box")
+    background_opacity: float | None = Field(None, ge=0, le=1)
+    anim_in: TextAnim | None = Field(None, description="null (sent explicitly) removes the entrance")
+    anim_out: TextAnim | None = Field(None, description="null (sent explicitly) removes the exit")
 
 
 class DeleteText(Model):
@@ -139,6 +163,38 @@ class SetZoom(Model):
     zoom: Zoom | None
 
 
+class SetFit(Model):
+    op: Literal["set_fit"] = "set_fit"
+    clip_id: str
+    fit: Literal["fill", "fit"]
+    backdrop: Backdrop | None = Field(None, description="Blur or color behind a fitted clip; omit to keep the current one")
+
+
+class SetTransformKeys(Model):
+    op: Literal["set_transform_keys"] = "set_transform_keys"
+    clip_id: str
+    keys: list[TransformKey] = Field(description="Empty removes the animation (the static transform applies again)")
+
+
+class SetClipAnim(Model):
+    op: Literal["set_clip_anim"] = "set_clip_anim"
+    clip_id: str
+    anim_in: ClipAnim | None = Field(description="Entrance, or null for none")
+    anim_out: ClipAnim | None = Field(description="Exit, or null for none")
+
+
+class SetReverse(Model):
+    op: Literal["set_reverse"] = "set_reverse"
+    clip_id: str
+    reverse: bool
+
+
+class SetLut(Model):
+    op: Literal["set_lut"] = "set_lut"
+    clip_id: str
+    lut: ClipLut | None = Field(description="A LUT uploaded to the project, with intensity; null removes it")
+
+
 class SetCropRect(Model):
     op: Literal["set_crop_rect"] = "set_crop_rect"
     clip_id: str
@@ -155,6 +211,22 @@ class SetVolume(Model):
     op: Literal["set_volume"] = "set_volume"
     clip_id: str
     volume: float = Field(ge=0, le=2)
+
+
+class SetAudioFade(Model):
+    op: Literal["set_audio_fade"] = "set_audio_fade"
+    clip_id: str
+    fade_in: float = Field(0, ge=0, le=10)
+    fade_out: float = Field(0, ge=0, le=10)
+
+
+class DetachAudio(Model):
+    """Move a clip's sound to the music track (as its own item, still in sync) and mute the clip, so the
+    sound can be trimmed, moved or faded on its own."""
+
+    op: Literal["detach_audio"] = "detach_audio"
+    clip_id: str
+    id: str | None = Field(None, description="Id for the new audio item; generated if omitted")
 
 
 class AddOverlay(Model):
@@ -175,6 +247,8 @@ class UpdateOverlay(Model):
     start: float | None = Field(None, ge=0)
     layout: OverlayLayout | None = Field(None, description="A preset place; clears any free `box`")
     box: OverlayBox | None = Field(None, description="Free position and size (drag on the canvas)")
+    opacity: float | None = Field(None, ge=0, le=1)
+    blend: BlendMode | None = None
     grade: Grade | None = None
 
 
@@ -262,7 +336,7 @@ class SetLinkage(Model):
 Op = Annotated[
     AddClip | Split | Trim | Move | Delete | AddText | UpdateText | DeleteText
     | SetGrade | SetCrop | SetEffects | SetMuted | SetAspect
-    | SetSpeed | SetTransition | SetZoom | SetTransform | SetCropRect | SetVolume
+    | SetSpeed | SetTransition | SetZoom | SetTransform | SetCropRect | SetFit | SetReverse | SetLut | SetTransformKeys | SetClipAnim | SetVolume | SetAudioFade | DetachAudio
     | AddOverlay | UpdateOverlay | DeleteOverlay | AddAudio | UpdateAudio | DeleteAudio | SetFinish
     | SetFps | DuplicateClip | SetVolumeKeys | SpeedRamp | PasteClips | SetLinkage,
     Field(discriminator="op"),
@@ -397,7 +471,11 @@ def apply(tl: Timeline, op: Op, media: dict[str, Media]) -> Timeline:
         case UpdateText():
             i = _text_index(tl, op.text_id)
             old = tl.texts[i]
-            changes = op.model_dump(exclude={"op", "text_id"}, exclude_none=True)
+            # Fields sent explicitly apply, even null for the ones a text may leave unset (back to the look).
+            changes = {
+                k: getattr(op, k) for k in op.model_fields_set - {"op", "text_id"}
+                if getattr(op, k) is not None or k in RESETTABLE_TEXT_FIELDS
+            }
             item = old.model_copy(update=changes)
             if old.words and (op.text is not None or op.start is not None or op.end is not None):
                 # Edited text or a moved/stretched item: re-spread the words over the new span.
@@ -425,6 +503,8 @@ def apply(tl: Timeline, op: Op, media: dict[str, Media]) -> Timeline:
 
         case SetEffects():
             i = _clip_index(tl, op.clip_id)
+            if op.effects and tl.clips[i].reverse:
+                raise OpError("A reversed clip can't take tracked effects; turn reverse off first")
             tl.clips[i] = tl.clips[i].model_copy(update={"effects": op.effects})
 
         case SetMuted():
@@ -448,8 +528,8 @@ def apply(tl: Timeline, op: Op, media: dict[str, Media]) -> Timeline:
             i = _clip_index(tl, op.clip_id)
             tr = op.transition
             if tr is not None:
-                if i == 0 and tr.kind == "crossfade":
-                    raise OpError("The first clip has nothing to crossfade from; use 'dip_black' to fade in from black")
+                if i == 0 and tr.overlaps:
+                    raise OpError(f"The first clip has nothing to {tr.kind} from; use 'dip_black' to fade in from black")
                 limit = min(tl.clips[i].duration, tl.clips[i - 1].duration if i else tl.clips[i].duration)
                 if tr.duration > limit / 2:
                     raise OpError(f"Transition of {tr.duration}s is too long for clips of {limit:.2f}s (max half)")
@@ -458,6 +538,34 @@ def apply(tl: Timeline, op: Op, media: dict[str, Media]) -> Timeline:
         case SetZoom():
             i = _clip_index(tl, op.clip_id)
             tl.clips[i] = tl.clips[i].model_copy(update={"zoom": op.zoom})
+
+        case SetFit():
+            i = _clip_index(tl, op.clip_id)
+            update: dict = {"fit": op.fit}
+            if op.backdrop is not None:
+                update["backdrop"] = op.backdrop
+            tl.clips[i] = tl.clips[i].model_copy(update=update)
+
+        case SetTransformKeys():
+            i = _clip_index(tl, op.clip_id)
+            clip = tl.clips[i]
+            if any(k.t > clip.duration + 1e-3 for k in op.keys):
+                raise OpError(f"Keyframe past the end of clip {clip.id!r} ({clip.duration:.2f}s)")
+            tl.clips[i] = clip.model_copy(update={"transform_keys": sorted(op.keys, key=lambda k: k.t)})
+
+        case SetClipAnim():
+            i = _clip_index(tl, op.clip_id)
+            tl.clips[i] = tl.clips[i].model_copy(update={"anim_in": op.anim_in, "anim_out": op.anim_out})
+
+        case SetReverse():
+            i = _clip_index(tl, op.clip_id)
+            if op.reverse and tl.clips[i].effects:
+                raise OpError("Tracked effects (blur, highlight) can't play backwards; remove them first")
+            tl.clips[i] = tl.clips[i].model_copy(update={"reverse": op.reverse})
+
+        case SetLut():
+            i = _clip_index(tl, op.clip_id)
+            tl.clips[i] = tl.clips[i].model_copy(update={"lut": op.lut})
 
         case SetCropRect():
             i = _clip_index(tl, op.clip_id)
@@ -474,6 +582,29 @@ def apply(tl: Timeline, op: Op, media: dict[str, Media]) -> Timeline:
         case SetVolume():
             i = _clip_index(tl, op.clip_id)
             tl.clips[i] = tl.clips[i].model_copy(update={"volume": op.volume})
+
+        case SetAudioFade():
+            i = _clip_index(tl, op.clip_id)
+            clip = tl.clips[i]
+            if op.fade_in + op.fade_out > clip.duration + 1e-3:
+                raise OpError(f"Fades ({op.fade_in + op.fade_out:g}s) are longer than the clip ({clip.duration:.2f}s)")
+            tl.clips[i] = clip.model_copy(update={"audio_fade_in": op.fade_in, "audio_fade_out": op.fade_out})
+
+        case DetachAudio():
+            i = _clip_index(tl, op.clip_id)
+            clip = tl.clips[i]
+            m = _media(media, clip.media_id)
+            if not m.has_audio or clip.muted:
+                raise OpError(f"Clip {clip.id!r} has no sound to detach")
+            if clip.speed != 1:
+                raise OpError("Detach the sound at normal speed (sped-up or slowed clips are silent)")
+            _check_new_id(tl, op.id)
+            tl.audio.append(AudioItem(
+                id=op.id or new_id("audio"), media_id=m.id, src_in=clip.src_in, src_out=clip.src_out,
+                start=tl.clip_starts()[i], volume=clip.volume, fade_in=clip.audio_fade_in, fade_out=clip.audio_fade_out,
+                duck=False,
+            ))
+            tl.clips[i] = clip.model_copy(update={"muted": True})
 
         case AddOverlay():
             m = _media(media, op.media_id, "video")

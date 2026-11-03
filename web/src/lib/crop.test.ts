@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cropWindow } from "./crop";
+import { cropWindow, fitSize } from "./crop";
 
 // Expected values printed by models.CropRect.window in the API, so preview and export cut the same pixels.
 describe("cropWindow", () => {
@@ -14,5 +14,17 @@ describe("cropWindow", () => {
 
   it("is the whole source without a crop", () => {
     expect(cropWindow(null, 1920, 1080)).toEqual([0, 0, 1920, 1080]);
+  });
+});
+
+describe("fitSize", () => {
+  it.each([
+    [1920, 1080, 1080, 1920, [1080, 608]],
+    [1080, 1920, 1920, 1080, [608, 1080]],
+    [1600, 900, 1080, 1080, [1080, 608]],
+    [801, 601, 1080, 1350, [1080, 810]],
+    [320, 180, 180, 320, [180, 102]],
+  ] as const)("fits %ix%i into %ix%i like the export", (w, h, W, H, expected) => {
+    expect(fitSize(w, h, W, H)).toEqual(expected);
   });
 });

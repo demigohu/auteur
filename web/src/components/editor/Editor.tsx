@@ -3,6 +3,7 @@
 import { Warning, X } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect } from "react";
+import { useTheme } from "@/lib/theme";
 import { useEditor } from "@/lib/store";
 import { clipDuration, clipStarts } from "@/lib/time";
 import { MediaBin } from "./MediaBin";
@@ -23,22 +24,26 @@ export function Editor({ projectId }: { projectId: string }) {
   }, [projectId, load, connect]);
 
   useShortcuts();
+  const night = useTheme() === "night";
 
-  if (!project) return error ? <LoadError message={error} /> : <EditorSkeleton />;
+  if (!project) return error ? <LoadError message={error} /> : <EditorSkeleton night={night} />;
 
   return (
     // minmax(0,1fr) column: a long timeline must scroll inside its panel, not widen the whole editor.
-    <div className="grid h-[100dvh] w-full grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)_320px] overflow-hidden">
+    <div
+      className={`${night ? "theme-night" : ""} grid h-[100dvh] w-full grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)_320px] overflow-hidden bg-bg text-text`}
+    >
       <TopBar />
-      {/* Paper chrome around an ink stage and timeline: footage is judged against dark, like a cutting room. */}
+      {/* Night: dark panels around an even darker stage and timeline. Day: everything on paper, the stage a
+          neutral light grey. */}
       <div className="grid min-h-0 grid-cols-[220px_minmax(0,1fr)_360px]">
         <MediaBin />
-        <div className="theme-ink min-w-0">
+        <div className={`${night ? "theme-ink" : ""} min-w-0`}>
           <Preview />
         </div>
         <SidePanel />
       </div>
-      <div className="theme-ink min-h-0 border-t-2 border-ink">
+      <div className={`${night ? "theme-ink" : ""} min-h-0 border-t-2 border-edge`}>
         <TimelinePanel />
       </div>
       <ErrorToast />
@@ -108,9 +113,9 @@ function ErrorToast() {
   );
 }
 
-export function EditorSkeleton() {
+export function EditorSkeleton({ night = true }: { night?: boolean }) {
   return (
-    <div className="grid h-[100dvh] w-full grid-cols-[minmax(0,1fr)] grid-rows-[56px_minmax(0,1fr)_320px] overflow-hidden">
+    <div className={`${night ? "theme-night" : ""} grid h-[100dvh] w-full grid-cols-[minmax(0,1fr)] grid-rows-[56px_minmax(0,1fr)_320px] overflow-hidden bg-bg`}>
       <div className="border-b border-line bg-panel" />
       <div className="grid grid-cols-[220px_minmax(0,1fr)_360px]">
         <div className="space-y-2 border-r border-line bg-panel p-3">

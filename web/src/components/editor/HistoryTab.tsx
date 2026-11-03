@@ -39,7 +39,7 @@ export function HistoryTab() {
           type="button"
           onClick={undo}
           disabled={locked || !project.can_undo}
-          className="flex items-center gap-1.5 rounded-full border-2 border-ink px-2.5 py-1.5 text-xs font-semibold text-text transition hover:bg-raised active:scale-[0.98] disabled:opacity-35"
+          className="flex items-center gap-1.5 rounded-full border-2 border-edge px-2.5 py-1.5 text-xs font-semibold text-text transition hover:bg-raised active:scale-[0.98] disabled:opacity-35"
         >
           <ArrowArcLeft size={13} /> Undo
         </button>
@@ -47,7 +47,7 @@ export function HistoryTab() {
           type="button"
           onClick={redo}
           disabled={locked || !project.can_redo}
-          className="flex items-center gap-1.5 rounded-full border-2 border-ink px-2.5 py-1.5 text-xs font-semibold text-text transition hover:bg-raised active:scale-[0.98] disabled:opacity-35"
+          className="flex items-center gap-1.5 rounded-full border-2 border-edge px-2.5 py-1.5 text-xs font-semibold text-text transition hover:bg-raised active:scale-[0.98] disabled:opacity-35"
         >
           <ArrowArcRight size={13} /> Redo
         </button>
@@ -64,7 +64,7 @@ export function HistoryTab() {
               <motion.li
                 key={g.commits[0].id}
                 layout={reduce ? false : "position"}
-                className="rounded-[10px] border-2 border-ink/20 bg-panel-2 p-3"
+                className="rounded-[10px] border-2 border-line bg-panel-2 p-3"
               >
                 <div className="flex items-start gap-2">
                   {g.author === "agent" ? (

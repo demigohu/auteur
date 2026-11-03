@@ -155,18 +155,24 @@ App surfaces:
 
 ---
 
-## 5. Applying it to the editor
+## 5. Applying it to the app (studio and editor)
 
-The editor keeps the brand but respects the footage:
+The studio and the editor have a **Day / Night** toggle (`components/ui/ThemeToggle.tsx`, stored per browser by
+`lib/theme.ts`, night by default). The landing and sign-in pages keep their single designed look.
 
-- **Chrome on paper.** Top bar, media bin, side panel, timeline toolbar: paper surfaces, ink text, 2px ink dividers between regions, mono labels for section headers.
-- **Footage on ink.** The preview stage is ink with the cutting-mat grid; the timeline track area is `--ink-2`. Neutral dark around the picture keeps color judgment honest.
-- **Accent flips with the surface.** On paper the accent is tomato (readable on cream); on the ink stage and timeline it is lime (selection, playhead, beats, passed checks). Failures are always tomato, warnings sun. Implemented as semantic tokens that `.theme-ink` redefines.
-- **Buttons** follow the landing: hard-shadow pills; Export is the pink CTA chip; the agent's Send is a pink circle with an ink border.
-- **Agent panel.** User messages are paper cards with a 2px border; the agent speaks in Inter Tight on paper with an Instrument Serif italic lead-in when it finishes ("*done.*"); the plan is a numbered list with mono indices; tool log rows use mono; checker results are lime (pass) or tomato (fail) stamps.
-- **Inspector.** Section titles in Anton 18px uppercase; segmented controls are pills with a lime active state and 2px ink border.
-
----
+- **Night** (`.theme-night` on the root): every panel dark and neutral (`#1a1917`), cards a step lighter, the
+  preview stage and timeline darker still (`.theme-ink`). Best for judging color.
+- **Day**: everything on paper, including the timeline; the preview stage is a neutral light grey.
+- **Tokens, not colors.** Components use semantic tokens that both themes define: `bg`/`panel`/`panel-2`/`raised`,
+  `text`/`muted`/`faint`, `line`/`line-strong`, `edge` (outlines and dividers), `card` and `card-text`,
+  `edge-shadow`, `stage`/`stage-grid`, `accent`. Selected chips invert (`bg-text text-bg`). Hard-coded ink and
+  paper stay only on accent chips (lime, pink, sun keep an ink outline and ink text) and on labels over footage.
+- **Accent flips with the theme**: tomato on paper, lime on dark. Failures are tomato, warnings sun, Export and
+  Send pink.
+- **Sliders are neutral** (thin line, round thumb in the text color): no colored fill next to footage.
+- **Agent panel.** User messages are cards; the plan is a numbered list with mono indices; tool rows use mono;
+  checker results are lime (pass) or tomato (fail) stamps.
+- **Inspector.** Section titles in Anton; segmented controls are pills.
 
 ## 6. Assets
 

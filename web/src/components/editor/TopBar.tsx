@@ -2,6 +2,7 @@
 
 import { CircleNotch, Coins, DownloadSimple, Export } from "@phosphor-icons/react";
 import { Logo } from "@/components/ui/Logo";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { fileUrl } from "@/lib/api";
 import { useEditor } from "@/lib/store";
 import type { Timeline } from "@/lib/timeline";
@@ -9,9 +10,9 @@ import type { Timeline } from "@/lib/timeline";
 const ASPECTS: Timeline["aspect"][] = ["16:9", "9:16", "1:1"];
 
 // Pill segmented control (docs/DESIGN.md, "Segmented control").
-const SEGMENTED = "flex rounded-full border-2 border-ink bg-panel p-0.5";
+const SEGMENTED = "flex rounded-full border-2 border-edge bg-panel p-0.5";
 const SEGMENT = "rounded-full py-1 font-mono text-[11px] transition-colors disabled:opacity-50";
-const SEGMENT_ON = "bg-ink text-paper";
+const SEGMENT_ON = "bg-text text-bg";
 const SEGMENT_OFF = "text-muted hover:text-text";
 
 export function TopBar() {
@@ -27,7 +28,7 @@ export function TopBar() {
   const locked = project.busy;
 
   return (
-    <header className="paper-texture relative flex h-14 shrink-0 items-center gap-4 border-b-2 border-ink bg-panel px-3">
+    <header className="paper-texture relative flex h-14 shrink-0 items-center gap-4 border-b-2 border-edge bg-panel px-3">
       <Logo href="/studio" size="sm" />
       <span className="label hidden text-faint md:inline">Project /</span>
       <span className="truncate font-serif text-[22px] leading-none italic text-text">{project.name}</span>
@@ -74,6 +75,7 @@ export function TopBar() {
             </button>
           ))}
         </div>
+        <ThemeToggle />
         {project.last_render_url && (
           <a
             href={fileUrl(project.last_render_url)}

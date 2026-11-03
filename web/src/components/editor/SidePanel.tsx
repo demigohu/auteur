@@ -18,8 +18,8 @@ export function SidePanel() {
   const runStatus = useEditor((s) => s.run?.status);
 
   return (
-    <aside className="flex min-h-0 flex-col border-l-2 border-ink bg-panel">
-      <div role="tablist" className="flex h-12 shrink-0 items-center gap-1 border-b-2 border-ink px-3">
+    <aside className="flex min-h-0 flex-col border-l-2 border-edge bg-panel">
+      <div role="tablist" className="flex h-12 shrink-0 items-center gap-1 border-b-2 border-edge px-3">
         {TABS.map((t) => (
           <button
             key={t.id}

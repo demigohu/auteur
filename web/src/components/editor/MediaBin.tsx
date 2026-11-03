@@ -23,7 +23,7 @@ export function MediaBin() {
 
   return (
     <aside
-      className={`flex min-h-0 flex-col border-r-2 border-ink bg-panel transition-colors ${over ? "bg-accent-soft" : ""}`}
+      className={`flex min-h-0 flex-col border-r-2 border-edge bg-panel transition-colors ${over ? "bg-accent-soft" : ""}`}
       onDragOver={(e) => {
         e.preventDefault();
         setOver(true);
@@ -35,7 +35,7 @@ export function MediaBin() {
         pick(e.dataTransfer.files);
       }}
     >
-      <div className="flex h-12 shrink-0 items-center justify-between border-b-2 border-ink px-3">
+      <div className="flex h-12 shrink-0 items-center justify-between border-b-2 border-edge px-3">
         <span className="display text-[20px] text-text">Media</span>
         <span className="font-mono text-[11px] text-faint">{Math.round(total)}s / 300s</span>
       </div>
@@ -59,7 +59,7 @@ export function MediaBin() {
           type="button"
           onClick={() => input.current?.click()}
           disabled={Boolean(uploading)}
-          className="flex w-full flex-col items-center gap-1.5 rounded-[14px] border-2 border-dashed border-ink/50 px-3 py-5 text-center transition hover:border-ink hover:bg-raised active:scale-[0.99] disabled:opacity-50"
+          className="flex w-full flex-col items-center gap-1.5 rounded-[14px] border-2 border-dashed border-line-strong px-3 py-5 text-center transition hover:border-line-strong hover:bg-raised active:scale-[0.99] disabled:opacity-50"
         >
           <span className="grid size-9 place-items-center rounded-full border-2 border-ink bg-pink text-ink">
             <UploadSimple size={16} weight="bold" />
@@ -91,7 +91,7 @@ function MediaCard({ media, locked, onAdd }: { media: MediaView; locked: boolean
     <motion.div
       initial={reduce ? false : { opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      className="group overflow-hidden rounded-[14px] border-2 border-ink bg-panel-2 shadow-[0_3px_0_0_var(--ink)]"
+      className="group overflow-hidden rounded-[14px] border-2 border-edge bg-panel-2 shadow-[0_3px_0_0_var(--edge-shadow)]"
     >
       {/* Plain div for HTML5 drag: motion.div reserves onDragStart for its own gestures. */}
       <div
@@ -120,7 +120,7 @@ function MediaCard({ media, locked, onAdd }: { media: MediaView; locked: boolean
           <Plus size={14} weight="bold" />
         </button>
       </div>
-      <div className="flex items-center gap-2 border-t-2 border-ink px-2.5 py-2">
+      <div className="flex items-center gap-2 border-t-2 border-edge px-2.5 py-2">
         <span className="truncate text-xs font-semibold text-text">{media.name}</span>
         <span className="ml-auto shrink-0 font-mono text-[10px] text-faint">{media.duration.toFixed(1)}s</span>
       </div>
@@ -131,7 +131,7 @@ function MediaCard({ media, locked, onAdd }: { media: MediaView; locked: boolean
 
 function UploadSkeleton({ label }: { label: string }) {
   return (
-    <div className="overflow-hidden rounded-[14px] border-2 border-ink bg-panel-2">
+    <div className="overflow-hidden rounded-[14px] border-2 border-edge bg-panel-2">
       <div className="aspect-video animate-pulse bg-raised" />
       <p className="truncate px-2.5 py-2 text-xs text-muted">{label}</p>
     </div>

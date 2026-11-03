@@ -110,7 +110,7 @@ export function ColorPanel({ clip, locked }: { clip: Clip; locked: boolean }) {
             type="button"
             onClick={() => look(l.id)}
             className={`group overflow-hidden rounded-[10px] border text-left transition active:scale-[0.97] ${
-              grade.look === l.id ? "border-ink ring-2 ring-ink" : "border-ink/20 hover:border-ink"
+              grade.look === l.id ? "border-edge ring-2 ring-text" : "border-line hover:border-line-strong"
             }`}
           >
             <span className="block h-7" style={{ background: l.swatch }} />
@@ -153,7 +153,7 @@ export function ColorPanel({ clip, locked }: { clip: Clip; locked: boolean }) {
       <button
         type="button"
         onClick={() => look(null)}
-        className="flex items-center gap-1.5 rounded-full border-2 border-ink px-2.5 py-1.5 text-xs font-semibold text-text transition hover:bg-raised active:scale-[0.98]"
+        className="flex items-center gap-1.5 rounded-full border-2 border-edge px-2.5 py-1.5 text-xs font-semibold text-text transition hover:bg-raised active:scale-[0.98]"
       >
         <MagicWand size={13} /> Correct only
       </button>

@@ -17,6 +17,8 @@ import { useClerk, useUser } from "@clerk/nextjs";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Logo } from "@/components/ui/Logo";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import { useTheme } from "@/lib/theme";
 import { ApiError, api, type NewProject, type ProjectSummary } from "@/lib/api";
 import { greeting } from "@/lib/format";
 import { ASPECTS, AspectGlyph } from "./aspects";
@@ -60,6 +62,7 @@ export function Studio() {
   const search = useRef<HTMLInputElement>(null);
   const { user: clerkUser } = useUser();
   const { signOut } = useClerk();
+  const night = useTheme() === "night";
   const router = useRouter();
   const [creating, setCreating] = useState<NewProject["aspect"] | null>(null);
   const user = clerkUser
@@ -173,7 +176,7 @@ export function Studio() {
 
   return (
     <div
-      className="paper-texture min-h-[100dvh] bg-paper text-ink lg:grid lg:grid-cols-[264px_minmax(0,1fr)]"
+      className={`${night ? "theme-night" : "paper-texture"} min-h-[100dvh] bg-bg text-text lg:grid lg:grid-cols-[264px_minmax(0,1fr)]`}
       onDragOver={(e) => {
         if (!e.dataTransfer.types.includes("Files")) return;
         e.preventDefault();
@@ -187,7 +190,7 @@ export function Studio() {
       }}
     >
       {/* Sidebar (a top bar on small screens). */}
-      <aside className="flex items-center gap-3 border-b-2 border-ink px-4 py-3 lg:sticky lg:top-0 lg:h-[100dvh] lg:flex-col lg:items-stretch lg:gap-0 lg:border-r-2 lg:border-b-0 lg:px-5 lg:py-6">
+      <aside className="flex items-center gap-3 border-b-2 border-edge px-4 py-3 lg:sticky lg:top-0 lg:h-[100dvh] lg:flex-col lg:items-stretch lg:gap-0 lg:border-r-2 lg:border-b-0 lg:px-5 lg:py-6">
         <div className="lg:px-1">
           <Logo />
         </div>
@@ -201,7 +204,7 @@ export function Studio() {
             <Plus size={17} weight="bold" />
           </span>
           <span className="flex items-center pr-5 pl-3.5 whitespace-nowrap">New project</span>
-          <kbd className="mr-3 hidden items-center self-center rounded-[4px] border border-ink/30 px-1.5 font-mono text-[10px] lg:flex">N</kbd>
+          <kbd className="mr-3 hidden items-center self-center rounded-[4px] border border-line px-1.5 font-mono text-[10px] lg:flex">N</kbd>
         </button>
 
         <nav aria-label="Studio" className="hidden lg:mt-8 lg:block">
@@ -213,7 +216,7 @@ export function Studio() {
                   aria-current={view === id ? "page" : undefined}
                   onClick={() => setView(id)}
                   className={`relative flex w-full items-center gap-3 rounded-full px-4 py-2.5 text-[15px] font-medium transition-colors ${
-                    view === id ? "text-ink" : "text-ink/60 hover:bg-ink/5 hover:text-ink"
+                    view === id ? "text-ink" : "text-muted hover:bg-raised hover:text-text"
                   }`}
                 >
                   {view === id && (
@@ -221,7 +224,7 @@ export function Studio() {
                   )}
                   <Icon size={18} weight={view === id ? "fill" : "regular"} className="relative" />
                   <span className="relative">{label}</span>
-                  {id === "projects" && projects && <span className="relative ml-auto font-mono text-[11px] text-ink/50">{projects.length}</span>}
+                  {id === "projects" && projects && <span className="relative ml-auto font-mono text-[11px] text-faint">{projects.length}</span>}
                 </button>
               </li>
             ))}
@@ -229,23 +232,26 @@ export function Studio() {
         </nav>
 
         <div className="hidden lg:mt-auto lg:block">
-          <Link href="/" className="label flex items-center gap-1.5 px-1 text-[10px] text-ink/50 hover:text-ink">
-            Back to site <ArrowSquareOut size={12} />
-          </Link>
-          <div className="mt-4 flex items-center gap-3 rounded-[16px] border-2 border-ink bg-paper p-2.5">
+          <div className="flex items-center justify-between gap-2 px-1">
+            <Link href="/" className="label flex items-center gap-1.5 text-[10px] text-faint hover:text-text">
+              Back to site <ArrowSquareOut size={12} />
+            </Link>
+            <ThemeToggle />
+          </div>
+          <div className="mt-4 flex items-center gap-3 rounded-[16px] border-2 border-edge bg-card p-2.5">
             <span className="display grid size-10 shrink-0 place-items-center rounded-[12px] border-2 border-ink bg-sun text-[20px]">
               {user?.name.charAt(0) ?? "·"}
             </span>
             <div className="min-w-0">
               <p className="truncate text-[14px] font-semibold">{user?.name ?? "Loading"}</p>
-              <p className="truncate text-[12px] text-ink/50">{user?.email ?? " "}</p>
+              <p className="truncate text-[12px] text-faint">{user?.email ?? " "}</p>
             </div>
             <button
               type="button"
               onClick={() => signOut({ redirectUrl: "/" })}
               aria-label="Sign out"
               title="Sign out"
-              className="ml-auto grid size-8 shrink-0 place-items-center rounded-full transition-colors hover:bg-ink hover:text-paper"
+              className="ml-auto grid size-8 shrink-0 place-items-center rounded-full transition-colors hover:bg-text hover:text-bg"
             >
               <SignOut size={16} />
             </button>
@@ -256,8 +262,8 @@ export function Studio() {
       <main className="min-w-0 px-[var(--gutter)] pt-6 pb-24 lg:pt-8">
         {/* Toolbar */}
         <div className="flex flex-wrap items-center gap-3">
-          <label className="flex h-11 min-w-0 flex-1 items-center gap-2.5 rounded-full border-2 border-ink bg-paper px-4 focus-within:shadow-[0_3px_0_0_var(--ink)] sm:max-w-[420px]">
-            <MagnifyingGlass size={17} className="shrink-0 text-ink/50" />
+          <label className="flex h-11 min-w-0 flex-1 items-center gap-2.5 rounded-full border-2 border-edge bg-card px-4 focus-within:shadow-[0_3px_0_0_var(--edge-shadow)] sm:max-w-[420px]">
+            <MagnifyingGlass size={17} className="shrink-0 text-faint" />
             <span className="sr-only">Search projects</span>
             <input
               ref={search}
@@ -267,23 +273,23 @@ export function Studio() {
                 if (view === "recipes") setView("projects");
               }}
               placeholder="Search projects"
-              className="min-w-0 flex-1 bg-transparent text-[15px] placeholder:text-ink/40 focus:outline-none"
+              className="min-w-0 flex-1 bg-transparent text-[15px] placeholder:text-faint focus:outline-none"
             />
-            <kbd className="rounded-[4px] border border-ink/25 px-1.5 font-mono text-[10px] text-ink/50">/</kbd>
+            <kbd className="rounded-[4px] border border-line px-1.5 font-mono text-[10px] text-faint">/</kbd>
           </label>
-          <div className="flex rounded-full border-2 border-ink p-0.5 lg:hidden">
+          <div className="flex rounded-full border-2 border-edge p-0.5 lg:hidden">
             {NAV.map(({ id, label }) => (
               <button
                 key={id}
                 type="button"
                 onClick={() => setView(id)}
-                className={`rounded-full px-3 py-1.5 text-[13px] font-medium ${view === id ? "bg-ink text-lime" : "text-ink/60"}`}
+                className={`rounded-full px-3 py-1.5 text-[13px] font-medium ${view === id ? "bg-text text-bg" : "text-muted"}`}
               >
                 {label}
               </button>
             ))}
           </div>
-          <p className="label ml-auto hidden text-ink/50 md:block">(02) Studio</p>
+          <p className="label ml-auto hidden text-faint md:block">(02) Studio</p>
         </div>
 
         {error && (
@@ -327,14 +333,14 @@ export function Studio() {
                         initial={reduce ? false : { opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.05 * i, duration: 0.6, ease: EASE_OUT }}
-                        className="group flex flex-col items-start gap-6 rounded-[18px] border-2 border-ink bg-paper p-5 text-left shadow-[0_4px_0_0_var(--ink)] transition-[transform,box-shadow] duration-300 ease-[var(--ease-out)] hover:-translate-y-1 hover:shadow-[0_8px_0_0_var(--ink)]"
+                        className="group flex flex-col items-start gap-6 rounded-[18px] border-2 border-edge bg-card p-5 text-left shadow-[0_4px_0_0_var(--edge-shadow)] transition-[transform,box-shadow] duration-300 ease-[var(--ease-out)] hover:-translate-y-1 hover:shadow-[0_8px_0_0_var(--edge-shadow)]"
                       >
                         <span className="transition-transform duration-500 ease-[var(--ease-back)] group-hover:-rotate-6">
                           <AspectGlyph aspect={a.value} color={a.color} />
                         </span>
                         <span>
                           <span className="display block text-[36px]">{a.value}</span>
-                          <span className="mt-1 block text-[14px] text-ink/60">{creating === a.value ? "Opening the editor…" : a.use}</span>
+                          <span className="mt-1 block text-[14px] text-muted">{creating === a.value ? "Opening the editor…" : a.use}</span>
                         </span>
                       </motion.button>
                     ))}
@@ -344,7 +350,7 @@ export function Studio() {
                       initial={reduce ? false : { opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: 0.15, duration: 0.6, ease: EASE_OUT }}
-                      className="mat group flex flex-col items-start gap-6 rounded-[18px] border-2 border-ink p-5 text-left text-paper shadow-[0_4px_0_0_var(--tomato)] transition-[transform,box-shadow] duration-300 ease-[var(--ease-out)] hover:-translate-y-1 hover:shadow-[0_8px_0_0_var(--tomato)]"
+                      className="mat group flex flex-col items-start gap-6 rounded-[18px] border-2 border-edge p-5 text-left text-paper shadow-[0_4px_0_0_var(--tomato)] transition-[transform,box-shadow] duration-300 ease-[var(--ease-out)] hover:-translate-y-1 hover:shadow-[0_8px_0_0_var(--tomato)]"
                     >
                       <span className="grid size-11 place-items-center rounded-full border-2 border-paper bg-pink text-ink transition-transform duration-500 ease-[var(--ease-back)] group-hover:scale-110">
                         <UploadSimple size={18} weight="bold" />
@@ -385,7 +391,7 @@ export function Studio() {
                   <h1 id="all-projects" className="display text-[clamp(52px,7vw,112px)]">
                     {searching ? "Results" : "Projects"}
                   </h1>
-                  <div className="flex rounded-full border-2 border-ink p-0.5" role="radiogroup" aria-label="Sort">
+                  <div className="flex rounded-full border-2 border-edge p-0.5" role="radiogroup" aria-label="Sort">
                     {(["recent", "name"] as const).map((s) => (
                       <button
                         key={s}
@@ -393,14 +399,14 @@ export function Studio() {
                         role="radio"
                         aria-checked={sort === s}
                         onClick={() => setSort(s)}
-                        className={`rounded-full px-3.5 py-1.5 text-[13px] font-medium ${sort === s ? "bg-ink text-lime" : "text-ink/60 hover:text-ink"}`}
+                        className={`rounded-full px-3.5 py-1.5 text-[13px] font-medium ${sort === s ? "bg-text text-bg" : "text-muted hover:text-text"}`}
                       >
                         {s === "recent" ? "Last edited" : "Name"}
                       </button>
                     ))}
                   </div>
                 </div>
-                <p className="mt-2 text-[15px] text-ink/55">
+                <p className="mt-2 text-[15px] text-muted">
                   {projects === null ? "Loading" : searching ? `${shown.length} matching “${query.trim()}”` : `${projects.length} ${projects.length === 1 ? "project" : "projects"}`}
                 </p>
                 <ProjectGrid projects={projects === null ? null : shown} onRename={rename} onDelete={setDeleting} onCreate={() => setDraft(EMPTY_DRAFT)} searching={searching} />
@@ -412,7 +418,7 @@ export function Studio() {
                 <h1 id="recipes" className="display text-[clamp(52px,7vw,112px)]">
                   Recipes
                 </h1>
-                <p className="mt-2 max-w-[56ch] text-[16px] leading-relaxed text-ink/60">
+                <p className="mt-2 max-w-[56ch] text-[16px] leading-relaxed text-muted">
                   A recipe sets the format and writes the first brief. Upload your clips and the agent starts from there. You can change every word.
                 </p>
                 <RecipeRow recipes={RECIPES} onPick={fromRecipe} />
@@ -443,9 +449,9 @@ export function Studio() {
 
 function SectionHead(props: { id: string; kicker: string; title: string; action?: { label: string; onClick: () => void } }) {
   return (
-    <div className="flex items-end justify-between gap-4 border-b-2 border-ink pb-3">
+    <div className="flex items-end justify-between gap-4 border-b-2 border-edge pb-3">
       <div>
-        <p className="label text-[10px] text-ink/50">⁞ {props.kicker}</p>
+        <p className="label text-[10px] text-faint">⁞ {props.kicker}</p>
         <h2 id={props.id} className="display mt-2 text-[34px]">
           {props.title}
         </h2>
@@ -477,9 +483,9 @@ function ProjectGrid(props: {
   }
   if (props.projects.length === 0) {
     return (
-      <div className="mt-6 grid place-items-center rounded-[18px] border-2 border-dashed border-ink/40 px-6 py-14 text-center">
+      <div className="mt-6 grid place-items-center rounded-[18px] border-2 border-dashed border-line-strong px-6 py-14 text-center">
         <p className="display text-[40px]">{props.searching ? "Nothing by that name." : "Nothing on the reel yet."}</p>
-        <p className="mt-2 max-w-[40ch] text-[15px] text-ink/60">
+        <p className="mt-2 max-w-[40ch] text-[15px] text-muted">
           {props.searching ? "Try another word, or clear the search." : "Start a project, drop your footage in and tell the agent what you want."}
         </p>
         {!props.searching && (
@@ -554,16 +560,16 @@ function ConfirmDelete({ project, onCancel, onConfirm }: { project: ProjectSumma
             animate={{ y: 0, scale: 1 }}
             exit={{ y: 16, opacity: 0 }}
             transition={{ duration: 0.4, ease: EASE_OUT }}
-            className="w-full max-w-[440px] rounded-[22px] border-2 border-ink bg-paper p-7 text-ink shadow-[8px_8px_0_0_var(--tomato)]"
+            className="w-full max-w-[440px] rounded-[22px] border-2 border-edge bg-card p-7 text-text shadow-[8px_8px_0_0_var(--tomato)]"
           >
             <h2 id="delete-title" className="display text-[44px]">
               Delete this cut?
             </h2>
-            <p className="mt-3 text-[15px] leading-relaxed text-ink/70">
-              <strong className="font-semibold text-ink">{project.name}</strong>, its footage, renders and edit history will be gone. This can&apos;t be undone.
+            <p className="mt-3 text-[15px] leading-relaxed text-muted">
+              <strong className="font-semibold text-text">{project.name}</strong>, its footage, renders and edit history will be gone. This can&apos;t be undone.
             </p>
             <div className="mt-7 flex justify-end gap-3">
-              <button type="button" onClick={onCancel} autoFocus className="h-11 rounded-full border-2 border-ink px-5 text-[14px] font-semibold hover:bg-ink/5">
+              <button type="button" onClick={onCancel} autoFocus className="h-11 rounded-full border-2 border-edge px-5 text-[14px] font-semibold hover:bg-raised">
                 Keep it
               </button>
               <button type="button" onClick={onConfirm} className="hard h-11 rounded-full bg-tomato px-5 text-[14px] font-semibold">

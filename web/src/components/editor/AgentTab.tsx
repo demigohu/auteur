@@ -98,13 +98,13 @@ export function AgentTab() {
       </div>
 
       <form
-        className="shrink-0 border-t-2 border-ink p-3"
+        className="shrink-0 border-t-2 border-edge p-3"
         onSubmit={(e) => {
           e.preventDefault();
           send(draft);
         }}
       >
-        <div className="rounded-[14px] border-2 border-ink bg-paper shadow-[0_3px_0_0_var(--ink)] transition-shadow focus-within:shadow-[0_4px_0_0_var(--tomato)]">
+        <div className="rounded-[14px] border-2 border-edge bg-card shadow-[0_3px_0_0_var(--edge-shadow)] transition-shadow focus-within:shadow-[0_4px_0_0_var(--tomato)]">
           <label htmlFor="instruction" className="sr-only">
             Instruction for the agent
           </label>
@@ -129,7 +129,7 @@ export function AgentTab() {
               <button
                 type="button"
                 onClick={stopRun}
-                className="flex items-center gap-1.5 rounded-full border-2 border-ink px-3 py-1 text-xs font-semibold text-text transition hover:bg-raised active:scale-[0.97]"
+                className="flex items-center gap-1.5 rounded-full border-2 border-edge px-3 py-1 text-xs font-semibold text-text transition hover:bg-raised active:scale-[0.97]"
               >
                 <Stop size={12} weight="fill" /> Stop
               </button>
@@ -153,7 +153,7 @@ export function AgentTab() {
 function ChatLine({ role, text }: { role: "user" | "assistant"; text: string }) {
   if (role === "user") {
     return (
-      <div className="ml-6 rounded-[14px] rounded-br-[4px] border-2 border-ink bg-paper px-3 py-2 text-sm leading-relaxed text-ink">{text}</div>
+      <div className="ml-6 rounded-[14px] rounded-br-[4px] border-2 border-edge bg-card px-3 py-2 text-sm leading-relaxed text-card-text">{text}</div>
     );
   }
   return <div className="whitespace-pre-wrap text-sm leading-relaxed text-text/90">{text}</div>;
@@ -173,7 +173,7 @@ function Suggestions({ onPick, disabled }: { onPick: (t: string) => void; disabl
             type="button"
             disabled={disabled}
             onClick={() => onPick(s)}
-            className="block w-full rounded-[14px] border-2 border-ink/25 px-3 py-2 text-left text-[13px] leading-snug text-muted transition hover:border-ink hover:bg-paper hover:text-text active:scale-[0.99] disabled:pointer-events-none disabled:opacity-40"
+            className="block w-full rounded-[14px] border-2 border-line px-3 py-2 text-left text-[13px] leading-snug text-muted transition hover:border-line-strong hover:bg-card hover:text-text active:scale-[0.99] disabled:pointer-events-none disabled:opacity-40"
           >
             {s}
           </button>
@@ -187,8 +187,8 @@ function RunView({ run }: { run: RunState }) {
   return (
     <div className="space-y-3">
       {run.plan.length > 0 && (
-        <div className="rounded-[14px] border-2 border-ink bg-paper p-3 shadow-[0_3px_0_0_var(--ink)]">
-          <p className="label mb-2.5 text-ink/60">⁞ Edit plan</p>
+        <div className="rounded-[14px] border-2 border-edge bg-card p-3 shadow-[0_3px_0_0_var(--edge-shadow)]">
+          <p className="label mb-2.5 text-muted">⁞ Edit plan</p>
           <ol className="space-y-1.5">
             {run.plan.map((p, i) => (
               <li key={i} className="flex items-start gap-2 text-[13px] leading-snug">

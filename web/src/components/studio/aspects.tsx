@@ -20,10 +20,10 @@ export function AspectGlyph({ aspect, active, color }: { aspect: NewProject["asp
         height={h}
         rx="3"
         fill={color ?? (active ? "var(--lime)" : "transparent")}
-        stroke={active ? "var(--paper)" : "var(--ink)"}
+        stroke={active ? "var(--bg)" : "var(--text)"}
         strokeWidth="2"
       />
-      <path d="M21.5 17.5v7l6-3.5z" fill={active ? "var(--ink)" : "var(--ink)"} />
+      <path d="M21.5 17.5v7l6-3.5z" fill={color || active ? "var(--ink)" : "var(--text)"} />
     </svg>
   );
 }

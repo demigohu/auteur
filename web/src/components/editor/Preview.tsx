@@ -74,7 +74,7 @@ export function Preview() {
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-bg">
-      <div className="mat relative flex min-h-0 flex-1 items-center justify-center p-5">
+      <div className="stage relative flex min-h-0 flex-1 items-center justify-center p-5">
         {before && (
           <span className="label pointer-events-none absolute top-6 left-1/2 z-10 -translate-x-1/2 -rotate-2 rounded-full border-2 border-ink bg-sun px-3 py-1 text-ink">
             Before edits
@@ -98,7 +98,7 @@ export function Preview() {
           <EmptyPreview hasMedia={(project?.media.length ?? 0) > 0} />
         )}
       </div>
-      <div className="flex h-12 shrink-0 items-center gap-3 border-t-2 border-ink px-4">
+      <div className="flex h-12 shrink-0 items-center gap-3 border-t-2 border-edge px-4">
         <button
           type="button"
           aria-label="To start"

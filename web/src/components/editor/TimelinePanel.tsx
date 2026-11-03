@@ -646,8 +646,8 @@ function ClipBlock(props: {
         {clip.transition && <Badge>{clip.transition.kind}</Badge>}
       </div>
       <div className="absolute inset-x-0 top-0 flex items-center gap-1.5 bg-gradient-to-b from-black/70 to-transparent px-2 pt-1 pb-3">
-        <span className="truncate text-[11px] font-medium text-text">{media?.name ?? clip.media_id}</span>
-        <span className="shrink-0 font-mono text-[10px] text-text/70">{clipDuration(clip).toFixed(1)}s</span>
+        <span className="truncate text-[11px] font-medium text-paper">{media?.name ?? clip.media_id}</span>
+        <span className="shrink-0 font-mono text-[10px] text-paper/70">{clipDuration(clip).toFixed(1)}s</span>
         {graded && <span className="ml-auto size-1.5 shrink-0 rounded-full bg-accent" title="Color graded" />}
       </div>
       {(["in", "out"] as const).map((edge) => (
@@ -681,7 +681,7 @@ function OverlayContent({ item, media }: { item: Overlay; media: MediaView | und
           style={{ backgroundImage: `url(${fileUrl(media.thumb_url)})`, backgroundSize: "auto 100%", backgroundRepeat: "repeat-x" }}
         />
       )}
-      <span className="relative truncate px-1.5 text-[10px] text-text">B-roll {item.layout !== "full" ? "PiP" : ""}</span>
+      <span className="relative truncate px-1.5 text-[10px] text-paper [text-shadow:0_1px_2px_rgb(0_0_0/0.8)]">B-roll {item.layout !== "full" ? "PiP" : ""}</span>
     </>
   );
 }

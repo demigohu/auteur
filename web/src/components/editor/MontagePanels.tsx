@@ -7,8 +7,8 @@ import { clipDuration, clipStarts } from "@/lib/time";
 import type { AudioItem, Clip, CropKey, Overlay, Transition, VolumeKey } from "@/lib/timeline";
 
 const SPEEDS = [0.25, 0.5, 0.75, 1, 1.5, 2, 4];
-const TRANSITIONS: { id: Transition["kind"] | "potong"; label: string }[] = [
-  { id: "potong", label: "Cut" },
+const TRANSITIONS: { id: Transition["kind"] | "cut"; label: string }[] = [
+  { id: "cut", label: "Cut" },
   { id: "crossfade", label: "Crossfade" },
   { id: "dip_black", label: "Black" },
   { id: "dip_white", label: "White" },
@@ -39,7 +39,7 @@ function Segmented<T extends string | number | null>(props: {
           type="button"
           onClick={() => o.value !== props.value && props.onChange(o.value)}
           className={`rounded-full border-2 px-2.5 py-0.5 font-mono text-[11px] transition active:scale-[0.97] ${
-            o.value === props.value ? "border-ink bg-ink text-paper" : "border-ink/20 text-muted hover:border-ink hover:text-text"
+            o.value === props.value ? "border-edge bg-text text-bg" : "border-line text-muted hover:border-line-strong hover:text-text"
           }`}
         >
           {o.label}
@@ -76,7 +76,7 @@ function Slider(props: { id: string; label: string; value: number; min: number; 
 /** Speed, transition into the clip, Ken Burns zoom and volume. */
 export function ClipMotion({ clip, isFirst, locked }: { clip: Clip; isFirst: boolean; locked: boolean }) {
   const applyOps = useEditor((s) => s.applyOps);
-  const kind = clip.transition?.kind ?? "potong";
+  const kind = clip.transition?.kind ?? "cut";
   return (
     <fieldset disabled={locked} className="space-y-4 disabled:opacity-50">
       <legend className="display mb-2.5 text-[19px] text-text">Motion and transitions</legend>
@@ -99,7 +99,7 @@ export function ClipMotion({ clip, isFirst, locked }: { clip: Clip; isFirst: boo
               {
                 op: "set_transition",
                 clip_id: clip.id,
-                transition: v === "potong" ? null : { kind: v as Transition["kind"], duration: clip.transition?.duration ?? 0.5 },
+                transition: v === "cut" ? null : { kind: v as Transition["kind"], duration: clip.transition?.duration ?? 0.5 },
               },
             ])
           }
@@ -337,7 +337,7 @@ function KeyList<K extends { t: number }>(props: { keys: K[]; format: (k: K) => 
   return (
     <div className="flex flex-wrap gap-1">
       {props.keys.map((k) => (
-        <span key={k.t} className="flex items-center gap-1 rounded-[10px] border-2 border-ink/20 bg-panel-2 px-1.5 py-0.5 font-mono text-[10px] text-text">
+        <span key={k.t} className="flex items-center gap-1 rounded-[10px] border-2 border-line bg-panel-2 px-1.5 py-0.5 font-mono text-[10px] text-text">
           <button type="button" onClick={() => props.onSeek(k)} title="Go to this keyframe" className="hover:text-accent">
             ◆ {k.t.toFixed(2)}s {props.format(k)}
           </button>

@@ -80,7 +80,7 @@ function ClipInspector({ clip, locked }: { clip: Clip; locked: boolean }) {
         <button
           type="button"
           onClick={() => applyOps(clip.muted ? "Unmute clip" : "Mute clip", [{ op: "set_muted", clip_id: clip.id, muted: !clip.muted }])}
-          className="flex items-center gap-2 rounded-full border-2 border-ink px-2.5 py-1.5 text-xs font-semibold text-text transition hover:bg-raised active:scale-[0.98]"
+          className="flex items-center gap-2 rounded-full border-2 border-edge px-2.5 py-1.5 text-xs font-semibold text-text transition hover:bg-raised active:scale-[0.98]"
         >
           {clip.muted ? <SpeakerSimpleSlash size={14} /> : <SpeakerSimpleHigh size={14} />}
           {clip.muted ? "Muted" : "Sound on"}
@@ -108,7 +108,7 @@ function TrackingInfo({ clip, locked }: { clip: Clip; locked: boolean }) {
     <div className="space-y-2">
       <p className="label text-[10px] text-muted">Tracking</p>
       {clip.follow && (
-        <div className="flex items-center gap-2 rounded-[10px] border-2 border-ink/20 bg-panel-2 px-2.5 py-2 text-xs text-text">
+        <div className="flex items-center gap-2 rounded-[10px] border-2 border-line bg-panel-2 px-2.5 py-2 text-xs text-text">
           <Crosshair size={14} className="shrink-0 text-accent" />
           <span className="min-w-0 flex-1 truncate">
             Crop mengikuti {prompt(clip.follow.track_id)} {clip.follow.object_id}
@@ -125,7 +125,7 @@ function TrackingInfo({ clip, locked }: { clip: Clip; locked: boolean }) {
         </div>
       )}
       {clip.effects.map((e, i) => (
-        <div key={i} className="flex items-center gap-2 rounded-[10px] border-2 border-ink/20 bg-panel-2 px-2.5 py-2 text-xs text-text">
+        <div key={i} className="flex items-center gap-2 rounded-[10px] border-2 border-line bg-panel-2 px-2.5 py-2 text-xs text-text">
           <span className="min-w-0 flex-1 truncate">
             {e.kind === "blur" ? "Blur" : "Highlight"} {prompt(e.track_id)}
             {e.object_ids ? ` (${e.object_ids.length} objects)` : " (all)"}
@@ -186,7 +186,7 @@ function TextInspector({ item, locked }: { item: TextItem; locked: boolean }) {
           rows={3}
           onChange={(e) => setText(e.target.value)}
           onBlur={() => text.trim() && text !== item.text && update({ text: text.trim() })}
-          className="block w-full resize-none rounded-[10px] border-2 border-ink bg-paper px-3 py-2 text-sm text-text focus:border-tomato focus:outline-none"
+          className="block w-full resize-none rounded-[10px] border-2 border-edge bg-card px-3 py-2 text-sm text-text focus:border-tomato focus:outline-none"
         />
       </div>
       {item.style === "subtitle" && (
@@ -199,7 +199,7 @@ function TextInspector({ item, locked }: { item: TextItem; locked: boolean }) {
                 type="button"
                 onClick={() => restyle({ look: l.id }, `Subtitle style ${l.label}`)}
                 className={`rounded-[10px] border px-1 py-1.5 text-[11px] transition active:scale-[0.97] ${
-                  item.look === l.id ? "border-2 border-ink bg-ink text-paper" : "border-2 border-ink/20 text-muted hover:border-line-strong hover:text-text"
+                  item.look === l.id ? "border-2 border-edge bg-text text-bg" : "border-2 border-line text-muted hover:border-line-strong hover:text-text"
                 }`}
               >
                 {l.label}
@@ -270,7 +270,7 @@ function NumberField({ label, value, onCommit }: { label: string; value: number;
         onChange={(e) => setDraft(e.target.value)}
         onBlur={commit}
         onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-        className="block w-full rounded-[10px] border-2 border-ink bg-paper px-2.5 py-1.5 font-mono text-xs tabular-nums text-text focus:border-tomato focus:outline-none"
+        className="block w-full rounded-[10px] border-2 border-edge bg-card px-2.5 py-1.5 font-mono text-xs tabular-nums text-text focus:border-tomato focus:outline-none"
       />
     </div>
   );

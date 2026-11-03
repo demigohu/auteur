@@ -49,6 +49,13 @@
   --accent-ink: var(--ink);
   --ok: #1f7a3f;
   --danger: #e2380b;
+  /* Outlines and dividers, raised cards and their text, and the hard shadow under cards. */
+  --edge: var(--ink);
+  --card: var(--paper);
+  --card-text: var(--ink);
+  --edge-shadow: var(--ink);
+  --stage: #dedad0;
+  --stage-grid: rgb(18 17 16 / 0.05);
   color-scheme: light;
 }
 
@@ -68,6 +75,39 @@
   --accent-ink: var(--forest);
   --ok: var(--lime);
   --danger: var(--tomato);
+  --edge: rgb(242 238 227 / 0.24);
+  --card: var(--ink-2);
+  --card-text: var(--paper);
+  --edge-shadow: #000;
+  --stage: var(--ink);
+  --stage-grid: rgb(242 238 227 / 0.045);
+  color-scheme: dark;
+  color: var(--text);
+}
+
+/* The editor at night: every panel dark and neutral, a step lighter than the ink stage, so nothing
+   bright sits next to footage being judged. Brand color stays in the accents. */
+.theme-night {
+  --bg: #121110;
+  --panel: #1a1917;
+  --panel-2: #232220;
+  --raised: #2d2b28;
+  --line: rgb(242 238 227 / 0.1);
+  --line-strong: rgb(242 238 227 / 0.3);
+  --text: var(--paper);
+  --muted: rgb(242 238 227 / 0.64);
+  --faint: rgb(242 238 227 / 0.4);
+  --accent: var(--lime);
+  --accent-soft: rgb(200 245 60 / 0.14);
+  --accent-ink: var(--forest);
+  --ok: var(--lime);
+  --danger: var(--tomato);
+  --edge: #383632;
+  --card: #232220;
+  --card-text: var(--paper);
+  --edge-shadow: #000;
+  --stage: var(--ink);
+  --stage-grid: rgb(242 238 227 / 0.045);
   color-scheme: dark;
   color: var(--text);
 }
@@ -97,6 +137,9 @@
   --color-accent: var(--accent);
   --color-accent-soft: var(--accent-soft);
   --color-accent-ink: var(--accent-ink);
+  --color-edge: var(--edge);
+  --color-card: var(--card);
+  --color-card-text: var(--card-text);
   --color-ok: var(--ok);
   --color-danger: var(--danger);
 
@@ -131,8 +174,51 @@ body {
   scrollbar-color: var(--line-strong) transparent;
 }
 
+/* Neutral sliders: a thin line and a round thumb in the text color, no colored fill next to footage. */
 input[type="range"] {
-  accent-color: var(--accent);
+  appearance: none;
+  height: 18px;
+  background: transparent;
+  cursor: pointer;
+}
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--line-strong);
+}
+input[type="range"]::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--line-strong);
+}
+input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border-radius: 999px;
+  background: var(--text);
+  border: 2px solid var(--panel);
+  box-shadow: 0 0 0 1px var(--line-strong);
+  transition: transform 0.15s var(--ease-out);
+}
+input[type="range"]::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--text);
+  border: 2px solid var(--panel);
+}
+input[type="range"]:active::-webkit-slider-thumb {
+  transform: scale(1.25);
+}
+input[type="range"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 999px;
+}
+input[type="range"]:disabled {
+  cursor: not-allowed;
 }
 
 /* Display type: Anton, always uppercase, tight. */
@@ -189,7 +275,16 @@ input[type="range"] {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
-/* Cutting-mat grid behind footage. */
+/* The preview stage: a cutting-mat grid behind footage, ink at night and neutral light grey by day. */
+.stage {
+  background-color: var(--stage);
+  background-image:
+    linear-gradient(var(--stage-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--stage-grid) 1px, transparent 1px);
+  background-size: 64px 64px;
+}
+
+/* Cutting-mat grid on ink (landing, sign-in, studio drop zone). */
 .mat {
   background-color: var(--ink);
   background-image:

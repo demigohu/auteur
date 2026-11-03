@@ -289,10 +289,11 @@ def load(project_id: str) -> Project:
 
 
 def ensure_idle(project_id: str) -> asyncio.Lock:
-    lock = project_lock(project_id)
-    if lock.locked():
+    """The project's lock for a user edit. Refuses while an agent run is active; otherwise the edit
+    queues behind any other user request still holding the lock (slider drags send them back to back)."""
+    if (run := _runs.get(project_id)) and not run[1].done():
         raise HTTPException(409, "The agent is editing this project; stop the run or wait for it to finish")
-    return lock
+    return project_lock(project_id)
 
 
 @app.get("/health")

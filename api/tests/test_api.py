@@ -87,13 +87,21 @@ def test_invalid_op_returns_agent_readable_error(client: TestClient, project: di
 
 
 async def test_edits_blocked_while_agent_runs(client: TestClient, project: dict) -> None:
+    import auteur.main as m
+
+    class Running:
+        def done(self) -> bool:
+            return False
+
     lock = project_lock(project["id"])
     await lock.acquire()
+    m._runs[project["id"]] = ("run_test", Running())
     try:
         r = client.post(f"/projects/{project['id']}/undo")
         assert r.status_code == 409
         assert client.get(f"/projects/{project['id']}").json()["busy"] is True
     finally:
+        del m._runs[project["id"]]
         lock.release()
 
 

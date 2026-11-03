@@ -155,7 +155,7 @@ export function ColorPanel({ clip, locked }: { clip: Clip; locked: boolean }) {
         onClick={() => look(null)}
         className="flex items-center gap-1.5 rounded-full border-2 border-ink px-2.5 py-1.5 text-xs font-semibold text-text transition hover:bg-raised active:scale-[0.98]"
       >
-        <MagicWand size={13} /> Koreksi saja
+        <MagicWand size={13} /> Correct only
       </button>
 
       <div className="space-y-3 border-t border-line pt-4">{BASIC.map(slider)}</div>
@@ -166,7 +166,7 @@ export function ColorPanel({ clip, locked }: { clip: Clip; locked: boolean }) {
           onClick={() => setAdvanced((a) => !a)}
           className="flex items-center gap-1.5 text-xs text-muted transition hover:text-text"
         >
-          <CaretRight size={11} className={`transition-transform ${advanced ? "rotate-90" : ""}`} /> Lanjutan
+          <CaretRight size={11} className={`transition-transform ${advanced ? "rotate-90" : ""}`} /> Advanced
         </button>
         <AnimatePresence initial={false}>
           {advanced && (

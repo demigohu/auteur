@@ -358,7 +358,7 @@ async def upload_media(project_id: str, file: UploadFile) -> ProjectView:
         if media.kind == "video" and settings.max_file_seconds and media.duration > settings.max_file_seconds:
             shutil.rmtree(store.project_dir(p.id) / "media" / media_id, ignore_errors=True)
             raise HTTPException(
-                400, f"Video {media.duration:.0f} detik; di demo publik maksimal {settings.max_file_seconds:.0f} detik per file"
+                400, f"This video is {media.duration:.0f}s; the public demo takes up to {settings.max_file_seconds:.0f}s per file"
             )
         # The 5-minute budget is for footage (it drives SAM and transcription cost); music is free to add.
         total = sum(m.duration for m in p.media.values() if m.kind == "video") + (media.duration if media.kind == "video" else 0)
@@ -424,7 +424,7 @@ async def stop_run(project_id: str) -> dict[str, bool]:
 
 @app.post("/projects/{project_id}/runs/{run_id}/undo")
 async def undo_run(project_id: str, run_id: str) -> ProjectView:
-    """Undo every edit of an agent instruction ("batalkan arahan terakhir")."""
+    """Undo every edit of an agent instruction ("undo my last instruction")."""
     async with ensure_idle(project_id):
         p = load(project_id)
         if p.undo_run(run_id) == 0:
@@ -462,7 +462,7 @@ def looks() -> list[dict[str, str]]:
 
 @app.post("/projects/{project_id}/grade")
 async def grade_project(project_id: str, body: GradeRequest) -> ProjectView:
-    """The inspector's look buttons: the same correction, matching and looks as the agent's `warna`."""
+    """The inspector's look buttons: the same correction, matching and looks as the agent's `grade` tool."""
     if body.look is not None and body.look not in colorist.LOOKS:
         raise HTTPException(400, f"Unknown look {body.look!r}")
     async with ensure_idle(project_id):
@@ -473,7 +473,7 @@ async def grade_project(project_id: str, body: GradeRequest) -> ProjectView:
         results = await asyncio.to_thread(
             colorist.grade_clips, p.media, clips, body.look, body.intensity, body.auto, body.match, None, {},
         )
-        label = colorist.LOOK_LABELS.get(body.look or "", "Koreksi warna")
+        label = colorist.LOOK_LABELS.get(body.look or "", "Correction")
         try:
             p.commit("user", f"Color: {label}", [SetGrade(clip_ids=[cid], grade=g) for cid, g, _, _ in results])
         except OpError as e:

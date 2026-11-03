@@ -10,10 +10,10 @@ import type { TextItem } from "@/lib/timeline";
 type Spec = { weight: 800 | 900; size: number; upper: boolean; stroke: number; shadow: boolean; mode: "plain" | "karaoke" | "box" | "reveal" };
 
 const LOOK: Record<TextItem["look"], Spec> = {
-  bersih: { weight: 800, size: 0.045, upper: false, stroke: 0.09, shadow: false, mode: "plain" },
-  tebal: { weight: 900, size: 0.058, upper: true, stroke: 0.14, shadow: true, mode: "plain" },
+  clean: { weight: 800, size: 0.045, upper: false, stroke: 0.09, shadow: false, mode: "plain" },
+  bold: { weight: 900, size: 0.058, upper: true, stroke: 0.14, shadow: true, mode: "plain" },
   karaoke: { weight: 900, size: 0.058, upper: true, stroke: 0.14, shadow: true, mode: "karaoke" },
-  kotak: { weight: 900, size: 0.055, upper: true, stroke: 0.12, shadow: true, mode: "box" },
+  box: { weight: 900, size: 0.055, upper: true, stroke: 0.12, shadow: true, mode: "box" },
   pop: { weight: 900, size: 0.064, upper: true, stroke: 0.14, shadow: true, mode: "reveal" },
 };
 const TITLE: Spec = { weight: 900, size: 0.08, upper: false, stroke: 0.09, shadow: true, mode: "plain" };

@@ -108,3 +108,12 @@ def test_project_roundtrips_json(project: Project) -> None:
     project.commit("user", "title", [AddText(text="Halo", start=0, end=2)])
     again = Project.model_validate_json(project.model_dump_json())
     assert again == project
+
+
+def test_projects_saved_with_indonesian_values_still_load() -> None:
+    from auteur.timeline.models import TextItem, Transition
+
+    assert Transition.model_validate({"kind": "hitam", "duration": 1}).kind == "dip_black"
+    assert Transition.model_validate({"kind": "putih"}).kind == "dip_white"
+    item = TextItem.model_validate({"id": "t1", "text": "hi", "start": 0, "end": 1, "look": "kotak"})
+    assert item.look == "box"

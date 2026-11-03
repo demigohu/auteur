@@ -150,10 +150,10 @@ function TrackingInfo({ clip, locked }: { clip: Clip; locked: boolean }) {
 
 const TEXT_LOOKS: { id: TextItem["look"]; label: string }[] = [
   { id: "karaoke", label: "Karaoke" },
-  { id: "kotak", label: "Box" },
-  { id: "tebal", label: "Bold" },
+  { id: "box", label: "Box" },
+  { id: "bold", label: "Bold" },
   { id: "pop", label: "Pop" },
-  { id: "bersih", label: "Clean" },
+  { id: "clean", label: "Clean" },
 ];
 const ACCENTS = ["#FFD43B", "#7CFC6A", "#FF5FA2", "#3DD6FF", "#FF8A3D", "#FFFFFF"];
 

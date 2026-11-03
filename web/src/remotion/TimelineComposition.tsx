@@ -137,10 +137,10 @@ function ClipLayer(props: {
         )}
      </AbsoluteFill>
       {joins.dipIn && dipInAmount > 0 && (
-        <AbsoluteFill style={{ background: joins.dipIn.kind === "hitam" ? "#000" : "#fff", opacity: dipInAmount }} />
+        <AbsoluteFill style={{ background: joins.dipIn.kind === "dip_black" ? "#000" : "#fff", opacity: dipInAmount }} />
       )}
       {joins.dipOut && dipOutAmount > 0 && (
-        <AbsoluteFill style={{ background: joins.dipOut.kind === "hitam" ? "#000" : "#fff", opacity: dipOutAmount }} />
+        <AbsoluteFill style={{ background: joins.dipOut.kind === "dip_black" ? "#000" : "#fff", opacity: dipOutAmount }} />
       )}
     </AbsoluteFill>
   );

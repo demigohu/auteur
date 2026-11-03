@@ -139,7 +139,7 @@ def grade_clips(
     adjust: dict[str, float] | None, cache: FrameCache, log: str = "none",
 ) -> list[tuple[str, Grade, dict, dict]]:
     """Grades for `clips`: (clip id, grade, stats before, stats after). Shared by the agent's
-    `warna` tool and the editor's look buttons. With a log profile, correction is measured on the
+    `grade` tool and the editor's look buttons. With a log profile, correction is measured on the
     converted image, since the flat log signal itself is not what anyone will see."""
     frames = [clip_frames(cache, media[c.media_id], c) for c in clips]
     before = [G.stats(f) for f in frames]

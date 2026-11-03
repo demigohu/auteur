@@ -67,7 +67,7 @@ class AddText(Model):
     start: float = Field(ge=0)
     end: float = Field(gt=0)
     style: Literal["subtitle", "title", "caption"] = "subtitle"
-    look: TextLook = "bersih"
+    look: TextLook = "clean"
     color: str = Field("#FFD43B", pattern=r"^#[0-9a-fA-F]{6}$")
     words: list[TextWord] = Field(default_factory=list)
     x: float = Field(0.5, ge=0, le=1)
@@ -430,7 +430,7 @@ def apply(tl: Timeline, op: Op, media: dict[str, Media]) -> Timeline:
             tr = op.transition
             if tr is not None:
                 if i == 0 and tr.kind == "crossfade":
-                    raise OpError("The first clip has nothing to crossfade from; use 'hitam' to fade in from black")
+                    raise OpError("The first clip has nothing to crossfade from; use 'dip_black' to fade in from black")
                 limit = min(tl.clips[i].duration, tl.clips[i - 1].duration if i else tl.clips[i].duration)
                 if tr.duration > limit / 2:
                     raise OpError(f"Transition of {tr.duration}s is too long for clips of {limit:.2f}s (max half)")

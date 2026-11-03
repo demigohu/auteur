@@ -121,10 +121,10 @@ def build_command(
         ]
         # A dip fades this clip out to the color and the next one in from it, half the duration each.
         if dip_in:
-            v.append(f"fade=t=in:d={dip_in.duration / 2:.3f}:color={'black' if dip_in.kind == 'hitam' else 'white'}")
+            v.append(f"fade=t=in:d={dip_in.duration / 2:.3f}:color={'black' if dip_in.kind == 'dip_black' else 'white'}")
         if dip_out:
             d = dip_out.duration / 2
-            v.append(f"fade=t=out:st={max(c.duration - d, 0):.3f}:d={d:.3f}:color={'black' if dip_out.kind == 'hitam' else 'white'}")
+            v.append(f"fade=t=out:st={max(c.duration - d, 0):.3f}:d={d:.3f}:color={'black' if dip_out.kind == 'dip_black' else 'white'}")
         if c.grade.vignette > 0:
             # Multiply by the same radial mask the preview draws (grade.vignette_factor).
             mask = grade.write_vignette_mask(c.grade, out_w, out_h, workdir / f"vignette_{i}.png")

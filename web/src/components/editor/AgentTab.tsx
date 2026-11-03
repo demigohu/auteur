@@ -25,16 +25,24 @@ const SUGGESTIONS = [
 
 // Human labels for the agent's tools, shown in the log instead of function names.
 const TOOL_LABEL: Record<string, string> = {
-  rencana: "Planning",
-  dengar: "Listening to footage",
-  tonton: "Watching footage",
-  lacak: "Tracking with SAM 3.1",
+  plan: "Planning",
+  listen: "Listening to footage",
+  watch: "Watching footage",
+  track: "Tracking with SAM 3.1",
   reframe: "Reframing to the subject",
-  efek: "Applying effects",
-  susun: "Building the timeline",
-  ubah_timeline: "Editing the timeline",
-  buang_filler: "Removing fillers and pauses",
-  subtitle: "Writing subtitles",
+  grade: "Color grading",
+  music: "Adding music",
+  cut_on_beat: "Cutting on the beat",
+  transitions: "Setting transitions",
+  speed: "Changing speed",
+  zoom: "Adding a slow zoom",
+  cinematic_finish: "Cinematic finish",
+  broll: "Laying B-roll",
+  effect: "Applying effects",
+  assemble: "Building the timeline",
+  edit_timeline: "Editing the timeline",
+  remove_fillers: "Removing fillers and pauses",
+  subtitles: "Writing subtitles",
   render: "Rendering",
 };
 
@@ -308,9 +316,13 @@ function argSummary(args: Record<string, unknown>): string {
   if (Array.isArray(args.ops)) return (args.ops as { op: string }[]).map((o) => o.op).join(", ");
   if (typeof args.label === "string") return args.label;
   if (typeof args.prompt === "string") return `"${args.prompt}"`;
-  if (typeof args.jenis === "string") return args.jenis;
-  if (typeof args.halus === "number") return `smooth ${args.halus}s`;
-  if (typeof args.fokus === "string") return args.fokus;
+  if (typeof args.kind === "string") return args.kind;
+  if (typeof args.look === "string") return args.look;
+  if (typeof args.style === "string") return args.style;
+  if (typeof args.speed === "number") return `${args.speed}x`;
+  if (typeof args.every === "number") return `every ${args.every} beats`;
+  if (typeof args.smoothing === "number") return `smooth ${args.smoothing}s`;
+  if (typeof args.focus === "string") return args.focus;
   if (args.final === true) return "final";
   return "";
 }

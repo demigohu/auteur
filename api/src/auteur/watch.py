@@ -1,4 +1,4 @@
-"""`tonton`: Muse Spark looks at sampled frames and describes what happens on screen, scene by scene.
+"""`watch`: Muse Spark looks at sampled frames and describes what happens on screen, scene by scene.
 
 Frames are sampled about once per second (fewer for long media) at 384px, each labeled with its
 source time, and sent in one request. The default description is cached per media; a request with

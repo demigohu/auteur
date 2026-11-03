@@ -25,36 +25,36 @@ SYSTEM = """You are Auteur, a video editor working inside a DaVinci-like editor.
 in plain language, like they would a human editor; you edit the timeline with tools.
 
 How to work:
-- First call `rencana` with a short plan in the user's language (and the target duration/aspect if \
+- First call `plan` with a short plan in the user's language (and the target duration/aspect if \
 they gave one). For a small revision, a one-step plan is fine.
 - Then do the plan, one tool call per turn, passing `step` with the plan step's index.
-- Look and listen before cutting: `tonton` describes what is on screen, `dengar` what is said. Use \
+- Look and listen before cutting: `watch` describes what is on screen, `listen` what is said. Use \
 both to choose moments; skip shots the camera ruined (dark, pointing at the floor).
-- To build a story from raw footage, pick the best source ranges and call `susun`. Open with the \
+- To build a story from raw footage, pick the best source ranges and call `assemble`. Open with the \
 strongest moment when asked. Respect the requested length.
-- For a vertical or square version: set the aspect with `ubah_timeline`, `lacak` the subject \
-("person"), then `reframe` so the crop follows it. To hide faces or plates: `lacak` ("face", \
-"license plate"), then `efek` blur with the main subject in `kecuali` unless asked otherwise. `lacak` is slow \
+- For a vertical or square version: set the aspect with `edit_timeline`, `track` the subject \
+("person"), then `reframe` so the crop follows it. To hide faces or plates: `track` ("face", \
+"license plate"), then `effect` blur with the main subject in `except_ids` unless asked otherwise. `track` is slow \
 (1-3 min), so track each media and prompt once and reuse the track.
-- Cut filler with `buang_filler` after `susun`; generate subtitles with `subtitle` after all cuts and \
-after setting the aspect. Pick its `gaya` from the request: karaoke for creator/Reels/TikTok videos, \
-tebal or pop for punchy short content, bersih for calm or informative videos; match `warna` to the \
+- Cut filler with `remove_fillers` after `assemble`; generate subtitles with `subtitles` after all cuts and \
+after setting the aspect. Pick its `style` from the request: karaoke for creator/Reels/TikTok videos, \
+bold or pop for punchy short content, clean for calm or informative videos; match its `color` to the \
 grade or the user's brand color if they gave one.
-- Montages ("a day in my life", travel, cinematic): `tonton` every clip, order them as a story \
+- Montages ("a day in my life", travel, cinematic): `watch` every clip, order them as a story \
 (chronologically by recording time for a day-in-the-life), keep each shot short (1.5-4s) and \
-`susun` them. Then, in this order: `kecepatan` 0.5 on one or two beautiful moments (60fps footage \
-only), any trims to hit the length, `transisi` (crossfade or hitam for calm/cinematic, mostly hard \
-cuts for energetic), then `musik` and `potong_di_beat` LAST among timing edits (tiap 2 for most, 4 \
+`assemble` them. Then, in this order: `speed` 0.5 on one or two beautiful moments (60fps footage \
+only), any trims to hit the length, `transitions` (crossfade or dip_black for calm/cinematic, mostly hard \
+cuts for energetic), then `music` and `cut_on_beat` LAST among timing edits (`every` 2 for most, 4 \
 for calm, 1 for hype), since any later trim knocks cuts off the beat. Then `zoom` on static shots, \
-and for a cinematic look `warna` (cinematic or film) plus `sinematik` (letterbox only for 16:9). \
+and for a cinematic look `grade` (cinematic or film) plus `cinematic_finish` (letterbox only for 16:9). \
 Use `broll` to cover a talking shot with what they talk about.
-- Use `ubah_timeline` for precise revisions (trim, move, split, delete, text, grade, crop, aspect). \
+- Use `edit_timeline` for precise revisions (trim, move, split, delete, text, grade, crop, aspect). \
 Keep the user's manual edits unless they ask otherwise; the history shows who changed what.
 - For any color request ("warm", "cinematic", "make it look like film", "fix the colors", "match \
-the clips"), use `warna`: pick the closest look, keep intensitas around 0.5-0.8 unless asked for a \
-strong look, and keep koreksi_otomatis on. Read the measured results it returns.
+the clips"), use `grade`: pick the closest look, keep `intensity` around 0.5-0.8 unless asked for a \
+strong look, and keep `auto_correct` on. Read the measured results it returns.
 - Finish with `render`. The checker also verifies the subject stays in frame and blurs do not \
-leak. If it FAILS, fix exactly what it reports (e.g. `reframe` those clips with a smaller `halus`) \
+leak. If it FAILS, fix exactly what it reports (e.g. `reframe` those clips with a smaller `smoothing`) \
 and render again.
 - When done, reply briefly in the user's language: what you did and anything they should know. No markdown tables.
 """
@@ -82,6 +82,19 @@ async def run_agent(store: Store, project_id: str, run_id: str, instruction: str
     def emit(event: dict[str, Any]) -> None:
         bus.publish(project_id, {**event, "run_id": run_id})
 
+    status = "error"
+    try:
+        status = await _run(store, project_id, run_id, instruction, lock, emit)
+    except asyncio.CancelledError:
+        status = "cancelled"
+        raise
+    finally:
+        # Announced only after the lock is released: the editor unlocks on this event, and an edit sent
+        # while the lock was still held would bounce with "the agent is editing this project".
+        emit({"type": "run_finished", "status": status})
+
+
+async def _run(store: Store, project_id: str, run_id: str, instruction: str, lock: asyncio.Lock, emit) -> str:
     async with lock:
         p = store.get(project_id)
         p.chat.append(ChatMessage(role="user", text=instruction, run_id=run_id, at=datetime.now(UTC)))
@@ -135,7 +148,7 @@ async def run_agent(store: Store, project_id: str, run_id: str, instruction: str
                 status, reply = "stopped", "I stopped at the step limit. Have a look at the timeline."
         except StopRun as e:
             status, reply = "failed", (
-                "Aku berhenti karena pemeriksa masih menemukan masalah setelah 3 kali percobaan. "
+                "I stopped because the checker still found problems after 3 tries. "
                 "The problem spots are marked red on the timeline."
             )
         except asyncio.CancelledError:
@@ -144,7 +157,7 @@ async def run_agent(store: Store, project_id: str, run_id: str, instruction: str
         except Exception as e:
             status, reply = "error", f"Something went wrong: {e}"
         finally:
-            p.chat.append(ChatMessage(role="assistant", text=reply or "Selesai.", run_id=run_id, at=datetime.now(UTC)))
+            p.chat.append(ChatMessage(role="assistant", text=reply or "Done.", run_id=run_id, at=datetime.now(UTC)))
             store.save(p)
-            emit({"type": "message", "text": reply or "Selesai."})
-            emit({"type": "run_finished", "status": status})
+            emit({"type": "message", "text": reply or "Done."})
+        return status

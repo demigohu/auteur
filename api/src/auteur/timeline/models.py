@@ -5,11 +5,18 @@ timeline comes from its order in `clips` (the video track is magnetic, like CapC
 Text items sit at absolute timeline times on their own track.
 """
 
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
 
 Aspect = Literal["16:9", "9:16", "1:1"]
+
+# Early projects stored a few of these values in Indonesian; they are renamed as they load.
+LEGACY_NAMES = {"hitam": "dip_black", "putih": "dip_white", "bersih": "clean", "tebal": "bold", "kotak": "box"}
+
+
+def _legacy(v: object) -> object:
+    return LEGACY_NAMES.get(v, v) if isinstance(v, str) else v
 
 ASPECT_SIZES: dict[str, tuple[int, int]] = {
     "16:9": (1920, 1080),
@@ -78,7 +85,7 @@ class Follow(Model):
 
 class Blur(Model):
     kind: Literal["blur"] = "blur"
-    track_id: str = Field(description="Object track produced by the `lacak` tool")
+    track_id: str = Field(description="Object track produced by the `track` tool")
     object_ids: list[str] | None = Field(None, description="Objects of the track to blur; None = all")
     exclude_ids: list[str] = Field(default_factory=list, description="Objects never blurred (e.g. the main subject)")
     strength: float = Field(0.5, ge=0, le=1)
@@ -109,7 +116,7 @@ class Transition(Model):
     """How a clip enters from the previous one. A crossfade overlaps the two clips by `duration`;
     dips fade out to a color and back in without overlapping."""
 
-    kind: Literal["crossfade", "hitam", "putih"]
+    kind: Annotated[Literal["crossfade", "dip_black", "dip_white"], BeforeValidator(_legacy)]
     duration: float = Field(0.5, ge=0.1, le=2)
 
 
@@ -207,7 +214,7 @@ class Finish(Model):
     grain: float = Field(0, ge=0, le=1, description="Film grain amount")
 
 
-TextLook = Literal["bersih", "tebal", "karaoke", "kotak", "pop"]
+TextLook = Annotated[Literal["clean", "bold", "karaoke", "box", "pop"], BeforeValidator(_legacy)]
 
 
 class TextWord(Model):
@@ -225,8 +232,8 @@ class TextItem(Model):
     start: float = Field(ge=0)
     end: float = Field(gt=0)
     style: Literal["subtitle", "title", "caption"] = "subtitle"
-    look: TextLook = Field("bersih", description="bersih: clean white; tebal: big bold caps; karaoke: spoken word "
-                           "lights up; kotak: spoken word in a color box; pop: words appear as they are spoken")
+    look: TextLook = Field("clean", description="clean: plain white; bold: big bold caps; karaoke: spoken word "
+                           "lights up; box: spoken word in a color box; pop: words appear as they are spoken")
     color: str = Field("#FFD43B", pattern=r"^#[0-9a-fA-F]{6}$", description="Accent for highlighted/emphasized words")
     words: list[TextWord] = Field(default_factory=list)
     x: float = Field(0.5, ge=0, le=1, description="Center, normalized to output frame")

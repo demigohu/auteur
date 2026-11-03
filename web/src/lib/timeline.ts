@@ -231,7 +231,7 @@ export interface Zoom {
  * via the `definition` "Transition".
  */
 export interface Transition {
-  kind: "crossfade" | "hitam" | "putih";
+  kind: "crossfade" | "dip_black" | "dip_white";
   duration: number;
 }
 /**
@@ -241,7 +241,7 @@ export interface Transition {
 export interface Blur {
   kind: "blur";
   /**
-   * Object track produced by the `lacak` tool
+   * Object track produced by the `track` tool
    */
   track_id: string;
   /**
@@ -314,9 +314,9 @@ export interface TextItem {
   end: number;
   style: "subtitle" | "title" | "caption";
   /**
-   * bersih: clean white; tebal: big bold caps; karaoke: spoken word lights up; kotak: spoken word in a color box; pop: words appear as they are spoken
+   * clean: plain white; bold: big bold caps; karaoke: spoken word lights up; box: spoken word in a color box; pop: words appear as they are spoken
    */
-  look: "bersih" | "tebal" | "karaoke" | "kotak" | "pop";
+  look: "clean" | "bold" | "karaoke" | "box" | "pop";
   /**
    * Accent for highlighted/emphasized words
    */
@@ -491,7 +491,7 @@ export interface AddText {
   start: number;
   end: number;
   style: "subtitle" | "title" | "caption";
-  look: "bersih" | "tebal" | "karaoke" | "kotak" | "pop";
+  look: "clean" | "bold" | "karaoke" | "box" | "pop";
   color: string;
   words: TextWord[];
   x: number;
@@ -507,7 +507,7 @@ export interface UpdateText {
   text: string | null;
   start: number | null;
   end: number | null;
-  look: ("bersih" | "tebal" | "karaoke" | "kotak" | "pop") | null;
+  look: ("clean" | "bold" | "karaoke" | "box" | "pop") | null;
   color: string | null;
   x: number | null;
   y: number | null;

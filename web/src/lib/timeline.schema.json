@@ -238,12 +238,12 @@
           "type": "string"
         },
         "look": {
-          "default": "bersih",
+          "default": "clean",
           "enum": [
-            "bersih",
-            "tebal",
+            "clean",
+            "bold",
             "karaoke",
-            "kotak",
+            "box",
             "pop"
           ],
           "type": "string"
@@ -359,7 +359,7 @@
           "type": "string"
         },
         "track_id": {
-          "description": "Object track produced by the `lacak` tool",
+          "description": "Object track produced by the `track` tool",
           "type": "string"
         },
         "object_ids": {
@@ -1808,13 +1808,13 @@
           "type": "string"
         },
         "look": {
-          "default": "bersih",
-          "description": "bersih: clean white; tebal: big bold caps; karaoke: spoken word lights up; kotak: spoken word in a color box; pop: words appear as they are spoken",
+          "default": "clean",
+          "description": "clean: plain white; bold: big bold caps; karaoke: spoken word lights up; box: spoken word in a color box; pop: words appear as they are spoken",
           "enum": [
-            "bersih",
-            "tebal",
+            "clean",
+            "bold",
             "karaoke",
-            "kotak",
+            "box",
             "pop"
           ],
           "type": "string"
@@ -1981,8 +1981,8 @@
         "kind": {
           "enum": [
             "crossfade",
-            "hitam",
-            "putih"
+            "dip_black",
+            "dip_white"
           ],
           "type": "string"
         },
@@ -2297,10 +2297,10 @@
           "anyOf": [
             {
               "enum": [
-                "bersih",
-                "tebal",
+                "clean",
+                "bold",
                 "karaoke",
-                "kotak",
+                "box",
                 "pop"
               ],
               "type": "string"

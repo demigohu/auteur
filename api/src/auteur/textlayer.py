@@ -29,10 +29,10 @@ class LookSpec:
 
 
 LOOK = {
-    "bersih": LookSpec(800, 0.045, False, 0.09, False, "plain"),
-    "tebal": LookSpec(900, 0.058, True, 0.14, True, "plain"),
+    "clean": LookSpec(800, 0.045, False, 0.09, False, "plain"),
+    "bold": LookSpec(900, 0.058, True, 0.14, True, "plain"),
     "karaoke": LookSpec(900, 0.058, True, 0.14, True, "karaoke"),
-    "kotak": LookSpec(900, 0.055, True, 0.12, True, "box"),
+    "box": LookSpec(900, 0.055, True, 0.12, True, "box"),
     "pop": LookSpec(900, 0.064, True, 0.14, True, "reveal"),
 }
 TITLE = LookSpec(900, 0.08, False, 0.09, True, "plain")

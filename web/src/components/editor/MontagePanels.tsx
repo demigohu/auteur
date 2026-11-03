@@ -10,8 +10,8 @@ const SPEEDS = [0.25, 0.5, 0.75, 1, 1.5, 2, 4];
 const TRANSITIONS: { id: Transition["kind"] | "potong"; label: string }[] = [
   { id: "potong", label: "Cut" },
   { id: "crossfade", label: "Crossfade" },
-  { id: "hitam", label: "Black" },
-  { id: "putih", label: "White" },
+  { id: "dip_black", label: "Black" },
+  { id: "dip_white", label: "White" },
 ];
 const LAYOUTS: { id: Overlay["layout"]; label: string }[] = [
   { id: "full", label: "Full" },

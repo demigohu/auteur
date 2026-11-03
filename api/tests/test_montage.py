@@ -30,7 +30,7 @@ def test_speed_and_crossfade_timing(project: Project) -> None:
     project.commit("user", "x", [
         SetSpeed(clip_id="c2", speed=0.5),
         SetTransition(clip_id="c2", transition=Transition(kind="crossfade", duration=1)),
-        SetTransition(clip_id="c3", transition=Transition(kind="hitam", duration=1)),
+        SetTransition(clip_id="c3", transition=Transition(kind="dip_black", duration=1)),
     ])
     tl = project.timeline
     assert [c.duration for c in tl.clips] == [4, 8, 4]
@@ -80,7 +80,7 @@ def test_full_render_with_every_feature(tmp_path: Path, sample_video: Path) -> N
         AddClip(id="c3", media_id="v", src_in=0, src_out=2),
         SetSpeed(clip_id="c2", speed=0.5),
         SetTransition(clip_id="c2", transition=Transition(kind="crossfade", duration=0.5)),
-        SetTransition(clip_id="c3", transition=Transition(kind="putih", duration=0.6)),
+        SetTransition(clip_id="c3", transition=Transition(kind="dip_white", duration=0.6)),
         SetZoom(clip_id="c3", zoom=Zoom(start=1, end=1.3)),
         AddOverlay(media_id="v", src_in=0, src_out=1.5, start=1, layout="kanan_bawah"),
         AddAudio(media_id="a"),

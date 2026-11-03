@@ -17,7 +17,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.types import ASGIApp, Receive, Scope, Send
 from sse_starlette.sse import EventSourceResponse
 
-from auteur import colorist, motion, reference
+from auteur import colorist, exporter, fetch, motion, reference
 from auteur.agent.loop import run_agent, run_tool
 from auteur.config import settings
 from auteur.events import bus
@@ -98,6 +98,8 @@ app.mount("/files", StaticFiles(directory=settings.data_dir / "projects"), name=
 _locks: dict[str, asyncio.Lock] = {}
 _runs: dict[str, tuple[str, asyncio.Task]] = {}
 _visitor_runs: dict[tuple[str, date], int] = {}
+_exports: dict[str, exporter.ExportJob] = {}  # latest export per project
+_background: set[asyncio.Task] = set()  # keeps fire-and-forget tasks referenced until they finish
 
 
 def remaining_budget(request: Request) -> float | None:
@@ -194,6 +196,8 @@ class ProjectView(BaseModel):
     references: list[ReferenceView]
     last_check: CheckResult | None
     storyboard: Storyboard | None
+    export: exporter.ExportView | None
+    max_export_height: int | None = Field(description="Largest export this server makes (short side); None = no limit")
     speech: list[tuple[float, float]]
     spent: float
     last_render_url: str | None
@@ -237,6 +241,8 @@ class ProjectView(BaseModel):
             ],
             last_check=p.last_check,
             storyboard=p.storyboard,
+            export=_exports[p.id].view() if p.id in _exports else None,
+            max_export_height=settings.max_export_height or None,
             last_render_url=f"/files/{p.id}/{p.last_render}" if p.last_render else None,
             can_undo=bool(p.history),
             can_redo=bool(p.redo_stack),
@@ -365,6 +371,40 @@ def get_project(project_id: str) -> ProjectView:
     return ProjectView.of(load(project_id))
 
 
+async def add_media(p: Project, upload: Path, name: str) -> ProjectView:
+    """Ingest a file into the project (caller holds the project lock); `upload` is moved or removed.
+    Other open editors (another tab, or the editor while a phone uploads) hear about it as a "project" event."""
+    media_id = new_id("media")
+    try:
+        media = await asyncio.to_thread(ingest, store.project_dir(p.id), media_id, name, upload)
+    except MediaError as e:
+        shutil.rmtree(store.project_dir(p.id) / "media" / media_id, ignore_errors=True)
+        raise HTTPException(400, f"Could not read that file: {e}") from None
+    finally:
+        upload.unlink(missing_ok=True)
+
+    if media.kind == "video" and not media.image and settings.max_file_seconds and media.duration > settings.max_file_seconds:
+        shutil.rmtree(store.project_dir(p.id) / "media" / media_id, ignore_errors=True)
+        raise HTTPException(
+            400, f"This video is {media.duration:.0f}s; the public demo takes up to {settings.max_file_seconds:.0f}s per file"
+        )
+
+    # The 5-minute budget is for footage, which drives SAM and transcription cost; music, pictures and
+    # scenes made in code are free to add.
+    def counts(m: Media) -> bool:
+        return m.kind == "video" and not m.scene_id and not m.image
+
+    footage = sum(m.duration for m in p.media.values() if counts(m))
+    total = footage + (media.duration if counts(media) else 0)
+    if total > MAX_TOTAL_SECONDS:
+        shutil.rmtree(store.project_dir(p.id) / "media" / media_id, ignore_errors=True)
+        raise HTTPException(400, f"Project footage would be {total:.0f}s; the limit is {MAX_TOTAL_SECONDS}s")
+    p.media[media.id] = media
+    store.save(p)
+    bus.publish(p.id, {"type": "project"}, replay=False)
+    return ProjectView.of(p, busy=False)
+
+
 @app.post("/projects/{project_id}/media")
 async def upload_media(project_id: str, file: UploadFile) -> ProjectView:
     async with ensure_idle(project_id):
@@ -372,32 +412,25 @@ async def upload_media(project_id: str, file: UploadFile) -> ProjectView:
         suffix = Path(file.filename or "upload.mp4").suffix
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix, dir=settings.data_dir) as tmp:
             shutil.copyfileobj(file.file, tmp)
-        media_id = new_id("media")
-        try:
-            media = await asyncio.to_thread(
-                ingest, store.project_dir(p.id), media_id, file.filename or media_id, Path(tmp.name)
-            )
-        except MediaError as e:
-            shutil.rmtree(store.project_dir(p.id) / "media" / media_id, ignore_errors=True)
-            raise HTTPException(400, f"Could not read video: {e}") from None
-        finally:
-            Path(tmp.name).unlink(missing_ok=True)
+        return await add_media(p, Path(tmp.name), file.filename or "upload")
 
-        if media.kind == "video" and settings.max_file_seconds and media.duration > settings.max_file_seconds:
-            shutil.rmtree(store.project_dir(p.id) / "media" / media_id, ignore_errors=True)
-            raise HTTPException(
-                400, f"This video is {media.duration:.0f}s; the public demo takes up to {settings.max_file_seconds:.0f}s per file"
-            )
-        # The 5-minute budget is for footage (it drives SAM and transcription cost); music is free to add.
-        # Scenes made in code don't count: the budget limits footage, which drives SAM and transcription cost.
-        footage = sum(m.duration for m in p.media.values() if m.kind == "video" and not m.scene_id)
-        total = footage + (media.duration if media.kind == "video" else 0)
-        if total > MAX_TOTAL_SECONDS:
-            shutil.rmtree(store.project_dir(p.id) / "media" / media_id, ignore_errors=True)
-            raise HTTPException(400, f"Project footage would be {total:.0f}s; the limit is {MAX_TOTAL_SECONDS}s")
-        p.media[media.id] = media
-        store.save(p)
-        return ProjectView.of(p, busy=False)
+
+class ImportLink(BaseModel):
+    url: str = Field(min_length=8, max_length=2000)
+
+
+@app.post("/projects/{project_id}/media/link")
+async def import_media_link(project_id: str, body: ImportLink) -> ProjectView:
+    """Import a direct link to a video, song or picture (e.g. a Pexels or Pixabay download link)."""
+    load(project_id)
+    with tempfile.TemporaryDirectory(dir=settings.data_dir) as tmp:
+        # Downloaded before taking the project lock: a slow server shouldn't block editing.
+        try:
+            path = await asyncio.to_thread(fetch.download, body.url.strip(), Path(tmp))
+        except fetch.FetchError as e:
+            raise HTTPException(400, str(e)) from None
+        async with ensure_idle(project_id):
+            return await add_media(load(project_id), path, path.name)
 
 
 MAX_REFERENCE_BYTES = 15 * 1024 * 1024
@@ -551,6 +584,64 @@ async def build_scenes_now(project_id: str, body: BuildScenesRequest, request: R
     return {"run_id": run_id}
 
 
+class ExportRequest(BaseModel):
+    format: exporter.Format = "mp4"
+    resolution: Literal[360, 480, 720, 1080, 1440, 2160] = 1080
+    quality: exporter.Quality = "standard"
+    fps: Literal[24, 25, 30, 50, 60] | None = Field(None, description="None = the project's frame rate")
+    mbps: float | None = Field(None, ge=0.5, le=100, description="Target video bitrate in Mbit/s; None = the quality preset")
+
+
+@app.post("/projects/{project_id}/exports")
+async def start_export(project_id: str, body: ExportRequest) -> exporter.ExportView:
+    """The Export dialog: renders a snapshot of the timeline in the background (editing stays open)."""
+    p = load(project_id)
+    if not p.timeline.clips:
+        raise HTTPException(400, "The timeline is empty")
+    if (job := _exports.get(project_id)) and job.status == "running":
+        raise HTTPException(409, "An export is already running for this project")
+    if settings.max_export_height and body.resolution > settings.max_export_height and body.format != "mp3":
+        raise HTTPException(400, f"This server exports up to {settings.max_export_height}p")
+    if body.format == "gif":
+        if body.resolution > exporter.GIF_MAX_HEIGHT:
+            raise HTTPException(400, f"GIFs go up to {exporter.GIF_MAX_HEIGHT}p; they get huge above that")
+        if p.timeline.duration > exporter.GIF_MAX_SECONDS:
+            raise HTTPException(400, f"GIFs go up to {exporter.GIF_MAX_SECONDS}s; this video is {p.timeline.duration:.0f}s")
+    project_dir = store.project_dir(p.id)
+    tracks = {e.track_id: load_track(project_dir, e.track_id) for c in p.timeline.clips for e in c.effects}
+    job = exporter.ExportJob(
+        id=new_id("export"), project_id=p.id, format=body.format, resolution=body.resolution, quality=body.quality,
+        fps=float(body.fps or p.timeline.fps), mbps=body.mbps if body.format == "mp4" else None,
+    )
+    _exports[p.id] = job
+
+    def publish(view: exporter.ExportView) -> None:
+        bus.publish(p.id, {"type": "export", "export": view.model_dump()}, replay=False)
+
+    def on_done(done: exporter.ExportJob) -> None:
+        # "Latest render" follows video exports, unless an agent run holds the project (it saves its own copy).
+        if done.format == "mp4" and not project_lock(p.id).locked():
+            fresh = load(p.id)
+            fresh.last_render = done.file
+            store.save(fresh)
+
+    task = asyncio.create_task(
+        exporter.start(job, p.timeline.model_copy(deep=True), dict(p.media), tracks, project_dir, publish, on_done)
+    )
+    _background.add(task)
+    task.add_done_callback(_background.discard)
+    return job.view()
+
+
+@app.post("/projects/{project_id}/exports/{export_id}/cancel")
+async def cancel_export(project_id: str, export_id: str) -> dict[str, bool]:
+    job = _exports.get(project_id)
+    if job is None or job.id != export_id or job.status != "running":
+        return {"cancelled": False}
+    job.cancel.set()
+    return {"cancelled": True}
+
+
 @app.post("/projects/{project_id}/runs/stop")
 async def stop_run(project_id: str) -> dict[str, bool]:
     run = _runs.get(project_id)
@@ -580,7 +671,7 @@ async def events(project_id: str) -> EventSourceResponse:
         try:
             while True:
                 event = await q.get()
-                if event["type"] in ("timeline", "track", "run_finished"):
+                if event["type"] in ("timeline", "track", "run_finished", "project"):
                     # Ship the fresh project with the event so the editor redraws without refetching.
                     view = ProjectView.of(store.get(project_id))
                     if event["type"] == "run_finished":

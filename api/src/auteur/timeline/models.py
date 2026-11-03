@@ -9,7 +9,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
 
-Aspect = Literal["16:9", "9:16", "1:1"]
+Aspect = Literal["16:9", "9:16", "1:1", "4:5"]
 
 # Early projects stored a few of these values in Indonesian; they are renamed as they load.
 LEGACY_NAMES = {"hitam": "dip_black", "putih": "dip_white", "bersih": "clean", "tebal": "bold", "kotak": "box"}
@@ -22,6 +22,7 @@ ASPECT_SIZES: dict[str, tuple[int, int]] = {
     "16:9": (1920, 1080),
     "9:16": (1080, 1920),
     "1:1": (1080, 1080),
+    "4:5": (1080, 1350),
 }
 
 
@@ -42,6 +43,9 @@ class Media(Model):
     kind: Literal["video", "audio"] = "video"
     recorded_at: str | None = Field(None, description="Capture time from the file's metadata (ISO 8601), if any")
     scene_id: str | None = Field(None, description="Storyboard scene this video was rendered from (made in code, silent)")
+    image: Literal["still", "gif"] | None = Field(
+        None, description="Made from an uploaded picture: a still held as a silent 60s video, or a GIF looped to at least 5s"
+    )
 
 
 class Grade(Model):
@@ -128,6 +132,38 @@ class Zoom(Model):
     end: float = Field(1.15, ge=1, le=2)
 
 
+class CropRect(Model):
+    """Edges cut off the source before it fills the frame, as fractions of its width and height."""
+
+    left: float = Field(0, ge=0, le=0.9)
+    right: float = Field(0, ge=0, le=0.9)
+    top: float = Field(0, ge=0, le=0.9)
+    bottom: float = Field(0, ge=0, le=0.9)
+
+    def window(self, w: int, h: int) -> tuple[int, int, int, int]:
+        """x, y, width, height in source pixels (even sizes, at least a tenth of the source)."""
+        x, y = round(w * self.left), round(h * self.top)
+        cw = max(round(w * (1 - self.left - self.right)), w // 10)
+        ch = max(round(h * (1 - self.top - self.bottom)), h // 10)
+        return x, y, cw - cw % 2, ch - ch % 2
+
+
+class Transform(Model):
+    """Where the (cropped) frame sits in the output: scaled and rotated about its center, flipped, then
+    moved. Uncovered parts of the output are black. Applied after crop and zoom."""
+
+    x: float = Field(0, ge=-1, le=1, description="Horizontal offset as a fraction of the output width (+ = right)")
+    y: float = Field(0, ge=-1, le=1, description="Vertical offset as a fraction of the output height (+ = down)")
+    scale: float = Field(1, ge=0.1, le=4)
+    rotation: float = Field(0, ge=-180, le=180, description="Degrees, clockwise")
+    flip_h: bool = False
+    flip_v: bool = False
+
+    @property
+    def is_identity(self) -> bool:
+        return self == Transform()
+
+
 class Clip(Model):
     id: str
     media_id: str
@@ -136,8 +172,10 @@ class Clip(Model):
     speed: float = Field(1.0, ge=0.25, le=4, description="0.5 = slow motion, 2 = twice as fast; audio is muted when not 1")
     grade: Grade = Field(default_factory=Grade)
     crop: list[CropKey] = Field(default_factory=list, description="Empty = centered crop; times are clip-local timeline seconds")
+    crop_rect: CropRect | None = Field(None, description="Edges of the source cut off before it fills the frame")
     follow: Follow | None = None
     zoom: Zoom | None = None
+    transform: Transform | None = Field(None, description="Position, scale, rotation and flip in the frame; None = fill the frame")
     transition: Transition | None = Field(None, description="Transition into this clip from the previous one")
     effects: list[Effect] = Field(default_factory=list)
     muted: bool = False
@@ -169,6 +207,14 @@ class Clip(Model):
 OverlayLayout = Literal["full", "kanan_atas", "kiri_atas", "kanan_bawah", "kiri_bawah"]
 
 
+class OverlayBox(Model):
+    """A B-roll picture placed freely: its center, and its size as a fraction of the frame (same shape)."""
+
+    x: float = Field(0.5, ge=-0.5, le=1.5, description="Center, as a fraction of the output width")
+    y: float = Field(0.5, ge=-0.5, le=1.5, description="Center, as a fraction of the output height")
+    scale: float = Field(0.34, ge=0.05, le=1.5, description="Width and height as a fraction of the frame's")
+
+
 class Overlay(Model):
     """A B-roll clip on the second video track, at an absolute timeline time."""
 
@@ -178,6 +224,7 @@ class Overlay(Model):
     src_out: float = Field(gt=0)
     start: float = Field(ge=0)
     layout: OverlayLayout = Field("full", description="full covers the frame; the corners are picture-in-picture")
+    box: OverlayBox | None = Field(None, description="Free position and size; overrides `layout` when set")
     grade: Grade = Field(default_factory=Grade)
     muted: bool = True
 
@@ -249,6 +296,9 @@ class Timeline(Model):
     texts: list[TextItem] = Field(default_factory=list)
     audio: list[AudioItem] = Field(default_factory=list)
     finish: Finish = Field(default_factory=Finish)
+    linkage: bool = Field(
+        True, description="Text and B-roll move with the main-track clip they start on (music stays put)"
+    )
 
     @property
     def duration(self) -> float:

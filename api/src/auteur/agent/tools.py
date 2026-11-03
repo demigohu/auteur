@@ -127,6 +127,10 @@ def describe_timeline(p: Project) -> str:
             extras.append(f"{c.transition.kind} in {c.transition.duration}s")
         if c.zoom:
             extras.append(f"zoom {c.zoom.start}->{c.zoom.end}")
+        if c.transform:
+            extras.append(f"transform {c.transform.model_dump(exclude_defaults=True)}")
+        if c.crop_rect:
+            extras.append(f"edges cut {c.crop_rect.model_dump(exclude_defaults=True)}")
         if c.volume != 1:
             extras.append(f"volume {c.volume}")
         lines.append(
@@ -134,7 +138,8 @@ def describe_timeline(p: Project) -> str:
             + (f" ({'; '.join(extras)})" if extras else "")
         )
     for o in tl.overlays:
-        lines.append(f"  B-roll {o.id}: {o.media_id} src {o.src_in:.2f}-{o.src_out:.2f} at {o.start:.2f}-{o.end:.2f} ({o.layout})")
+        place = f"box {o.box.model_dump()}" if o.box else o.layout
+        lines.append(f"  B-roll {o.id}: {o.media_id} src {o.src_in:.2f}-{o.src_out:.2f} at {o.start:.2f}-{o.end:.2f} ({place})")
     for a in tl.audio:
         lines.append(
             f"  Music {a.id}: {a.media_id} src {a.src_in:.2f}-{a.src_out:.2f} at {a.start:.2f}, volume {a.volume}"
@@ -774,7 +779,7 @@ class SinematikArgs(ToolArgs):
 
 async def sinematik(ctx: ToolContext, a: SinematikArgs) -> str:
     ctx.commit("Cinematic finish", [SetFinish(letterbox=a.letterbox, grain=a.grain)])
-    vertical = ctx.project.timeline.aspect == "9:16"
+    vertical = ctx.project.timeline.aspect in ("9:16", "4:5")
     return (f"Letterbox {a.letterbox}, grain {a.grain}."
             + (" The video is vertical, so bars leave a wide strip in the middle; that is a deliberate style." if vertical and a.letterbox else ""))
 
@@ -1121,7 +1126,9 @@ TOOLS = [
     Tool(
         "edit_timeline",
         "Apply low-level timeline ops (trim, split, move, delete, text, grade, crop, aspect...). "
-        "Use for revisions and anything the other tools don't cover. Times: `split.at` is timeline time; "
+        "Use for revisions and anything the other tools don't cover (set_transform moves/scales/rotates/flips a clip in "
+        "the frame, set_crop_rect cuts its edges, update_overlay.box places B-roll freely). With linkage on, text and "
+        "B-roll follow the clip they sit on when clips are cut, trimmed or moved. Times: `split.at` is timeline time; "
         "`src_in`/`src_out` are source seconds; grade values are -1..1 (exposure -2..2), subtle is ±0.1-0.3.",
         UbahArgs, ubah_timeline,
     ),

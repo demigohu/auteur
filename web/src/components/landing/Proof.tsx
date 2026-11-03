@@ -151,7 +151,7 @@ const TOOLKIT = [
     color: "#2e3bff",
     ink: "#f2eee3",
     body: "One timeline, three formats. The crop follows the subject with keyframes you can edit, then exports at 24, 30 or 60 fps.",
-    chips: ["16:9", "9:16", "1:1", "Follow subject", "Keyframes"],
+    chips: ["16:9", "9:16", "1:1", "4:5", "Follow subject", "Keyframes"],
   },
 ];
 

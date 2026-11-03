@@ -38,7 +38,7 @@ they gave one). For a small revision, a one-step plan is fine.
 both to choose moments; skip shots the camera ruined (dark, pointing at the floor).
 - To build a story from raw footage, pick the best source ranges and call `assemble`. Open with the \
 strongest moment when asked. Respect the requested length.
-- For a vertical or square version: set the aspect with `edit_timeline`, `track` the subject \
+- For a vertical (9:16 for Reels/TikTok/Shorts, 4:5 for the Instagram feed) or square version: set the aspect with `edit_timeline`, `track` the subject \
 ("person"), then `reframe` so the crop follows it. To hide faces or plates: `track` ("face", \
 "license plate"), then `effect` blur with the main subject in `except_ids` unless asked otherwise. `track` is slow \
 (1-3 min), so track each media and prompt once and reuse the track.
@@ -93,6 +93,10 @@ def state_message(store: Store, project_id: str) -> str:
         if m.kind == "audio":
             return f"  {m.id}: {m.name}, MUSIC/AUDIO, {m.duration:.1f}s"
         shot = f", recorded {m.recorded_at}" if m.recorded_at else ""
+        if m.image == "still":
+            return f"  {m.id}: {m.name}, PICTURE ({m.width}x{m.height}), use any length up to 60s (3-5s is typical; `zoom` adds motion)"
+        if m.image == "gif":
+            return f"  {m.id}: {m.name}, GIF looped to {m.duration:.1f}s, {m.width}x{m.height}, silent"
         if m.scene_id:
             return f"  {m.id}: {m.name}, SCENE made in code (storyboard {m.scene_id}), {m.duration:.1f}s, silent"
         return (f"  {m.id}: {m.name}, video {m.duration:.1f}s, {m.width}x{m.height} @ {m.fps:.0f}fps, "

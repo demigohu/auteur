@@ -33,7 +33,7 @@ export function ProjectCard(props: {
     };
   }, [menu]);
 
-  const portrait = p.aspect === "9:16";
+  const portrait = p.aspect === "9:16" || p.aspect === "4:5";
 
   return (
     <motion.article

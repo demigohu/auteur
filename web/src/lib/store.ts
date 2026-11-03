@@ -1,9 +1,9 @@
 "use client";
 
 import { create } from "zustand";
-import { api, API_URL, fileUrl, type OpInput, type ProjectView, type StoryboardEdit } from "./api";
+import { api, API_URL, type ExportRequest, type ExportView, fileUrl, type OpInput, type ProjectView, type StoryboardEdit } from "./api";
 import { clipDuration, clipStarts } from "./time";
-import type { Clip, Grade } from "./timeline";
+import type { Clip, Grade, Overlay, Transform } from "./timeline";
 import type { TrackData } from "./tracks";
 
 export type StepStatus = "pending" | "running" | "done" | "failed";
@@ -65,6 +65,7 @@ type EditorState = {
   undo: () => Promise<void>;
   redo: () => Promise<void>;
   upload: (files: File[]) => Promise<void>;
+  importLink: (url: string) => Promise<boolean>;
   startRun: (instruction: string, referenceIds?: string[]) => Promise<void>;
   uploadReference: (file: File) => Promise<string | null>;
   editStoryboard: (body: StoryboardEdit) => Promise<boolean>;
@@ -73,7 +74,9 @@ type EditorState = {
   deleteReference: (refId: string) => Promise<void>;
   stopRun: () => Promise<void>;
   undoRun: (runId: string) => Promise<void>;
-  exportVideo: () => Promise<void>;
+  /** Start a background export; its progress arrives as "export" events on project.export. */
+  startExport: (body: ExportRequest) => Promise<boolean>;
+  cancelExport: () => Promise<void>;
   select: (sel: { clip?: string | null; text?: string | null; overlay?: string | null; audio?: string | null }) => void;
   setTab: (tab: SideTab) => void;
   toggleMulti: (clipId: string) => void;
@@ -84,6 +87,12 @@ type EditorState = {
   setBefore: (on: boolean) => void;
   /** Local-only grade change for live slider feedback; the commit goes through applyOps. */
   previewGrade: (clipId: string, grade: Grade) => void;
+  /** Local-only transform while dragging on the canvas; the commit goes through applyOps. */
+  previewTransform: (clipId: string, transform: Transform | null) => void;
+  /** Local-only text position while dragging it on the canvas. */
+  previewTextPosition: (textId: string, x: number, y: number) => void;
+  /** Local-only B-roll box while dragging it on the canvas. */
+  previewOverlayBox: (overlayId: string, box: NonNullable<Overlay["box"]>) => void;
   applyLook: (o: {
     clipIds: string[] | null;
     look: string | null;
@@ -126,6 +135,18 @@ export const useEditor = create<EditorState>((set, get) => {
   }
 
   function onEvent(e: AgentEvent) {
+    if (e.type === "project") {
+      // Changes from outside this editor (an upload from the phone), between runs.
+      setProject(e.project as ProjectView);
+      return;
+    }
+    if (e.type === "export") {
+      // Exports run beside agent runs, so this comes before the run checks.
+      const project = get().project;
+      const job = e.export as ExportView;
+      if (project) set({ project: { ...project, export: job, last_render_url: job.status === "done" && job.format === "mp4" ? job.url : project.last_render_url } });
+      return;
+    }
     const run = get().run;
     if (e.type === "run_started") {
       set({
@@ -254,7 +275,7 @@ export const useEditor = create<EditorState>((set, get) => {
 
     connect: (id) => {
       const source = new EventSource(`${API_URL}/projects/${id}/events`, { withCredentials: true });
-      const types = ["run_started", "plan", "thought", "tool_call", "tool_result", "progress", "check", "timeline", "track", "cost", "message", "run_finished"];
+      const types = ["run_started", "plan", "thought", "tool_call", "tool_result", "progress", "check", "timeline", "track", "cost", "message", "run_finished", "export", "project"];
       const handler = (msg: MessageEvent) => onEvent(JSON.parse(msg.data));
       types.forEach((t) => source.addEventListener(t, handler));
       return () => source.close();
@@ -278,6 +299,10 @@ export const useEditor = create<EditorState>((set, get) => {
       for (const f of files) {
         if (!(await act(`Uploading ${f.name}`, () => api.upload(id, f)))) break;
       }
+    },
+    importLink: (url) => {
+      const id = get().project?.id;
+      return id ? act("Importing from link", () => api.importLink(id, url)) : Promise.resolve(false);
     },
     startRun: async (instruction, referenceIds = []) => {
       const id = get().project?.id;
@@ -329,9 +354,23 @@ export const useEditor = create<EditorState>((set, get) => {
       const id = get().project?.id;
       if (id) await act("Undoing instruction", () => api.undoRun(id, runId));
     },
-    exportVideo: async () => {
-      const id = get().project?.id;
-      if (id) await act("Exporting video", () => api.render(id, true));
+    startExport: async (body) => {
+      const project = get().project;
+      if (!project) return false;
+      set({ error: null });
+      try {
+        const job = await api.startExport(project.id, body);
+        const now = get().project;
+        if (now) set({ project: { ...now, export: job } });
+        return true;
+      } catch (e) {
+        set({ error: e instanceof Error ? e.message : String(e) });
+        return false;
+      }
+    },
+    cancelExport: async () => {
+      const project = get().project;
+      if (project?.export?.status === "running") await api.cancelExport(project.id, project.export.id).catch(() => undefined);
     },
 
     select: ({ clip, text, overlay, audio }) =>
@@ -386,6 +425,24 @@ export const useEditor = create<EditorState>((set, get) => {
         await act(referenceId ? "Matching the reference" : "Applying color", () =>
           api.grade(id, { clip_ids: clipIds, look, intensity, auto, match, reference_id: referenceId }),
         );
+    },
+    previewOverlayBox: (overlayId, box) => {
+      const project = get().project;
+      if (!project) return;
+      const overlays = project.timeline.overlays.map((o) => (o.id === overlayId ? { ...o, box } : o));
+      set({ project: { ...project, timeline: { ...project.timeline, overlays } } });
+    },
+    previewTextPosition: (textId, x, y) => {
+      const project = get().project;
+      if (!project) return;
+      const texts = project.timeline.texts.map((t) => (t.id === textId ? { ...t, x, y } : t));
+      set({ project: { ...project, timeline: { ...project.timeline, texts } } });
+    },
+    previewTransform: (clipId, transform) => {
+      const project = get().project;
+      if (!project) return;
+      const clips = project.timeline.clips.map((c) => (c.id === clipId ? { ...c, transform } : c));
+      set({ project: { ...project, timeline: { ...project.timeline, clips } } });
     },
     previewGrade: (clipId, grade) => {
       const project = get().project;

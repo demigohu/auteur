@@ -3,10 +3,11 @@ import type { NewProject } from "@/lib/api";
 export const ASPECTS: { value: NewProject["aspect"]; use: string; color: string }[] = [
   { value: "16:9", use: "YouTube, landscape", color: "var(--blue)" },
   { value: "9:16", use: "Reels, TikTok, Shorts", color: "var(--tomato)" },
-  { value: "1:1", use: "Feed post", color: "var(--lime)" },
+  { value: "1:1", use: "Square post", color: "var(--lime)" },
+  { value: "4:5", use: "Instagram feed", color: "var(--pink)" },
 ];
 
-const SIZE: Record<NewProject["aspect"], [number, number]> = { "16:9": [44, 25], "9:16": [22, 39], "1:1": [32, 32] };
+const SIZE: Record<NewProject["aspect"], [number, number]> = { "16:9": [44, 25], "9:16": [22, 39], "1:1": [32, 32], "4:5": [28, 35] };
 
 /** A frame outline at the format's proportions, with a play mark. */
 export function AspectGlyph({ aspect, active, color }: { aspect: NewProject["aspect"]; active?: boolean; color?: string }) {

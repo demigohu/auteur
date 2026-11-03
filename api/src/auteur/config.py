@@ -20,6 +20,8 @@ class Settings:
     # NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY. CLERK_JWKS_URL overrides where the signing keys come from.
     clerk_publishable_key: str = os.getenv("CLERK_PUBLISHABLE_KEY", "")
     clerk_jwks_url: str = os.getenv("CLERK_JWKS_URL", "")
+    # Largest export (short side in pixels); 0 = no limit. 4K renders are slow on a small server.
+    max_export_height: int = int(os.getenv("MAX_EXPORT_HEIGHT", "0"))
     # Meta API spend allowed per account, in USD (0 = no cap).
     user_spend_cap_usd: float = float(os.getenv("USER_SPEND_CAP_USD", "0"))
     cors_origins: list[str] = field(

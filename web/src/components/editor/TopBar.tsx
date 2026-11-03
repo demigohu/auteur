@@ -1,13 +1,14 @@
 "use client";
 
-import { CircleNotch, Coins, DownloadSimple, Export } from "@phosphor-icons/react";
+import { CircleNotch, Coins, DownloadSimple } from "@phosphor-icons/react";
 import { Logo } from "@/components/ui/Logo";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { fileUrl } from "@/lib/api";
 import { useEditor } from "@/lib/store";
 import type { Timeline } from "@/lib/timeline";
+import { ExportMenu } from "./ExportMenu";
 
-const ASPECTS: Timeline["aspect"][] = ["16:9", "9:16", "1:1"];
+const ASPECTS: Timeline["aspect"][] = ["16:9", "9:16", "1:1", "4:5"];
 
 // Pill segmented control (docs/DESIGN.md, "Segmented control").
 const SEGMENTED = "flex rounded-full border-2 border-edge bg-panel p-0.5";
@@ -19,22 +20,20 @@ export function TopBar() {
   const project = useEditor((s) => s.project);
   const pending = useEditor((s) => s.pending);
   const applyOps = useEditor((s) => s.applyOps);
-  const exportVideo = useEditor((s) => s.exportVideo);
   const run = useEditor((s) => s.run);
   if (!project) return null;
 
-  const { aspect, clips, fps } = project.timeline;
-  const exporting = pending === "Exporting video";
+  const { aspect, fps } = project.timeline;
   const locked = project.busy;
 
   return (
-    <header className="paper-texture relative flex h-14 shrink-0 items-center gap-4 border-b-2 border-edge bg-panel px-3">
+    <header className="paper-texture relative z-30 flex h-14 shrink-0 items-center gap-4 border-b-2 border-edge bg-panel px-3">
       <Logo href="/studio" size="sm" />
       <span className="label hidden text-faint md:inline">Project /</span>
       <span className="truncate font-serif text-[22px] leading-none italic text-text">{project.name}</span>
 
       <div className="ml-auto flex items-center gap-3">
-        {pending && !exporting && (
+        {pending && (
           <span className="flex items-center gap-1.5 text-xs text-muted">
             <CircleNotch size={12} className="animate-spin" /> {pending}
           </span>
@@ -86,15 +85,7 @@ export function TopBar() {
             <DownloadSimple size={14} /> Latest render
           </a>
         )}
-        <button
-          type="button"
-          onClick={exportVideo}
-          disabled={locked || exporting || clips.length === 0}
-          className="hard flex h-9 items-center gap-1.5 rounded-full bg-pink px-4 text-[13px] font-semibold text-ink disabled:opacity-40"
-        >
-          {exporting ? <CircleNotch size={14} className="animate-spin" /> : <Export size={14} weight="bold" />}
-          {exporting ? "Exporting" : "Export"}
-        </button>
+        <ExportMenu />
       </div>
     </header>
   );

@@ -21,6 +21,7 @@ import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { useTheme } from "@/lib/theme";
 import { ApiError, api, type NewProject, type ProjectSummary } from "@/lib/api";
 import { greeting } from "@/lib/format";
+import { isUploadable } from "@/lib/media";
 import { ASPECTS, AspectGlyph } from "./aspects";
 import { CreateProjectDialog, type Draft, EMPTY_DRAFT, untitled } from "./CreateProjectDialog";
 import { ProjectCard, ProjectCardSkeleton } from "./ProjectCard";
@@ -49,7 +50,7 @@ function aspectOf(file: File): Promise<NewProject["aspect"]> {
     v.preload = "metadata";
     v.onloadedmetadata = () => {
       const r = v.videoWidth / Math.max(1, v.videoHeight);
-      done(r < 0.85 ? "9:16" : r > 1.2 ? "16:9" : "1:1");
+      done(r < 0.7 ? "9:16" : r < 0.9 ? "4:5" : r > 1.2 ? "16:9" : "1:1");
     };
     v.onerror = () => done("16:9");
     v.src = url;
@@ -151,9 +152,9 @@ export function Studio() {
   }
 
   async function dropFootage(files: File[]) {
-    const media = files.filter((f) => f.type.startsWith("video/") || f.type.startsWith("audio/"));
+    const media = files.filter(isUploadable);
     const firstVideo = media.find((f) => f.type.startsWith("video/"));
-    if (!media.length) return setError("Drop video (MP4, MOV) or audio (MP3, WAV) files.");
+    if (!media.length) return setError("Drop video (MP4, MOV, WebM), audio (MP3, WAV) or pictures (PNG, JPG, GIF).");
     setDraft({ ...EMPTY_DRAFT, files: media, aspect: firstVideo ? await aspectOf(firstVideo) : "16:9" });
   }
 
@@ -322,7 +323,7 @@ export function Studio() {
 
                 <section aria-labelledby="quick-start" className="mt-12">
                   <SectionHead id="quick-start" kicker="One click, empty timeline" title="Blank project" />
-                  <div className="mt-5 grid grid-cols-2 gap-4 xl:grid-cols-4">
+                  <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-5">
                     {ASPECTS.map((a, i) => (
                       <motion.button
                         key={a.value}

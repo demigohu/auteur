@@ -36,6 +36,23 @@ export type CheckResult = {
   at: string;
 };
 
+/** A background export from the Export dialog (api/src/auteur/exporter.py). */
+export type ExportFormat = "mp4" | "gif" | "mp3";
+export type ExportQuality = "draft" | "standard" | "high";
+export type ExportView = {
+  id: string;
+  format: ExportFormat;
+  resolution: number;
+  quality: ExportQuality;
+  fps: number;
+  mbps: number | null;
+  status: "running" | "done" | "failed" | "cancelled";
+  progress: number;
+  url: string | null;
+  error: string | null;
+};
+export type ExportRequest = { format: ExportFormat; resolution: number; quality: ExportQuality; fps: number | null; mbps?: number | null };
+
 export type ProjectView = {
   id: string;
   name: string;
@@ -47,6 +64,9 @@ export type ProjectView = {
   references: ReferenceView[];
   last_check: CheckResult | null;
   storyboard: Storyboard | null;
+  export: ExportView | null;
+  /** Largest export the server makes (short side), or null for no limit. */
+  max_export_height: number | null;
   speech: [number, number][];
   spent: number;
   last_render_url: string | null;
@@ -124,6 +144,30 @@ export const api = {
     form.append("file", file);
     return request<ProjectView>(`/projects/${id}/media`, { method: "POST", body: form });
   },
+  /** Upload with progress (0..1), for the phone upload page where files are big and the network slow. */
+  uploadWithProgress: async (id: string, file: File, onProgress: (p: number) => void): Promise<ProjectView> => {
+    const token = await getToken().catch(() => null);
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `${API_URL}/projects/${id}/media`);
+      xhr.withCredentials = true;
+      if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+      xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
+      xhr.onload = () => {
+        let body: { detail?: unknown } | undefined;
+        try {
+          body = JSON.parse(xhr.responseText);
+        } catch {}
+        if (xhr.status >= 200 && xhr.status < 300) resolve(body as ProjectView);
+        else reject(new ApiError(xhr.status, typeof body?.detail === "string" ? body.detail : xhr.statusText || "Upload failed"));
+      };
+      xhr.onerror = () => reject(new ApiError(0, "The upload didn't reach the server"));
+      const form = new FormData();
+      form.append("file", file);
+      xhr.send(form);
+    });
+  },
+  importLink: (id: string, url: string) => request<ProjectView>(`/projects/${id}/media/link`, json({ url })),
   applyOps: (id: string, label: string, ops: OpInput[]) => request<ProjectView>(`/projects/${id}/ops`, json({ label, ops })),
   undo: (id: string) => request<ProjectView>(`/projects/${id}/undo`, { method: "POST" }),
   redo: (id: string) => request<ProjectView>(`/projects/${id}/redo`, { method: "POST" }),
@@ -145,5 +189,7 @@ export const api = {
   editStoryboard: (id: string, body: StoryboardEdit) => request<ProjectView>(`/projects/${id}/storyboard`, json(body, "PUT")),
   buildScenes: (id: string, sceneIds: string[] | null, notes: { scene_id: string; note: string }[] = []) =>
     request<{ run_id: string }>(`/projects/${id}/scenes/build`, json({ scene_ids: sceneIds, notes })),
-  render: (id: string, final: boolean) => request<ProjectView>(`/projects/${id}/render`, json({ final })),
+  startExport: (id: string, body: ExportRequest) => request<ExportView>(`/projects/${id}/exports`, json(body)),
+  cancelExport: (id: string, exportId: string) =>
+    request<{ cancelled: boolean }>(`/projects/${id}/exports/${exportId}/cancel`, { method: "POST" }),
 };

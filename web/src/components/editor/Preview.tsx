@@ -4,10 +4,11 @@ import { BoundingBox, ImageSquare, Pause, Play, SkipBack } from "@phosphor-icons
 import { Player, type PlayerRef } from "@remotion/player";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useEditor } from "@/lib/store";
+import { CanvasTransform } from "./CanvasTransform";
 import { timecode, timelineDuration, toFrames } from "@/lib/time";
 import { TimelineComposition } from "@/remotion/TimelineComposition";
 
-const SIZES = { "16:9": [1920, 1080], "9:16": [1080, 1920], "1:1": [1080, 1080] } as const;
+const SIZES = { "16:9": [1920, 1080], "9:16": [1080, 1920], "1:1": [1080, 1080], "4:5": [1080, 1350] } as const;
 
 export function Preview() {
   const project = useEditor((s) => s.project);
@@ -81,6 +82,7 @@ export function Preview() {
           </span>
         )}
         {timeline && hasPlayer ? (
+          <div className="relative h-full w-full">
           <Player
             ref={player}
             component={TimelineComposition}
@@ -94,6 +96,8 @@ export function Preview() {
             style={{ width: "100%", height: "100%" }}
             className="[&>div]:rounded-[10px]"
           />
+          <CanvasTransform width={w} height={h} />
+          </div>
         ) : (
           <EmptyPreview hasMedia={(project?.media.length ?? 0) > 0} />
         )}

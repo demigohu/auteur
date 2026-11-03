@@ -78,7 +78,7 @@ in time. Never invent facts, numbers, customers or quotes the user didn't give; 
 - Reference images: if the user attached images (screenshots, logos, photos) and a scene should show \
 one, put its id in that scene's `images` and say in the brief how it is shown (device frame, card, full \
 bleed, Ken Burns...).
-- Vertical 9:16: big type, center-weighted layout, one short line at a time.
+- Vertical 9:16 and portrait 4:5: big type, center-weighted layout, one short line at a time.
 - Revising an existing storyboard: return the full storyboard; keep the `id`, title, brief and duration \
 of every scene the instruction doesn't touch, exactly. New scenes get an empty id.
 - Write in the language of the on-screen text the user wants (default: the user's language).

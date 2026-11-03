@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect } from "react";
 import { useTheme } from "@/lib/theme";
 import { useEditor } from "@/lib/store";
-import { clipDuration, clipStarts } from "@/lib/time";
+import { clipDuration, clipStarts, stepTime, timelineDuration } from "@/lib/time";
 import { MediaBin } from "./MediaBin";
 import { Preview } from "./Preview";
 import { SidePanel } from "./SidePanel";
@@ -56,7 +56,22 @@ function useShortcuts() {
     const onKey = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement).closest("input, textarea, [contenteditable]")) return;
       const s = useEditor.getState();
-      if (!s.project || s.project.busy) return;
+      if (!s.project) return;
+      // Moving the playhead changes nothing, so it works while the agent edits too.
+      const { fps, clips } = s.project.timeline;
+      const duration = timelineDuration(clips);
+      const step = { ArrowLeft: -1, ",": -1, ArrowRight: 1, ".": 1 }[e.key];
+      if (step && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        s.seek(stepTime(s.time, fps, e.shiftKey ? step * Math.round(fps) : step, duration));
+        return;
+      }
+      if (e.key === "Home" || e.key === "End") {
+        e.preventDefault();
+        s.seek(e.key === "Home" ? 0 : stepTime(duration, fps, 0, duration));
+        return;
+      }
+      if (s.project.busy) return;
       const mod = e.metaKey || e.ctrlKey;
       if (mod && e.key.toLowerCase() === "z") {
         e.preventDefault();

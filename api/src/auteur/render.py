@@ -9,18 +9,35 @@ drawtext, which many ffmpeg builds lack and which can't do word-by-word highligh
 import re
 import subprocess
 import tempfile
+import threading
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 from auteur import grade
 from auteur.effects import apply_effects
 from auteur.textlayer import text_track
 from auteur.tracking import Track
-from auteur.timeline.models import CropKey, Media, Timeline, Zoom
+from auteur.timeline.models import CropKey, CropRect, Media, OverlayBox, Timeline, Transform, Zoom
 
 
 class RenderError(RuntimeError):
     pass
+
+
+class RenderCancelled(RenderError):
+    pass
+
+
+@dataclass(frozen=True)
+class Encode:
+    """How the output is encoded. The defaults are the agent's renders; exports pick their own."""
+
+    crf: int = 20
+    preset: str | None = None  # None: medium, or veryfast for scaled-down previews
+    audio_bitrate: str = "160k"
+    video_mbps: float | None = None  # a target bitrate instead of constant quality (crf)
+    audio_only: bool = False  # MP3 of the mixed soundtrack, no video stream
 
 
 def _lerp_expr(keys: list[tuple[float, float]]) -> str:
@@ -59,14 +76,50 @@ def crop_filter(m: Media, keys: list[CropKey], out_w: int, out_h: int, zoom: Zoo
     return f
 
 
+def transform_filters(t: Transform, out_w: int, out_h: int) -> list[str]:
+    """Flip, scale and rotate the frame about its center, then move it; black where it no longer
+    covers. Same order as the preview's CSS `translate() rotate() scale()`."""
+    even = lambda v: max(2, round(v / 2) * 2)  # noqa: E731
+    f = []
+    if t.flip_h:
+        f.append("hflip")
+    if t.flip_v:
+        f.append("vflip")
+    if t.scale != 1:
+        f.append(f"scale={even(out_w * t.scale)}:{even(out_h * t.scale)}")
+    if t.scale != 1 or t.rotation:
+        # rotate centers its input in an out_w x out_h frame: crops a bigger frame, pads a smaller one.
+        f.append(f"rotate={t.rotation:.4f}*PI/180:ow={out_w}:oh={out_h}:c=black")
+    dx, dy = round(t.x * out_w), round(t.y * out_h)
+    if dx or dy:
+        f.append(
+            f"pad=w={out_w + abs(dx)}:h={out_h + abs(dy)}:x={max(dx, 0)}:y={max(dy, 0)}:color=black,"
+            f"crop={out_w}:{out_h}:{max(-dx, 0)}:{max(-dy, 0)}"
+        )
+    return f
+
+
+def cut_edges(m: Media, rect: CropRect, keys: list[CropKey]) -> tuple[str, Media, list[CropKey]]:
+    """The ffmpeg crop that cuts the edges, the source as it looks after it, and the crop keys moved
+    into its coordinates (they are stored relative to the whole source)."""
+    x, y, w, h = rect.window(m.width, m.height)
+    inner = m.model_copy(update={"width": w, "height": h})
+    moved = [k.model_copy(update={"cx": min(max((k.cx * m.width - x) / w, 0), 1), "cy": min(max((k.cy * m.height - y) / h, 0), 1)})
+             for k in keys]
+    return f"crop={w}:{h}:{x}:{y}", inner, moved
+
+
 LAYOUT_BOX = {  # x, y of the top-left corner as fractions; picture-in-picture is 34% of the width
     "kanan_atas": (0.63, 0.04), "kiri_atas": (0.03, 0.04), "kanan_bawah": (0.63, 0.62), "kiri_bawah": (0.03, 0.62),
 }
 PIP_SCALE = 0.34
 
 
-def overlay_rect(layout: str, out_w: int, out_h: int) -> tuple[int, int, int, int]:
-    """x, y, w, h of a B-roll overlay in output pixels (same numbers as the editor preview)."""
+def overlay_rect(layout: str, out_w: int, out_h: int, box: OverlayBox | None = None) -> tuple[int, int, int, int]:
+    """x, y, w, h of a B-roll overlay in output pixels (same numbers as the editor preview, overlayRect)."""
+    if box is not None:
+        w, h = max(2, round(out_w * box.scale / 2) * 2), max(2, round(out_h * box.scale / 2) * 2)
+        return round(out_w * box.x - w / 2), round(out_h * box.y - h / 2), w, h
     if layout == "full":
         return 0, 0, out_w, out_h
     w, h = round(out_w * PIP_SCALE / 2) * 2, round(out_h * PIP_SCALE / 2) * 2
@@ -83,7 +136,7 @@ def letterbox_bar(out_w: int, out_h: int, ratio: float | None) -> int:
 
 def build_command(
     tl: Timeline, media: dict[str, Media], out: Path, workdir: Path, scale: float = 1.0,
-    video_override: dict[str, Path] | None = None,
+    video_override: dict[str, Path] | None = None, encode: Encode = Encode(),
 ) -> list[str]:
     """`video_override` maps clip id -> pre-rendered video of exactly that clip's source range."""
     if not tl.clips:
@@ -115,9 +168,11 @@ def build_command(
         dip_in = c.transition if c.transition and c.transition.kind != "crossfade" else None
         dip_out = nxt.transition if nxt and nxt.transition and nxt.transition.kind != "crossfade" else None
         tone = grade.ffmpeg_filters(c.grade, grade.write_cube(c.grade, workdir / f"grade_{i}.cube"))
+        edges, framed, keys = cut_edges(m, c.crop_rect, c.crop) if c.crop_rect else (None, m, c.crop)
         v = [
             f"trim=start={start}:end={end}", f"setpts=(PTS-STARTPTS)/{c.speed}", f"fps={fps}",
-            *tone, crop_filter(m, c.crop, out_w, out_h, c.zoom, c.duration), "setsar=1",
+            *tone, *([edges] if edges else []), crop_filter(framed, keys, out_w, out_h, c.zoom, c.duration),
+            *(transform_filters(c.transform, out_w, out_h) if c.transform else []), "setsar=1",
         ]
         # A dip fades this clip out to the color and the next one in from it, half the duration each.
         if dip_in:
@@ -167,7 +222,7 @@ def build_command(
             continue
         m = media[o.media_id]
         oi = media_input(Path(m.path))
-        x, y, w, h = overlay_rect(o.layout, out_w, out_h)
+        x, y, w, h = overlay_rect(o.layout, out_w, out_h, o.box)
         tone = grade.ffmpeg_filters(o.grade, grade.write_cube(o.grade, workdir / f"broll_{j}.cube"))
         chains.append(
             f"[{oi}:v]trim=start={o.src_in}:end={o.src_out},setpts=PTS-STARTPTS+{o.start:.3f}/TB,fps={fps},"
@@ -190,7 +245,7 @@ def build_command(
         chains.append(f"[{vacc}]{','.join(finish)}[vf]")
         vacc = "vf"
 
-    track = text_track(tl, out_w, out_h, workdir)
+    track = None if encode.audio_only else text_track(tl, out_w, out_h, workdir)
     if track is not None:
         ti = add_input(["-f", "concat", "-safe", "0", "-i", str(track)])
         chains.append(f"[{ti}:v]fps={fps},format=rgba[txt]")
@@ -232,10 +287,21 @@ def build_command(
     args = ["ffmpeg", "-y", "-loglevel", "error", "-progress", "pipe:1", "-nostats"]
     for opts in inputs:
         args += opts
+    if encode.audio_only:
+        # The video chain still has to end somewhere; the soundtrack is what gets written.
+        chains.append(f"[{vacc}]nullsink")
+        return args + [
+            "-filter_complex", ";".join(chains), "-map", f"[{aacc}]",
+            "-c:a", "libmp3lame", "-b:a", encode.audio_bitrate, "-t", f"{tl.duration:.3f}", str(out),
+        ]
+    preset = encode.preset or ("veryfast" if scale < 1 else "medium")
     args += [
         "-filter_complex", ";".join(chains), "-map", f"[{vacc}]", "-map", f"[{aacc}]",
-        "-c:v", "libx264", "-preset", "veryfast" if scale < 1 else "medium", "-crf", "20",
-        "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "-t", f"{tl.duration:.3f}", str(out),
+        "-c:v", "libx264", "-preset", preset,
+        *(["-b:v", f"{encode.video_mbps:g}M", "-maxrate", f"{encode.video_mbps * 1.5:g}M", "-bufsize", f"{encode.video_mbps * 2:g}M"]
+          if encode.video_mbps else ["-crf", str(encode.crf)]),
+        "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", encode.audio_bitrate, "-movflags", "+faststart", "-t", f"{tl.duration:.3f}", str(out),
     ]
     return args
 
@@ -244,25 +310,41 @@ def render(
     tl: Timeline, media: dict[str, Media], out: Path, scale: float = 1.0,
     on_progress: Callable[[float], None] | None = None,
     tracks: dict[str, Track] | None = None,
+    encode: Encode = Encode(),
+    cancel: threading.Event | None = None,
 ) -> Path:
     """Render synchronously; `on_progress` gets 0..1. Run it in a thread from async code.
 
     `tracks` holds every track referenced by clip effects; clips with effects get an OpenCV pass first.
+    Setting `cancel` kills ffmpeg and raises RenderCancelled; the partial file is removed.
     """
     out.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as workdir:
-        overrides = {
+        overrides = {} if encode.audio_only else {
             c.id: apply_effects(c, media[c.media_id], tracks or {}, Path(workdir) / f"fx_{c.id}.mp4")
             for c in tl.clips
             if c.effects
         }
-        cmd = build_command(tl, media, out, Path(workdir), scale, overrides)
+        if cancel and cancel.is_set():
+            raise RenderCancelled("Cancelled")
+        cmd = build_command(tl, media, out, Path(workdir), scale, overrides, encode)
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        assert proc.stdout is not None
+        assert proc.stdout is not None and proc.stderr is not None
+        # Drain stderr on the side, so a chatty ffmpeg can't block on a full pipe.
+        errors: list[str] = []
+        drain = threading.Thread(target=lambda: errors.append(proc.stderr.read()), daemon=True)
+        drain.start()
         for line in proc.stdout:
+            if cancel and cancel.is_set():
+                proc.kill()
+                break
             if on_progress and (m := re.match(r"out_time_us=(\d+)", line)):
                 on_progress(min(int(m.group(1)) / 1e6 / max(tl.duration, 1e-3), 1.0))
-        err = proc.stderr.read() if proc.stderr else ""
-        if proc.wait() != 0:
-            raise RenderError(err.strip()[-800:] or "ffmpeg failed")
+        code = proc.wait()
+        drain.join(timeout=5)
+        if cancel and cancel.is_set():
+            out.unlink(missing_ok=True)
+            raise RenderCancelled("Cancelled")
+        if code != 0:
+            raise RenderError("".join(errors).strip()[-800:] or "ffmpeg failed")
     return out

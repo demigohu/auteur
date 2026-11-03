@@ -4,7 +4,9 @@ import { Trash } from "@phosphor-icons/react";
 import { useEditor } from "@/lib/store";
 import { cropAt, upsertKey, volumeAt } from "@/lib/keys";
 import { clipDuration, clipStarts } from "@/lib/time";
-import type { AudioItem, Clip, CropKey, Overlay, Transition, VolumeKey } from "@/lib/timeline";
+import type { AudioItem, Clip, CropKey, Overlay, Transform, Transition, VolumeKey } from "@/lib/timeline";
+import { cropWindow } from "@/lib/crop";
+import { IDENTITY } from "@/lib/transform";
 
 const SPEEDS = [0.25, 0.5, 0.75, 1, 1.5, 2, 4];
 const TRANSITIONS: { id: Transition["kind"] | "cut"; label: string }[] = [
@@ -73,6 +75,78 @@ function Slider(props: { id: string; label: string; value: number; min: number; 
   );
 }
 
+/** Position, size, rotation and flip in the frame; the same values the canvas handles change. */
+export function ClipTransform({ clip, locked }: { clip: Clip; locked: boolean }) {
+  const applyOps = useEditor((s) => s.applyOps);
+  const t = clip.transform ?? IDENTITY;
+  const set = (label: string, patch: Partial<Transform>) =>
+    applyOps(label, [{ op: "set_transform", clip_id: clip.id, transform: { ...t, ...patch } }]);
+  return (
+    <fieldset disabled={locked} className="space-y-3 disabled:opacity-50">
+      <legend className="display mb-2.5 text-[19px] text-text">Position and size</legend>
+      <p className="text-[11px] text-faint">Drag the clip on the preview: the box moves it, the corner scales, the round handle rotates (Shift snaps to 15°).</p>
+      <Slider id="tf-x" label="Left / right" value={t.x} min={-1} max={1} step={0.01} format={(v) => `${Math.round(v * 100)}%`} onCommit={(v) => set("Move clip", { x: v })} />
+      <Slider id="tf-y" label="Up / down" value={t.y} min={-1} max={1} step={0.01} format={(v) => `${Math.round(v * 100)}%`} onCommit={(v) => set("Move clip", { y: v })} />
+      <Slider id="tf-scale" label="Scale" value={t.scale} min={0.1} max={4} step={0.01} format={(v) => `${Math.round(v * 100)}%`} onCommit={(v) => set("Scale clip", { scale: v })} />
+      <Slider id="tf-rotation" label="Rotation" value={t.rotation} min={-180} max={180} step={1} format={(v) => `${Math.round(v)}°`} onCommit={(v) => set("Rotate clip", { rotation: v })} />
+      <div className="flex flex-wrap gap-1.5">
+        <button type="button" aria-pressed={t.flip_h} onClick={() => set("Flip horizontally", { flip_h: !t.flip_h })} className={TOGGLE(t.flip_h)}>
+          Flip ↔
+        </button>
+        <button type="button" aria-pressed={t.flip_v} onClick={() => set("Flip vertically", { flip_v: !t.flip_v })} className={TOGGLE(t.flip_v)}>
+          Flip ↕
+        </button>
+        {clip.transform && (
+          <button
+            type="button"
+            onClick={() => applyOps("Reset position", [{ op: "set_transform", clip_id: clip.id, transform: null }])}
+            className="ml-auto rounded-full px-2.5 py-0.5 font-mono text-[11px] text-muted underline-offset-2 hover:text-text hover:underline"
+          >
+            Reset
+          </button>
+        )}
+      </div>
+    </fieldset>
+  );
+}
+
+const TOGGLE = (on: boolean) =>
+  `rounded-full border-2 px-2.5 py-0.5 font-mono text-[11px] transition active:scale-[0.97] ${on ? "border-edge bg-text text-bg" : "border-line text-muted hover:border-line-strong hover:text-text"}`;
+
+/** Cut the edges of the source; what is left fills the frame. */
+export function ClipCrop({ clip, locked }: { clip: Clip; locked: boolean }) {
+  const applyOps = useEditor((s) => s.applyOps);
+  const r = clip.crop_rect ?? { left: 0, right: 0, top: 0, bottom: 0 };
+  const set = (side: keyof typeof r, v: number) => {
+    const next = { ...r, [side]: v };
+    // Keep at least a tenth of the picture: shrink the opposite edge's share if needed.
+    const other = { left: "right", right: "left", top: "bottom", bottom: "top" }[side] as keyof typeof r;
+    next[other] = Math.min(next[other], Number((0.9 - v).toFixed(3)));
+    applyOps("Crop", [{ op: "set_crop_rect", clip_id: clip.id, crop_rect: next }]);
+  };
+  const pct = (v: number) => `${Math.round(v * 100)}%`;
+  return (
+    <fieldset disabled={locked} className="space-y-3 disabled:opacity-50">
+      <legend className="display mb-2.5 text-[19px] text-text">Crop</legend>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+        <Slider id="crop-left" label="Left" value={r.left} min={0} max={0.9} step={0.01} format={pct} onCommit={(v) => set("left", v)} />
+        <Slider id="crop-right" label="Right" value={r.right} min={0} max={0.9} step={0.01} format={pct} onCommit={(v) => set("right", v)} />
+        <Slider id="crop-top" label="Top" value={r.top} min={0} max={0.9} step={0.01} format={pct} onCommit={(v) => set("top", v)} />
+        <Slider id="crop-bottom" label="Bottom" value={r.bottom} min={0} max={0.9} step={0.01} format={pct} onCommit={(v) => set("bottom", v)} />
+      </div>
+      {clip.crop_rect && (
+        <button
+          type="button"
+          onClick={() => applyOps("Reset crop", [{ op: "set_crop_rect", clip_id: clip.id, crop_rect: null }])}
+          className="rounded-full px-2.5 py-0.5 font-mono text-[11px] text-muted underline-offset-2 hover:text-text hover:underline"
+        >
+          Show the whole picture
+        </button>
+      )}
+    </fieldset>
+  );
+}
+
 /** Speed, transition into the clip, Ken Burns zoom and volume. */
 export function ClipMotion({ clip, isFirst, locked }: { clip: Clip; isFirst: boolean; locked: boolean }) {
   const applyOps = useEditor((s) => s.applyOps);
@@ -95,7 +169,7 @@ export function ClipMotion({ clip, isFirst, locked }: { clip: Clip; isFirst: boo
           options={TRANSITIONS.filter((t) => !(isFirst && t.id === "crossfade")).map((t) => ({ value: t.id, label: t.label }))}
           value={kind}
           onChange={(v) =>
-            applyOps(`Transisi ${v}`, [
+            applyOps(`Transition: ${v}`, [
               {
                 op: "set_transition",
                 clip_id: clip.id,
@@ -196,9 +270,14 @@ export function OverlayInspector({ item, locked }: { item: Overlay; locked: bool
         <p className="text-xs text-text">Position</p>
         <Segmented
           options={LAYOUTS.map((l) => ({ value: l.id, label: l.label }))}
-          value={item.layout}
-          onChange={(v) => applyOps("B-roll position", [{ op: "update_overlay", overlay_id: item.id, layout: v }])}
+          value={item.box ? null : item.layout}
+          onChange={(v) => v && applyOps("B-roll position", [{ op: "update_overlay", overlay_id: item.id, layout: v }])}
         />
+        <p className="text-[11px] text-faint">
+          {item.box
+            ? `Placed by hand at ${Math.round(item.box.scale * 100)}% size. Pick a preset to snap it back.`
+            : "Or drag it on the preview; the corner resizes it."}
+        </p>
       </div>
       <button
         type="button"
@@ -223,7 +302,7 @@ export function MusicInspector({ item, locked }: { item: AudioItem; locked: bool
   return (
     <fieldset disabled={locked} className="space-y-4 disabled:opacity-50">
       <div>
-        <p className="truncate text-sm font-medium text-text">Musik: {media?.name}</p>
+        <p className="truncate text-sm font-medium text-text">Music: {media?.name}</p>
         <p className="mt-0.5 font-mono text-[11px] text-faint">{bpm ? `${bpm} BPM` : "no tempo detected"}</p>
       </div>
       <Slider id="music-volume" label="Volume" value={item.volume} min={0} max={2} step={0.05} format={(v) => `${Math.round(v * 100)}%`} onCommit={(v) => update({ volume: v }, "Music volume")} />
@@ -365,8 +444,9 @@ export function FramePosition({ clip, locked }: { clip: Clip; locked: boolean })
     return clipStarts(clips)[clips.findIndex((c) => c.id === clip.id)] ?? 0;
   });
   if (!media || !media.width) return null;
-  const [ow, oh] = aspect === "16:9" ? [16, 9] : aspect === "9:16" ? [9, 16] : [1, 1];
-  const srcRatio = media.width / media.height;
+  const [ow, oh] = aspect.split(":").map(Number);
+  const [, , ew, eh] = cropWindow(clip.crop_rect, media.width, media.height);
+  const srcRatio = ew / eh; // what is left after cutting the edges is what gets panned
   const outRatio = ow / oh;
   if (Math.abs(srcRatio - outRatio) < 0.01) return null;
   const horizontal = srcRatio > outRatio;

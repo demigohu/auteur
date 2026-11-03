@@ -8,6 +8,8 @@ import type { AudioItem, Clip, Grade, Overlay, Timeline, Transition } from "@/li
 import { isIdentity, NEUTRAL_GRADE, saturationMatrix, tableValues, vignetteAt } from "@/lib/grade";
 import { cropAt, volumeAt } from "@/lib/keys";
 import { boxAt, type NormBox, type TrackData } from "@/lib/tracks";
+import { cropWindow } from "@/lib/crop";
+import { overlayRect } from "@/lib/overlay";
 import { TextLayer } from "./TextLayer";
 
 export type CompositionProps = {
@@ -75,15 +77,22 @@ function ClipLayer(props: {
   const dipOutAmount = joins.dipOut ? ramp((local - (duration - joins.dipOut.duration / 2)) / (joins.dipOut.duration / 2)) : 0;
   const audioIn = joins.crossIn ? ramp(local / joins.crossIn) : joins.dipIn ? 1 - dipInAmount : 1;
   const audioOut = joins.crossOut ? ramp((duration - local) / joins.crossOut) : joins.dipOut ? 1 - dipOutAmount : 1;
+  const tf = raw ? null : clip.transform;
+  // Same order as render.transform_filters: flip and scale, rotate, then move (CSS applies right to left).
+  const placed = tf
+    ? `translate(${tf.x * 100}%, ${tf.y * 100}%) rotate(${tf.rotation}deg) scale(${tf.scale * (tf.flip_h ? -1 : 1)}, ${tf.scale * (tf.flip_v ? -1 : 1)})`
+    : undefined;
   const zoom = clip.zoom ? clip.zoom.start + (clip.zoom.end - clip.zoom.start) * Math.min(local / Math.max(duration, 1e-3), 1) : 1;
 
-  // Cover-fit the source into the output frame, then pan to the crop center (mirrors crop_filter()).
-  const scale = Math.max(W / media.width, H / media.height);
+  // Cut the edges (crop_rect), cover-fit what is left into the output frame, then pan to the crop center
+  // inside it (mirrors render.cut_edges + crop_filter()).
+  const [ex, ey, ew, eh] = cropWindow(raw ? null : clip.crop_rect, media.width, media.height);
+  const scale = Math.max(W / ew, H / eh);
   const vw = media.width * scale;
   const vh = media.height * scale;
   const { cx, cy } = cropAt(clip.crop, frame / fps);
-  const left = Math.min(0, Math.max(W - vw, W / 2 - cx * vw));
-  const top = Math.min(0, Math.max(H - vh, H / 2 - cy * vh));
+  const left = Math.min(-ex * scale, Math.max(W - (ex + ew) * scale, W / 2 - cx * vw));
+  const top = Math.min(-ey * scale, Math.max(H - (ey + eh) * scale, H / 2 - cy * vh));
   const t = clip.src_in + local * clip.speed;
   const filterId = `grade-${clip.id}`;
   // Source-normalized box -> output pixels, through the same cover + pan as the video itself.
@@ -96,8 +105,9 @@ function ClipLayer(props: {
 
   const audible = !clip.muted && clip.speed === 1 && clip.volume > 0;
   return (
-    <AbsoluteFill style={{ overflow: "hidden", backgroundColor: "#09090b", opacity }}>
-     <AbsoluteFill style={{ transform: zoom !== 1 ? `scale(${zoom})` : undefined }}>
+    <AbsoluteFill style={{ overflow: "hidden", backgroundColor: "#000", opacity }}>
+     <AbsoluteFill style={{ transform: placed }}>
+     <AbsoluteFill style={{ overflow: "hidden", transform: zoom !== 1 ? `scale(${zoom})` : undefined }}>
       <Video
         src={fileUrl(media.preview_url)}
         trimBefore={Math.round(clip.src_in * fps)}
@@ -111,7 +121,6 @@ function ClipLayer(props: {
         }}
       />
       {!isIdentity(clip.grade) && <GradeFilter id={filterId} grade={clip.grade} />}
-      {clip.grade.vignette > 0 && <Vignette grade={clip.grade} />}
       {clip.effects.map((e, i) => {
         const track = tracks[e.track_id];
         if (!track) return null;
@@ -136,6 +145,9 @@ function ClipLayer(props: {
           }),
         )}
      </AbsoluteFill>
+     </AbsoluteFill>
+      {/* After zoom and transform, over the whole frame, as the export multiplies it in. */}
+      {clip.grade.vignette > 0 && <Vignette grade={clip.grade} />}
       {joins.dipIn && dipInAmount > 0 && (
         <AbsoluteFill style={{ background: joins.dipIn.kind === "dip_black" ? "#000" : "#fff", opacity: dipInAmount }} />
       )}
@@ -146,25 +158,16 @@ function ClipLayer(props: {
   );
 }
 
-// Mirrors render.overlay_rect: picture-in-picture is 34% of the frame, in a corner.
-const LAYOUT_BOX: Record<string, [number, number]> = {
-  kanan_atas: [0.63, 0.04], kiri_atas: [0.03, 0.04], kanan_bawah: [0.63, 0.62], kiri_bawah: [0.03, 0.62],
-};
-const PIP_SCALE = 0.34;
-
 function OverlayLayer({ item, media }: { item: Overlay; media: MediaView }) {
   const { fps, width: W, height: H } = useVideoConfig();
-  const full = item.layout === "full";
-  const w = full ? W : Math.round((W * PIP_SCALE) / 2) * 2;
-  const h = full ? H : Math.round((H * PIP_SCALE) / 2) * 2;
-  const [fx, fy] = full ? [0, 0] : LAYOUT_BOX[item.layout];
+  const [x, y, w, h] = overlayRect(item, W, H);
   // Cover-fit, centered: the same window crop_filter takes without crop keys.
   const scale = Math.max(w / media.width, h / media.height);
   const vw = media.width * scale;
   const vh = media.height * scale;
   const filterId = `grade-${item.id}`;
   return (
-    <div style={{ position: "absolute", left: Math.round(W * fx), top: Math.round(H * fy), width: w, height: h, overflow: "hidden" }}>
+    <div data-overlay-id={item.id} style={{ position: "absolute", left: x, top: y, width: w, height: h, overflow: "hidden" }}>
       <Video
         src={fileUrl(media.preview_url)}
         trimBefore={Math.round(item.src_in * fps)}

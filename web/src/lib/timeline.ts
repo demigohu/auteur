@@ -27,6 +27,8 @@ export interface Schema {
     | SetSpeed
     | SetTransition
     | SetZoom
+    | SetTransform
+    | SetCropRect
     | SetVolume
     | AddOverlay
     | UpdateOverlay
@@ -39,7 +41,8 @@ export interface Schema {
     | DuplicateClip
     | SetVolumeKeys
     | SpeedRamp
-    | PasteClips;
+    | PasteClips
+    | SetLinkage;
 }
 /**
  * This interface was referenced by `Schema`'s JSON-Schema
@@ -94,19 +97,27 @@ export interface Media {
    * Storyboard scene this video was rendered from (made in code, silent)
    */
   scene_id: string | null;
+  /**
+   * Made from an uploaded picture: a still held as a silent 60s video, or a GIF looped to at least 5s
+   */
+  image: ("still" | "gif") | null;
 }
 /**
  * This interface was referenced by `Schema`'s JSON-Schema
  * via the `definition` "Timeline".
  */
 export interface Timeline {
-  aspect: "16:9" | "9:16" | "1:1";
+  aspect: "16:9" | "9:16" | "1:1" | "4:5";
   fps: number;
   clips: Clip[];
   overlays: Overlay[];
   texts: TextItem[];
   audio: AudioItem[];
   finish: Finish;
+  /**
+   * Text and B-roll move with the main-track clip they start on (music stays put)
+   */
+  linkage: boolean;
 }
 /**
  * This interface was referenced by `Schema`'s JSON-Schema
@@ -126,8 +137,16 @@ export interface Clip {
    * Empty = centered crop; times are clip-local timeline seconds
    */
   crop: CropKey[];
+  /**
+   * Edges of the source cut off before it fills the frame
+   */
+  crop_rect: CropRect | null;
   follow: Follow | null;
   zoom: Zoom | null;
+  /**
+   * Position, scale, rotation and flip in the frame; None = fill the frame
+   */
+  transform: Transform | null;
   /**
    * Transition into this clip from the previous one
    */
@@ -213,6 +232,18 @@ export interface CropKey {
   cy: number;
 }
 /**
+ * Edges cut off the source before it fills the frame, as fractions of its width and height.
+ *
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "CropRect".
+ */
+export interface CropRect {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+/**
  * The tracked object a clip's crop keys follow; the checker verifies it stays in frame.
  *
  * This interface was referenced by `Schema`'s JSON-Schema
@@ -231,6 +262,30 @@ export interface Follow {
 export interface Zoom {
   start: number;
   end: number;
+}
+/**
+ * Where the (cropped) frame sits in the output: scaled and rotated about its center, flipped, then
+ * moved. Uncovered parts of the output are black. Applied after crop and zoom.
+ *
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "Transform".
+ */
+export interface Transform {
+  /**
+   * Horizontal offset as a fraction of the output width (+ = right)
+   */
+  x: number;
+  /**
+   * Vertical offset as a fraction of the output height (+ = down)
+   */
+  y: number;
+  scale: number;
+  /**
+   * Degrees, clockwise
+   */
+  rotation: number;
+  flip_h: boolean;
+  flip_v: boolean;
 }
 /**
  * How a clip enters from the previous one. A crossfade overlaps the two clips by `duration`;
@@ -306,8 +361,32 @@ export interface Overlay {
    * full covers the frame; the corners are picture-in-picture
    */
   layout: "full" | "kanan_atas" | "kiri_atas" | "kanan_bawah" | "kiri_bawah";
+  /**
+   * Free position and size; overrides `layout` when set
+   */
+  box: OverlayBox | null;
   grade: Grade;
   muted: boolean;
+}
+/**
+ * A B-roll picture placed freely: its center, and its size as a fraction of the frame (same shape).
+ *
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "OverlayBox".
+ */
+export interface OverlayBox {
+  /**
+   * Center, as a fraction of the output width
+   */
+  x: number;
+  /**
+   * Center, as a fraction of the output height
+   */
+  y: number;
+  /**
+   * Width and height as a fraction of the frame's
+   */
+  scale: number;
 }
 /**
  * This interface was referenced by `Schema`'s JSON-Schema
@@ -410,6 +489,8 @@ export interface Commit {
     | SetSpeed
     | SetTransition
     | SetZoom
+    | SetTransform
+    | SetCropRect
     | SetVolume
     | AddOverlay
     | UpdateOverlay
@@ -423,6 +504,7 @@ export interface Commit {
     | SetVolumeKeys
     | SpeedRamp
     | PasteClips
+    | SetLinkage
   )[];
   run_id: string | null;
   at: string;
@@ -578,7 +660,7 @@ export interface SetMuted {
  */
 export interface SetAspect {
   op: "set_aspect";
-  aspect: "16:9" | "9:16" | "1:1";
+  aspect: "16:9" | "9:16" | "1:1" | "4:5";
 }
 /**
  * This interface was referenced by `Schema`'s JSON-Schema
@@ -615,6 +697,30 @@ export interface SetZoom {
 }
 /**
  * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "SetTransform".
+ */
+export interface SetTransform {
+  op: "set_transform";
+  clip_id: string;
+  /**
+   * null resets the clip to fill the frame
+   */
+  transform: Transform | null;
+}
+/**
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "SetCropRect".
+ */
+export interface SetCropRect {
+  op: "set_crop_rect";
+  clip_id: string;
+  /**
+   * null shows the whole source again
+   */
+  crop_rect: CropRect | null;
+}
+/**
+ * This interface was referenced by `Schema`'s JSON-Schema
  * via the `definition` "SetVolume".
  */
 export interface SetVolume {
@@ -648,7 +754,14 @@ export interface UpdateOverlay {
   src_in: number | null;
   src_out: number | null;
   start: number | null;
+  /**
+   * A preset place; clears any free `box`
+   */
   layout: ("full" | "kanan_atas" | "kiri_atas" | "kanan_bawah" | "kiri_bawah") | null;
+  /**
+   * Free position and size (drag on the canvas)
+   */
+  box: OverlayBox | null;
   grade: Grade | null;
 }
 /**
@@ -776,6 +889,14 @@ export interface PasteClips {
    * @minItems 1
    */
   clips: [Clip, ...Clip[]];
+}
+/**
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "SetLinkage".
+ */
+export interface SetLinkage {
+  op: "set_linkage";
+  linkage: boolean;
 }
 /**
  * This interface was referenced by `Schema`'s JSON-Schema

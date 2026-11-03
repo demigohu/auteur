@@ -16,10 +16,13 @@ class EventBus:
         self._subscribers: dict[str, set[asyncio.Queue[Event]]] = defaultdict(set)
         self._replay: dict[str, list[Event]] = defaultdict(list)
 
-    def publish(self, project_id: str, event: Event) -> None:
+    def publish(self, project_id: str, event: Event, replay: bool = True) -> None:
+        """`replay=False` for events outside agent runs (export progress): the project view carries
+        their latest state, so a late subscriber doesn't need the history."""
         if event.get("type") == "run_started":
             self._replay[project_id] = []
-        self._replay[project_id].append(event)
+        if replay:
+            self._replay[project_id].append(event)
         for q in self._subscribers[project_id]:
             q.put_nowait(event)
         if event.get("type") == "run_finished":

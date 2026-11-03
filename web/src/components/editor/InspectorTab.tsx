@@ -6,7 +6,7 @@ import { useEditor } from "@/lib/store";
 import { clipDuration } from "@/lib/time";
 import type { Clip, TextItem } from "@/lib/timeline";
 import { ColorPanel } from "./ColorPanel";
-import { ClipMotion, FinishPanel, FramePosition, MusicInspector, OverlayInspector } from "./MontagePanels";
+import { ClipCrop, ClipMotion, ClipTransform, FinishPanel, FramePosition, MusicInspector, OverlayInspector } from "./MontagePanels";
 
 
 export function InspectorTab() {
@@ -88,6 +88,11 @@ function ClipInspector({ clip, locked }: { clip: Clip; locked: boolean }) {
       </fieldset>
 
       <FramePosition clip={clip} locked={locked} />
+
+      {/* Keyed by the values: the sliders are uncontrolled, and canvas drags change them from outside. */}
+      <ClipTransform key={`${clip.id}-${JSON.stringify(clip.transform)}`} clip={clip} locked={locked} />
+
+      <ClipCrop key={`crop-${clip.id}-${JSON.stringify(clip.crop_rect)}`} clip={clip} locked={locked} />
 
       <ClipMotion clip={clip} isFirst={isFirst} locked={locked} />
 
@@ -178,7 +183,7 @@ function TextInspector({ item, locked }: { item: TextItem; locked: boolean }) {
     <fieldset disabled={locked} className="space-y-5 disabled:opacity-50">
       <div className="space-y-1.5">
         <label htmlFor="text-body" className="label text-[10px] text-muted">
-          Teks ({item.style})
+          Text ({item.style})
         </label>
         <textarea
           id="text-body"

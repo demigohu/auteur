@@ -4,8 +4,18 @@ import { Plus, UploadSimple } from "@phosphor-icons/react";
 import { motion, useReducedMotion } from "motion/react";
 import { useRef, useState } from "react";
 import { fileUrl, type MediaView } from "@/lib/api";
+import { clipLength, groupOf, isUploadable, type MediaGroup, UPLOAD_ACCEPT } from "@/lib/media";
 import { useEditor } from "@/lib/store";
+import { MoreSources } from "./MoreSources";
 import { MEDIA_DRAG_TYPE } from "./TimelinePanel";
+
+const GROUPS: { id: MediaGroup | "all"; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "footage", label: "Footage" },
+  { id: "pictures", label: "Pictures" },
+  { id: "scenes", label: "Scenes" },
+  { id: "audio", label: "Audio" },
+];
 
 export function MediaBin() {
   const project = useEditor((s) => s.project);
@@ -14,11 +24,12 @@ export function MediaBin() {
   const pending = useEditor((s) => s.pending);
   const input = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
+  const [group, setGroup] = useState<MediaGroup | "all">("all");
   if (!project) return null;
 
   const uploading = pending?.startsWith("Uploading") ? pending : null;
-  // The 300s budget is for footage; scenes made in code don't count.
-  const total = project.media.filter((m) => m.kind === "video" && !m.scene_id).reduce((s, m) => s + m.duration, 0);
+  // The 300s budget is for footage; pictures and scenes made in code don't count (same rule as the API).
+  const total = project.media.filter((m) => groupOf(m) === "footage").reduce((s, m) => s + m.duration, 0);
   // Scenes show in storyboard order, latest render only (older renders stay in the project for undo).
   const sceneIndex = new Map((project.storyboard?.scenes ?? []).map((s, i) => [s.media_id, i]));
   const shown = project.media
@@ -26,8 +37,10 @@ export function MediaBin() {
     .filter(({ m }) => !m.scene_id || sceneIndex.has(m.id))
     .sort((a, b) => a.key - b.key)
     .map(({ m }) => m);
+  const present = new Set(shown.map(groupOf));
+  const visible = group === "all" || !present.has(group) ? shown : shown.filter((m) => groupOf(m) === group);
   const pick = (files: FileList | null) =>
-    files && upload(Array.from(files).filter((f) => f.type.startsWith("video/") || f.type.startsWith("audio/")));
+    files && upload(Array.from(files).filter(isUploadable));
 
   return (
     <aside
@@ -48,8 +61,24 @@ export function MediaBin() {
         <span className="font-mono text-[11px] text-faint">{Math.round(total)}s / 300s</span>
       </div>
 
+      {present.size > 1 && (
+        <div role="radiogroup" aria-label="Show media" className="flex shrink-0 flex-wrap gap-1 border-b-2 border-edge px-3 py-2">
+          {GROUPS.filter((g) => g.id === "all" || present.has(g.id)).map((g) => (
+            <button
+              key={g.id}
+              role="radio"
+              aria-checked={group === g.id}
+              onClick={() => setGroup(g.id)}
+              className={`rounded-full px-2 py-0.5 font-mono text-[10px] transition-colors ${group === g.id ? "bg-text text-bg" : "text-muted hover:text-text"}`}
+            >
+              {g.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
-        {shown.map((m) => (
+        {visible.map((m) => (
           <MediaCard
             key={m.id}
             media={m}
@@ -57,7 +86,7 @@ export function MediaBin() {
             onAdd={() =>
               m.kind === "audio"
                 ? applyOps(`Music: ${m.name}`, [{ op: "add_audio", media_id: m.id }])
-                : applyOps(`Add ${m.name}`, [{ op: "add_clip", media_id: m.id, src_in: 0, src_out: Number(m.duration.toFixed(3)) }])
+                : applyOps(`Add ${m.name}`, [{ op: "add_clip", media_id: m.id, src_in: 0, src_out: clipLength(m) }])
             }
           />
         ))}
@@ -72,13 +101,14 @@ export function MediaBin() {
           <span className="grid size-9 place-items-center rounded-full border-2 border-ink bg-pink text-ink">
             <UploadSimple size={16} weight="bold" />
           </span>
-          <span className="text-xs font-semibold text-text">Upload footage or music</span>
-          <span className="text-[11px] text-faint">MP4, MOV, MP3, WAV. Up to 5 minutes of footage</span>
+          <span className="text-xs font-semibold text-text">Upload footage, music or pictures</span>
+          <span className="text-[11px] text-faint">MP4, MOV, WebM, MP3, WAV, PNG, JPG, GIF. Up to 5 minutes of footage</span>
         </button>
+        <MoreSources projectId={project.id} disabled={Boolean(pending)} />
         <input
           ref={input}
           type="file"
-          accept="video/mp4,video/quicktime,audio/*"
+          accept={UPLOAD_ACCEPT}
           multiple
           hidden
           onChange={(e) => {
@@ -118,9 +148,9 @@ function MediaCard({ media, locked, onAdd }: { media: MediaView; locked: boolean
           alt={media.name}
           className={`h-full w-full ${portrait || audio ? "object-contain" : "object-cover"}`}
         />
-        {media.scene_id && (
+        {(media.scene_id || media.image) && (
           <span className="label absolute top-1.5 left-1.5 rounded-full border-2 border-ink bg-sun px-1.5 py-px text-[9px] text-ink">
-            Code
+            {media.scene_id ? "Code" : media.image === "gif" ? "GIF" : "Picture"}
           </span>
         )}
         <button
@@ -135,7 +165,7 @@ function MediaCard({ media, locked, onAdd }: { media: MediaView; locked: boolean
       </div>
       <div className="flex items-center gap-2 border-t-2 border-edge px-2.5 py-2">
         <span className="truncate text-xs font-semibold text-text">{media.name}</span>
-        <span className="ml-auto shrink-0 font-mono text-[10px] text-faint">{media.duration.toFixed(1)}s</span>
+        <span className="ml-auto shrink-0 font-mono text-[10px] text-faint">{media.image === "still" ? "still" : `${media.duration.toFixed(1)}s`}</span>
       </div>
       </div>
     </motion.div>

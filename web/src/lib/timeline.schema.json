@@ -555,6 +555,18 @@
           },
           "type": "array"
         },
+        "crop_rect": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CropRect"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Edges of the source cut off before it fills the frame"
+        },
         "follow": {
           "anyOf": [
             {
@@ -576,6 +588,18 @@
             }
           ],
           "default": null
+        },
+        "transform": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Transform"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Position, scale, rotation and flip in the frame; None = fill the frame"
         },
         "transition": {
           "anyOf": [
@@ -628,8 +652,10 @@
         "speed",
         "grade",
         "crop",
+        "crop_rect",
         "follow",
         "zoom",
+        "transform",
         "transition",
         "effects",
         "muted",
@@ -672,12 +698,15 @@
                 "paste_clips": "#/$defs/PasteClips",
                 "set_aspect": "#/$defs/SetAspect",
                 "set_crop": "#/$defs/SetCrop",
+                "set_crop_rect": "#/$defs/SetCropRect",
                 "set_effects": "#/$defs/SetEffects",
                 "set_finish": "#/$defs/SetFinish",
                 "set_fps": "#/$defs/SetFps",
                 "set_grade": "#/$defs/SetGrade",
+                "set_linkage": "#/$defs/SetLinkage",
                 "set_muted": "#/$defs/SetMuted",
                 "set_speed": "#/$defs/SetSpeed",
+                "set_transform": "#/$defs/SetTransform",
                 "set_transition": "#/$defs/SetTransition",
                 "set_volume": "#/$defs/SetVolume",
                 "set_volume_keys": "#/$defs/SetVolumeKeys",
@@ -741,6 +770,12 @@
                 "$ref": "#/$defs/SetZoom"
               },
               {
+                "$ref": "#/$defs/SetTransform"
+              },
+              {
+                "$ref": "#/$defs/SetCropRect"
+              },
+              {
                 "$ref": "#/$defs/SetVolume"
               },
               {
@@ -778,6 +813,9 @@
               },
               {
                 "$ref": "#/$defs/PasteClips"
+              },
+              {
+                "$ref": "#/$defs/SetLinkage"
               }
             ]
           },
@@ -839,6 +877,44 @@
         "cy"
       ],
       "title": "CropKey",
+      "type": "object"
+    },
+    "CropRect": {
+      "additionalProperties": false,
+      "description": "Edges cut off the source before it fills the frame, as fractions of its width and height.",
+      "properties": {
+        "left": {
+          "default": 0,
+          "maximum": 0.9,
+          "minimum": 0,
+          "type": "number"
+        },
+        "right": {
+          "default": 0,
+          "maximum": 0.9,
+          "minimum": 0,
+          "type": "number"
+        },
+        "top": {
+          "default": 0,
+          "maximum": 0.9,
+          "minimum": 0,
+          "type": "number"
+        },
+        "bottom": {
+          "default": 0,
+          "maximum": 0.9,
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "left",
+        "right",
+        "top",
+        "bottom"
+      ],
+      "title": "CropRect",
       "type": "object"
     },
     "Delete": {
@@ -1236,6 +1312,22 @@
           ],
           "default": null,
           "description": "Storyboard scene this video was rendered from (made in code, silent)"
+        },
+        "image": {
+          "anyOf": [
+            {
+              "enum": [
+                "still",
+                "gif"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Made from an uploaded picture: a still held as a silent 60s video, or a GIF looped to at least 5s"
         }
       },
       "required": [
@@ -1249,7 +1341,8 @@
         "has_audio",
         "kind",
         "recorded_at",
-        "scene_id"
+        "scene_id",
+        "image"
       ],
       "title": "Media",
       "type": "object"
@@ -1312,6 +1405,18 @@
           ],
           "type": "string"
         },
+        "box": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OverlayBox"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Free position and size; overrides `layout` when set"
+        },
         "grade": {
           "$ref": "#/$defs/Grade"
         },
@@ -1327,10 +1432,45 @@
         "src_out",
         "start",
         "layout",
+        "box",
         "grade",
         "muted"
       ],
       "title": "Overlay",
+      "type": "object"
+    },
+    "OverlayBox": {
+      "additionalProperties": false,
+      "description": "A B-roll picture placed freely: its center, and its size as a fraction of the frame (same shape).",
+      "properties": {
+        "x": {
+          "default": 0.5,
+          "description": "Center, as a fraction of the output width",
+          "maximum": 1.5,
+          "minimum": -0.5,
+          "type": "number"
+        },
+        "y": {
+          "default": 0.5,
+          "description": "Center, as a fraction of the output height",
+          "maximum": 1.5,
+          "minimum": -0.5,
+          "type": "number"
+        },
+        "scale": {
+          "default": 0.34,
+          "description": "Width and height as a fraction of the frame's",
+          "maximum": 1.5,
+          "minimum": 0.05,
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "scale"
+      ],
+      "title": "OverlayBox",
       "type": "object"
     },
     "PasteClips": {
@@ -1499,7 +1639,8 @@
           "enum": [
             "16:9",
             "9:16",
-            "1:1"
+            "1:1",
+            "4:5"
           ],
           "type": "string"
         }
@@ -1548,6 +1689,37 @@
         "follow"
       ],
       "title": "SetCrop",
+      "type": "object"
+    },
+    "SetCropRect": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "set_crop_rect",
+          "default": "set_crop_rect",
+          "type": "string"
+        },
+        "clip_id": {
+          "type": "string"
+        },
+        "crop_rect": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CropRect"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "null shows the whole source again"
+        }
+      },
+      "required": [
+        "op",
+        "clip_id",
+        "crop_rect"
+      ],
+      "title": "SetCropRect",
       "type": "object"
     },
     "SetEffects": {
@@ -1680,6 +1852,25 @@
       "title": "SetGrade",
       "type": "object"
     },
+    "SetLinkage": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "set_linkage",
+          "default": "set_linkage",
+          "type": "string"
+        },
+        "linkage": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "op",
+        "linkage"
+      ],
+      "title": "SetLinkage",
+      "type": "object"
+    },
     "SetMuted": {
       "additionalProperties": false,
       "properties": {
@@ -1727,6 +1918,37 @@
         "speed"
       ],
       "title": "SetSpeed",
+      "type": "object"
+    },
+    "SetTransform": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "set_transform",
+          "default": "set_transform",
+          "type": "string"
+        },
+        "clip_id": {
+          "type": "string"
+        },
+        "transform": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Transform"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "null resets the clip to fill the frame"
+        }
+      },
+      "required": [
+        "op",
+        "clip_id",
+        "transform"
+      ],
+      "title": "SetTransform",
       "type": "object"
     },
     "SetTransition": {
@@ -2155,7 +2377,8 @@
           "enum": [
             "16:9",
             "9:16",
-            "1:1"
+            "1:1",
+            "4:5"
           ],
           "type": "string"
         },
@@ -2189,6 +2412,11 @@
         },
         "finish": {
           "$ref": "#/$defs/Finish"
+        },
+        "linkage": {
+          "default": true,
+          "description": "Text and B-roll move with the main-track clip they start on (music stays put)",
+          "type": "boolean"
         }
       },
       "required": [
@@ -2198,7 +2426,8 @@
         "overlays",
         "texts",
         "audio",
-        "finish"
+        "finish",
+        "linkage"
       ],
       "title": "Timeline",
       "type": "object"
@@ -2230,6 +2459,57 @@
         "object_ids"
       ],
       "title": "TrackInfo",
+      "type": "object"
+    },
+    "Transform": {
+      "additionalProperties": false,
+      "description": "Where the (cropped) frame sits in the output: scaled and rotated about its center, flipped, then\nmoved. Uncovered parts of the output are black. Applied after crop and zoom.",
+      "properties": {
+        "x": {
+          "default": 0,
+          "description": "Horizontal offset as a fraction of the output width (+ = right)",
+          "maximum": 1,
+          "minimum": -1,
+          "type": "number"
+        },
+        "y": {
+          "default": 0,
+          "description": "Vertical offset as a fraction of the output height (+ = down)",
+          "maximum": 1,
+          "minimum": -1,
+          "type": "number"
+        },
+        "scale": {
+          "default": 1,
+          "maximum": 4,
+          "minimum": 0.1,
+          "type": "number"
+        },
+        "rotation": {
+          "default": 0,
+          "description": "Degrees, clockwise",
+          "maximum": 180,
+          "minimum": -180,
+          "type": "number"
+        },
+        "flip_h": {
+          "default": false,
+          "type": "boolean"
+        },
+        "flip_v": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "scale",
+        "rotation",
+        "flip_h",
+        "flip_v"
+      ],
+      "title": "Transform",
       "type": "object"
     },
     "Transition": {
@@ -2478,7 +2758,20 @@
               "type": "null"
             }
           ],
-          "default": null
+          "default": null,
+          "description": "A preset place; clears any free `box`"
+        },
+        "box": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OverlayBox"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Free position and size (drag on the canvas)"
         },
         "grade": {
           "anyOf": [
@@ -2499,6 +2792,7 @@
         "src_out",
         "start",
         "layout",
+        "box",
         "grade"
       ],
       "title": "UpdateOverlay",
@@ -2689,12 +2983,15 @@
           "paste_clips": "#/$defs/PasteClips",
           "set_aspect": "#/$defs/SetAspect",
           "set_crop": "#/$defs/SetCrop",
+          "set_crop_rect": "#/$defs/SetCropRect",
           "set_effects": "#/$defs/SetEffects",
           "set_finish": "#/$defs/SetFinish",
           "set_fps": "#/$defs/SetFps",
           "set_grade": "#/$defs/SetGrade",
+          "set_linkage": "#/$defs/SetLinkage",
           "set_muted": "#/$defs/SetMuted",
           "set_speed": "#/$defs/SetSpeed",
+          "set_transform": "#/$defs/SetTransform",
           "set_transition": "#/$defs/SetTransition",
           "set_volume": "#/$defs/SetVolume",
           "set_volume_keys": "#/$defs/SetVolumeKeys",
@@ -2758,6 +3055,12 @@
           "$ref": "#/$defs/SetZoom"
         },
         {
+          "$ref": "#/$defs/SetTransform"
+        },
+        {
+          "$ref": "#/$defs/SetCropRect"
+        },
+        {
           "$ref": "#/$defs/SetVolume"
         },
         {
@@ -2795,6 +3098,9 @@
         },
         {
           "$ref": "#/$defs/PasteClips"
+        },
+        {
+          "$ref": "#/$defs/SetLinkage"
         }
       ]
     }

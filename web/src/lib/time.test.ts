@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clipDuration, clipStarts, timecode, timelineDuration, toFrames } from "./time";
+import { clipDuration, clipStarts, stepTime, timecode, timelineDuration, toFrames } from "./time";
 
 const clip = (src_in: number, src_out: number, extra: object = {}) => ({ src_in, src_out, speed: 1, transition: null, ...extra });
 
@@ -28,5 +28,19 @@ describe("time", () => {
   it("ignores a crossfade on the first clip", () => {
     expect(clipStarts([clip(0, 2, { transition: { kind: "crossfade", duration: 1 } })])).toEqual([0]);
     expect(timelineDuration([])).toBe(0);
+  });
+});
+
+describe("stepTime", () => {
+  it("moves by whole frames on the frame grid", () => {
+    expect(stepTime(1, 30, 1, 10)).toBeCloseTo(31 / 30);
+    expect(stepTime(1.01, 30, -1, 10)).toBeCloseTo(29 / 30); // snaps 1.01s to frame 30 first
+    expect(stepTime(2, 24, 24, 10)).toBe(3);
+  });
+
+  it("stays inside the video", () => {
+    expect(stepTime(0, 30, -1, 10)).toBe(0);
+    expect(stepTime(9.99, 30, 5, 10)).toBeCloseTo(299 / 30); // the last frame, not the end
+    expect(stepTime(0, 30, 1, 0)).toBe(0);
   });
 });

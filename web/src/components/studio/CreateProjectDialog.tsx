@@ -1,11 +1,12 @@
 "use client";
 
-import { FilmStrip, MusicNotes, UploadSimple, X } from "@phosphor-icons/react";
+import { FilmStrip, Image as ImageIcon, MusicNotes, UploadSimple, X } from "@phosphor-icons/react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { SubmitButton } from "@/components/ui/form";
 import { ApiError, api, type NewProject } from "@/lib/api";
+import { isUploadable, UPLOAD_ACCEPT } from "@/lib/media";
 import { ASPECTS, AspectGlyph } from "./aspects";
 
 export type Draft = { name: string; aspect: NewProject["aspect"]; fps: NewProject["fps"]; brief: string; files: File[] };
@@ -71,8 +72,8 @@ function DialogBody({ draft, onClose }: { draft: Draft; onClose: () => void }) {
   }, [onClose, status]);
 
   const addFiles = (list: FileList | File[]) => {
-    const media = Array.from(list).filter((f) => f.type.startsWith("video/") || f.type.startsWith("audio/"));
-    if (media.length < Array.from(list).length) setError("Only video (MP4, MOV) and audio (MP3, WAV) files can go in.");
+    const media = Array.from(list).filter(isUploadable);
+    if (media.length < Array.from(list).length) setError("Only video (MP4, MOV, WebM), audio (MP3, WAV) and pictures (PNG, JPG, GIF) can go in.");
     setFiles((prev) => [...prev, ...media]);
   };
 
@@ -137,7 +138,7 @@ function DialogBody({ draft, onClose }: { draft: Draft; onClose: () => void }) {
 
       <fieldset className="mt-7">
         <legend className="label text-[10px] text-muted">Format</legend>
-        <div className="mt-2 grid grid-cols-3 gap-3">
+        <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-4">
           {ASPECTS.map((a) => (
             <button
               key={a.value}
@@ -198,13 +199,13 @@ function DialogBody({ draft, onClose }: { draft: Draft; onClose: () => void }) {
           </span>
           <span>
             <span className="block text-[15px] font-semibold">Drop clips here, or browse</span>
-            <span className="block text-[13px] text-muted">MP4 or MOV footage, up to 5 minutes in total. MP3 or WAV for music. You can add more later.</span>
+            <span className="block text-[13px] text-muted">MP4, MOV or WebM footage, up to 5 minutes in total. MP3 or WAV for music, PNG, JPG or GIF pictures. You can add more later.</span>
           </span>
         </button>
         <input
           ref={input}
           type="file"
-          accept="video/mp4,video/quicktime,audio/*"
+          accept={UPLOAD_ACCEPT}
           multiple
           hidden
           onChange={(e) => {
@@ -216,7 +217,7 @@ function DialogBody({ draft, onClose }: { draft: Draft; onClose: () => void }) {
           <ul className="mt-3 flex flex-wrap gap-2">
             {files.map((f, i) => (
               <li key={`${f.name}-${i}`} className="flex items-center gap-1.5 rounded-full border-2 border-edge bg-card py-1 pr-1 pl-3 text-[13px]">
-                {f.type.startsWith("audio/") ? <MusicNotes size={13} /> : <FilmStrip size={13} />}
+                {f.type.startsWith("audio/") ? <MusicNotes size={13} /> : f.type.startsWith("image/") ? <ImageIcon size={13} /> : <FilmStrip size={13} />}
                 <span className="max-w-[180px] truncate">{f.name}</span>
                 <button
                   type="button"

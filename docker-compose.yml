@@ -16,6 +16,8 @@ services:
       USER_SPEND_CAP_USD: ${USER_SPEND_CAP_USD:-3}
       SPEND_CAP_USD: ${SPEND_CAP_USD:-25}
       RUNS_PER_VISITOR_PER_DAY: ${RUNS_PER_VISITOR_PER_DAY:-0}
+      # Largest export (short side). 4K renders take a long time on a small server.
+      MAX_EXPORT_HEIGHT: ${MAX_EXPORT_HEIGHT:-1080}
     volumes:
       - auteur-data:/data
     restart: unless-stopped

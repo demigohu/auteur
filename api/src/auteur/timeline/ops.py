@@ -12,7 +12,7 @@ from pydantic import Field, TypeAdapter
 
 from auteur.timeline.models import (
     Aspect, AudioItem, Clip, CropKey, Effect, Follow, Grade, Media, Model, Overlay, OverlayLayout, TextItem,
-    TextLook, TextWord, Timeline, Transition, VolumeKey, Zoom,
+    CropRect, OverlayBox, TextLook, TextWord, Timeline, Transform, Transition, VolumeKey, Zoom,
 )
 
 MIN_CLIP = 0.1  # seconds; shorter clips are unwatchable and break ffmpeg concat
@@ -139,6 +139,18 @@ class SetZoom(Model):
     zoom: Zoom | None
 
 
+class SetCropRect(Model):
+    op: Literal["set_crop_rect"] = "set_crop_rect"
+    clip_id: str
+    crop_rect: CropRect | None = Field(description="null shows the whole source again")
+
+
+class SetTransform(Model):
+    op: Literal["set_transform"] = "set_transform"
+    clip_id: str
+    transform: Transform | None = Field(description="null resets the clip to fill the frame")
+
+
 class SetVolume(Model):
     op: Literal["set_volume"] = "set_volume"
     clip_id: str
@@ -161,7 +173,8 @@ class UpdateOverlay(Model):
     src_in: float | None = Field(None, ge=0)
     src_out: float | None = Field(None, gt=0)
     start: float | None = Field(None, ge=0)
-    layout: OverlayLayout | None = None
+    layout: OverlayLayout | None = Field(None, description="A preset place; clears any free `box`")
+    box: OverlayBox | None = Field(None, description="Free position and size (drag on the canvas)")
     grade: Grade | None = None
 
 
@@ -241,12 +254,17 @@ class SetFinish(Model):
     grain: float = Field(0, ge=0, le=1)
 
 
+class SetLinkage(Model):
+    op: Literal["set_linkage"] = "set_linkage"
+    linkage: bool
+
+
 Op = Annotated[
     AddClip | Split | Trim | Move | Delete | AddText | UpdateText | DeleteText
     | SetGrade | SetCrop | SetEffects | SetMuted | SetAspect
-    | SetSpeed | SetTransition | SetZoom | SetVolume
+    | SetSpeed | SetTransition | SetZoom | SetTransform | SetCropRect | SetVolume
     | AddOverlay | UpdateOverlay | DeleteOverlay | AddAudio | UpdateAudio | DeleteAudio | SetFinish
-    | SetFps | DuplicateClip | SetVolumeKeys | SpeedRamp | PasteClips,
+    | SetFps | DuplicateClip | SetVolumeKeys | SpeedRamp | PasteClips | SetLinkage,
     Field(discriminator="op"),
 ]
 op_adapter: TypeAdapter[Op] = TypeAdapter(Op)
@@ -320,6 +338,7 @@ def _check_range(media: Media, src_in: float, src_out: float) -> None:
 
 def apply(tl: Timeline, op: Op, media: dict[str, Media]) -> Timeline:
     """Return a new timeline with `op` applied. `tl` is never mutated."""
+    before = tl
     tl = tl.model_copy(deep=True)
 
     match op:
@@ -440,6 +459,18 @@ def apply(tl: Timeline, op: Op, media: dict[str, Media]) -> Timeline:
             i = _clip_index(tl, op.clip_id)
             tl.clips[i] = tl.clips[i].model_copy(update={"zoom": op.zoom})
 
+        case SetCropRect():
+            i = _clip_index(tl, op.clip_id)
+            r = op.crop_rect
+            if r is not None and (r.left + r.right > 0.9 or r.top + r.bottom > 0.9):
+                raise OpError("Crop would leave less than a tenth of the picture")
+            tl.clips[i] = tl.clips[i].model_copy(update={"crop_rect": None if r is None or r == CropRect() else r})
+
+        case SetTransform():
+            i = _clip_index(tl, op.clip_id)
+            t = op.transform
+            tl.clips[i] = tl.clips[i].model_copy(update={"transform": None if t is None or t.is_identity else t})
+
         case SetVolume():
             i = _clip_index(tl, op.clip_id)
             tl.clips[i] = tl.clips[i].model_copy(update={"volume": op.volume})
@@ -453,7 +484,10 @@ def apply(tl: Timeline, op: Op, media: dict[str, Media]) -> Timeline:
 
         case UpdateOverlay():
             i = _index(tl.overlays, op.overlay_id, "B-roll")
-            item = tl.overlays[i].model_copy(update=op.model_dump(exclude={"op", "overlay_id"}, exclude_none=True))
+            update = {k: getattr(op, k) for k in op.model_fields_set - {"op", "overlay_id"} if getattr(op, k) is not None}
+            if op.layout is not None and op.box is None:
+                update["box"] = None  # picking a preset place replaces a dragged one
+            item = tl.overlays[i].model_copy(update=update)
             _check_range(media[item.media_id], item.src_in, item.src_out)
             tl.overlays[i] = item
             tl.overlays.sort(key=lambda o: o.start)
@@ -542,4 +576,81 @@ def apply(tl: Timeline, op: Op, media: dict[str, Media]) -> Timeline:
         case SetFinish():
             tl.finish = tl.finish.model_copy(update={"letterbox": op.letterbox, "grain": op.grain})
 
+        case SetLinkage():
+            tl.linkage = op.linkage
+
+    if tl.linkage and isinstance(op, MAIN_TRACK_OPS):
+        tl = relink(before, tl)
     return tl
+
+
+# Ops that change where main-track content sits in time.
+MAIN_TRACK_OPS = (AddClip, Split, Trim, Move, Delete, SetSpeed, SpeedRamp, DuplicateClip, PasteClips, SetTransition)
+
+
+def _locator(old: Timeline, new: Timeline):
+    """old timeline time -> new timeline time, through the source moment shown there; None when that
+    moment was cut out. A clip keeps its id across trims and moves; a split's right half and pasted copies
+    are found by media and source range."""
+    old_starts, new_starts = old.clip_starts(), new.clip_starts()
+    by_id = {c.id: i for i, c in enumerate(new.clips)}
+
+    def locate(t: float) -> float | None:
+        k = None
+        for i, s in enumerate(old_starts):
+            if s <= t + 1e-6:
+                k = i  # in a crossfade the later clip wins, as it is drawn on top
+        if k is None:
+            return t
+        c = old.clips[k]
+        local = t - old_starts[k]
+        if local > c.duration + 1e-6:  # past the end of the video: keep the distance from the end
+            return new.duration + (t - old.duration)
+        src = c.src_in + local * c.speed
+        if (j := by_id.get(c.id)) is not None:
+            n = new.clips[j]
+            if n.src_in - 1e-6 <= src <= n.src_out + 1e-6 or not any(
+                x.media_id == c.media_id and x.src_in - 1e-6 <= src <= x.src_out + 1e-6 for x in new.clips
+            ):
+                # Trimmed away at an edge: hold at that edge of the clip.
+                src = min(max(src, n.src_in), n.src_out)
+                return new_starts[j] + (src - n.src_in) / n.speed
+        for j, n in enumerate(new.clips):
+            if n.media_id == c.media_id and n.src_in - 1e-6 <= src <= n.src_out + 1e-6:
+                return new_starts[j] + (src - n.src_in) / n.speed
+        return None
+
+    def removed_at(t: float) -> float:
+        """Where content cut out at old time t lands: where the next surviving moment now is."""
+        for s in sorted(old_starts):
+            if s > t and (n := locate(s + 1e-3)) is not None:
+                return max(0.0, n - 1e-3)
+        return new.duration
+
+    return locate, removed_at
+
+
+def relink(old: Timeline, new: Timeline) -> Timeline:
+    """Move text and B-roll with the main-track moment they start on (CapCut's linkage). Subtitles
+    whose speech was cut out go with it; other items cut out land where the cut closed."""
+    locate, removed_at = _locator(old, new)
+    texts = []
+    for t in new.texts:
+        at = locate(t.start)
+        if at is None:
+            if t.style == "subtitle":
+                continue
+            at = removed_at(t.start)
+        d = round(max(at, 0.0) - t.start, 3)
+        if d:
+            t = t.model_copy(update={
+                "start": round(t.start + d, 3), "end": round(t.end + d, 3),
+                "words": [w.model_copy(update={"start": round(w.start + d, 3), "end": round(w.end + d, 3)}) for w in t.words],
+            })
+        texts.append(t)
+    overlays = []
+    for o in new.overlays:
+        at = locate(o.start)
+        overlays.append(o.model_copy(update={"start": round(max(removed_at(o.start) if at is None else at, 0.0), 3)}))
+    texts.sort(key=lambda x: x.start)
+    return new.model_copy(update={"texts": texts, "overlays": overlays})

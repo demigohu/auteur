@@ -6,6 +6,7 @@ import {
   ArrowsInLineHorizontal,
   ClipboardText,
   Copy,
+  LinkSimple,
   MagnetStraight,
   MagnifyingGlassMinus,
   MagnifyingGlassPlus,
@@ -17,6 +18,8 @@ import {
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { fileUrl, type MediaView, type OpInput } from "@/lib/api";
+import { laneCount, packLanes } from "@/lib/lanes";
+import { clipLength } from "@/lib/media";
 import { isCheckStale, useEditor } from "@/lib/store";
 import { clipDuration, clipStarts, timelineDuration } from "@/lib/time";
 import type { AudioItem, Clip, Overlay, TextItem } from "@/lib/timeline";
@@ -26,20 +29,12 @@ const TRACK_LABEL_W = 44;
 const TICK_STEPS = [0.25, 0.5, 1, 2, 5, 10, 15, 30, 60];
 const CLIP_H = 64;
 const LANE_H = 26;
+const OVERLAY_ROW = 34;
+const AUDIO_ROW = 40;
 const SNAP_PX = 8;
 export const MEDIA_DRAG_TYPE = "application/x-auteur-media";
 
 /** Greedy lane packing so overlapping texts (a title over subtitles) stack instead of hiding each other. */
-function textLanes(texts: TextItem[]): number[] {
-  const laneEnds: number[] = [];
-  return texts.map((t) => {
-    let lane = laneEnds.findIndex((end) => end <= t.start + 1e-3);
-    if (lane === -1) lane = laneEnds.push(0) - 1;
-    laneEnds[lane] = t.end;
-    return lane;
-  });
-}
-
 type SpanKind = "text" | "overlay" | "audio";
 type Edge = "move" | "in" | "out";
 
@@ -74,6 +69,7 @@ export function TimelinePanel() {
   const toggleMulti = useEditor((s) => s.toggleMulti);
   const [drag, setDrag] = useState<Drag | null>(null);
   const [snap, setSnap] = useState(true);
+  const linkage = useEditor((st) => st.project?.timeline.linkage ?? true);
   const [dropAt, setDropAt] = useState<{ track: "V1" | "V2" | "A1"; t: number } | null>(null);
   const [viewW, setViewW] = useState(1200);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -100,8 +96,10 @@ export function TimelinePanel() {
     drag?.kind === "clip-trim" && drag.id === c.id ? { ...c, src_in: drag.src_in, src_out: drag.src_out } : c,
   );
   const starts = clipStarts(shown);
-  const lanes = textLanes(texts);
-  const laneCount = Math.max(1, ...lanes.map((l) => l + 1));
+  // Overlapping items get rows of their own, track by track.
+  const lanes = packLanes(texts.map((t) => spanOf("text", t)));
+  const overlayLanes = packLanes(overlays.map((o) => spanOf("overlay", o)));
+  const audioLanes = packLanes(audio.map((a) => spanOf("audio", a)));
 
   const timeAt = (clientX: number) => {
     const el = scrollRef.current!;
@@ -289,7 +287,7 @@ export function TimelinePanel() {
       applyOps(`B-roll ${m.name}`, [{ op: "add_overlay", media_id: m.id, src_in: 0, src_out: Number(Math.min(m.duration, 4).toFixed(3)), start: t }]);
     } else {
       const index = clips.filter((c, k) => starts[k] + clipDuration(c) / 2 < t).length;
-      applyOps(`Add ${m.name}`, [{ op: "add_clip", media_id: m.id, src_in: 0, src_out: Number(m.duration.toFixed(3)), index }]);
+      applyOps(`Add ${m.name}`, [{ op: "add_clip", media_id: m.id, src_in: 0, src_out: clipLength(m), index }]);
     }
   }
 
@@ -334,6 +332,18 @@ export function TimelinePanel() {
         <div className="ml-auto flex items-center gap-1">
           <button
             type="button"
+            aria-pressed={linkage}
+            disabled={locked}
+            onClick={() => applyOps(linkage ? "Linkage off" : "Linkage on", [{ op: "set_linkage", linkage: !linkage }])}
+            title="Linkage: text and B-roll move with the clip they sit on when you cut, trim or reorder (music stays put)"
+            className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] transition-colors disabled:opacity-40 ${
+              linkage ? "bg-accent-soft text-accent" : "text-muted hover:bg-raised hover:text-text"
+            }`}
+          >
+            <LinkSimple size={14} /> Link
+          </button>
+          <button
+            type="button"
             aria-pressed={snap}
             onClick={() => setSnap((v) => !v)}
             title="Snap to playhead, clip edges and music beats"
@@ -366,13 +376,15 @@ export function TimelinePanel() {
         <div className="relative min-h-full" style={{ width: contentW + TRACK_LABEL_W }}>
           <Ruler px={px} width={contentW} end={duration} onSeek={(x) => seek(Math.min(timeAt(x), duration))} />
 
-          <Track label="V2" height={34} onDragOver={(e) => onMediaDragOver("V2", e)} onDragLeave={() => setDropAt(null)} onDrop={(e) => onMediaDrop("V2", e)} hint={!overlays.length ? "Drag video here for B-roll" : undefined}>
+          <Track label="V2" height={laneCount(overlayLanes) * OVERLAY_ROW} onDragOver={(e) => onMediaDragOver("V2", e)} onDragLeave={() => setDropAt(null)} onDrop={(e) => onMediaDrop("V2", e)} hint={!overlays.length ? "Drag video here for B-roll" : undefined}>
             {overlays.map((o) => (
               <SpanBlock
                 key={o.id}
                 kind="overlay"
                 item={o}
                 px={px}
+                lane={overlayLanes[overlays.indexOf(o)]}
+                rowH={OVERLAY_ROW}
                 draft={spanDraft("overlay", o.id)}
                 selected={selectedOverlayId === o.id}
                 locked={locked}
@@ -406,7 +418,7 @@ export function TimelinePanel() {
             {dropAt?.track === "V1" && <DropLine t={dropAt.t} px={px} />}
           </Track>
 
-          <Track label="T1" height={laneCount * LANE_H} hint={!texts.length ? "Text and subtitles" : undefined}>
+          <Track label="T1" height={laneCount(lanes) * LANE_H} hint={!texts.length ? "Text and subtitles" : undefined}>
             {texts.map((t, i) => (
               <SpanBlock
                 key={t.id}
@@ -428,13 +440,15 @@ export function TimelinePanel() {
             ))}
           </Track>
 
-          <Track label="A1" height={40} onDragOver={(e) => onMediaDragOver("A1", e)} onDragLeave={() => setDropAt(null)} onDrop={(e) => onMediaDrop("A1", e)} hint={!audio.length ? "Drag music here" : undefined}>
+          <Track label="A1" height={laneCount(audioLanes) * AUDIO_ROW} onDragOver={(e) => onMediaDragOver("A1", e)} onDragLeave={() => setDropAt(null)} onDrop={(e) => onMediaDrop("A1", e)} hint={!audio.length ? "Drag music here" : undefined}>
             {audio.map((a) => (
               <SpanBlock
                 key={a.id}
                 kind="audio"
                 item={a}
                 px={px}
+                lane={audioLanes[audio.indexOf(a)]}
+                rowH={AUDIO_ROW}
                 draft={spanDraft("audio", a.id)}
                 selected={selectedAudioId === a.id}
                 locked={locked}
@@ -546,6 +560,7 @@ function SpanBlock(props: {
   item: TextItem | Overlay | AudioItem;
   px: number;
   lane?: number;
+  rowH?: number;
   draft: { edge: Edge; dt: number } | null;
   selected: boolean;
   locked: boolean;
@@ -563,7 +578,7 @@ function SpanBlock(props: {
   const capture = (e: React.PointerEvent) => (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   const style: React.CSSProperties =
     props.lane !== undefined
-      ? { left: start * px, width: Math.max((end - start) * px, 6), top: 6 + props.lane * LANE_H, height: LANE_H - 4 }
+      ? { left: start * px, width: Math.max((end - start) * px, 6), top: 6 + props.lane * (props.rowH ?? LANE_H), height: (props.rowH ?? LANE_H) - 4 }
       : { left: start * px, width: Math.max((end - start) * px, 6), top: 6, bottom: 6 };
   return (
     <div
@@ -636,7 +651,7 @@ function ClipBlock(props: {
       {media && <Filmstrip media={media} clip={clip} width={props.width} px={props.px} />}
       {clip.transition && (
         <span
-          title={`Transisi ${clip.transition.kind} ${clip.transition.duration}s`}
+          title={`Transition: ${clip.transition.kind}, ${clip.transition.duration}s`}
           className="absolute top-0 bottom-0 left-0 z-10 bg-gradient-to-r from-text/35 to-transparent"
           style={{ width: Math.max(6, clip.transition.duration * props.px) }}
         />

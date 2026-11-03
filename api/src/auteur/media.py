@@ -7,16 +7,27 @@ Layout per media item, under <project_dir>/media/<media_id>/:
   filmstrip.jpg one 90px-high frame per second, side by side, for the timeline's clip blocks
   sam.mp4       15fps 640px silent proxy for SAM 3.1 (made on demand; full-res uploads get the
                 connection reset by the API)
+
+Pictures become video at ingest, so the timeline, preview, effects and export need no special case:
+a still (PNG, JPG, WebP) is held for STILL_SECONDS, a GIF is looped to at least GIF_MIN_SECONDS. The
+upload is kept as original.<ext>.
 """
 
 import json
 import math
 import subprocess
+import tempfile
 from pathlib import Path
+
+from PIL import Image, ImageOps
 
 from auteur.timeline import Media
 
 MAX_TOTAL_SECONDS = 5 * 60
+STILL_SECONDS = 60
+GIF_MIN_SECONDS = 5
+STILL_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
+MAX_PICTURE_SIDE = 3840
 
 
 class MediaError(ValueError):
@@ -78,12 +89,62 @@ def media_dir(project_dir: Path, media_id: str) -> Path:
     return project_dir / "media" / media_id
 
 
+def _still_to_video(original: Path, out: Path) -> None:
+    """Hold a picture for STILL_SECONDS. Pillow first: it applies EXIF rotation and flattens
+    transparency (onto black), which ffmpeg does inconsistently for images."""
+    with Image.open(original) as im:
+        im = ImageOps.exif_transpose(im)
+        if im.mode in ("RGBA", "LA", "P"):
+            im = im.convert("RGBA")
+            flat = Image.new("RGB", im.size, (0, 0, 0))
+            flat.paste(im, mask=im.getchannel("A"))
+            im = flat
+        im = im.convert("RGB")
+        im.thumbnail((MAX_PICTURE_SIDE, MAX_PICTURE_SIDE))
+        with tempfile.TemporaryDirectory() as tmp:
+            png = Path(tmp) / "still.png"
+            im.save(png)
+            _run([
+                "ffmpeg", "-y", "-loglevel", "error", "-loop", "1", "-framerate", "30", "-t", str(STILL_SECONDS),
+                "-i", str(png), "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p",
+                "-c:v", "libx264", "-tune", "stillimage", "-preset", "veryfast", "-crf", "16", "-movflags", "+faststart",
+                str(out),
+            ])
+
+
+def _gif_to_video(original: Path, out: Path) -> None:
+    """An animated GIF as video, looped whole until it lasts at least GIF_MIN_SECONDS."""
+    length = float(_run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(original)]) or 0)
+    loops = max(1, math.ceil(GIF_MIN_SECONDS / length)) if length > 0 else 1
+    _run([
+        "ffmpeg", "-y", "-loglevel", "error", "-stream_loop", str(loops - 1), "-i", str(original),
+        "-vf", f"scale='min({MAX_PICTURE_SIDE},iw)':-2,scale=trunc(iw/2)*2:trunc(ih/2)*2,fps=30,format=yuv420p",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-an", "-movflags", "+faststart", str(out),
+    ])
+
+
 def ingest(project_dir: Path, media_id: str, name: str, upload: Path) -> Media:
     """Move an uploaded file into place, then build its preview and thumbnail."""
     d = media_dir(project_dir, media_id)
     d.mkdir(parents=True, exist_ok=True)
-    source = d / f"source{upload.suffix.lower() or '.mp4'}"
-    upload.replace(source)
+    suffix = upload.suffix.lower() or ".mp4"
+    image: str | None = None
+    if suffix in STILL_SUFFIXES or suffix == ".gif":
+        original = d / f"original{suffix}"
+        upload.replace(original)
+        source = d / "source.mp4"
+        try:
+            if suffix == ".gif":
+                _gif_to_video(original, source)
+                image = "gif"
+            else:
+                _still_to_video(original, source)
+                image = "still"
+        except (OSError, ValueError) as e:
+            raise MediaError(f"Could not read the picture: {e}") from None
+    else:
+        source = d / f"source{suffix}"
+        upload.replace(source)
     info = probe(source)
     if info["kind"] == "audio":
         return _ingest_audio(d, media_id, name, source, info)
@@ -102,7 +163,7 @@ def ingest(project_dir: Path, media_id: str, name: str, upload: Path) -> Media:
         "-frames:v", "1", "-vf", "scale=320:-2", str(d / "thumb.jpg"),
     ])
     make_filmstrip(source, d / "filmstrip.jpg", info["duration"])
-    return Media(id=media_id, name=name, path=str(source), **info)
+    return Media(id=media_id, name=name, path=str(source), image=image, **info)
 
 
 def _ingest_audio(d: Path, media_id: str, name: str, source: Path, info: dict) -> Media:

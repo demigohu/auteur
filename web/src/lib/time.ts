@@ -32,3 +32,10 @@ export function timelineDuration(clips: Pick<Clip, "src_in" | "src_out" | "speed
   if (!clips.length) return 0;
   return clipStarts(clips).at(-1)! + clipDuration(clips.at(-1)!);
 }
+
+/** Playhead `frames` frames from `time`, snapped to the frame grid and kept inside the video. */
+export function stepTime(time: number, fps: number, frames: number, duration: number): number {
+  const last = Math.max(0, Math.ceil(duration * fps) - 1);
+  const frame = Math.min(last, Math.max(0, Math.round(time * fps) + frames));
+  return frame / fps;
+}

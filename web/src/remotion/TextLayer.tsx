@@ -62,6 +62,7 @@ export function TextLayer({ item }: { item: TextItem }) {
         }}
       >
         <div
+          data-text-id={item.id}
           style={{
             display: "inline-block",
             padding: item.style === "caption" ? px / 3 : 0,

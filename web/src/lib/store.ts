@@ -49,7 +49,6 @@ type EditorState = {
   tab: SideTab;
   tracks: Record<string, TrackData>;
   showTracks: boolean;
-  marks: CheckMark[];
   /** While true the preview shows the untouched footage (held "Before" button). */
   before: boolean;
 
@@ -122,8 +121,9 @@ export const useEditor = create<EditorState>((set, get) => {
       set({
         run: { id: e.run_id, instruction: String(e.instruction), images: (e.images as string[] | undefined) ?? [], plan: [], log: [], progress: null, cost: 0, status: "running" },
         tab: "agent",
-        marks: [],
       });
+      const project = get().project;
+      if (project) set({ project: { ...project, last_check: null } });
       return;
     }
     if (!run || run.id !== e.run_id) return;
@@ -170,7 +170,16 @@ export const useEditor = create<EditorState>((set, get) => {
         update({
           log: [...run.log, { kind: "check", passed: Boolean(e.passed), issues: e.issues as string[], render: String(e.render) }],
         });
-        set({ marks: (e.marks as CheckMark[]) ?? [] });
+        {
+          const project = get().project;
+          if (project) {
+            const last_check = {
+              passed: Boolean(e.passed), issues: e.issues as string[], marks: (e.marks as CheckMark[]) ?? [], render: String(e.render),
+              run_id: run.id, head: project.history.at(-1)?.id ?? null, at: new Date().toISOString(),
+            };
+            set({ project: { ...project, last_check } });
+          }
+        }
         break;
       case "timeline":
         setProject(e.project as ProjectView);
@@ -221,7 +230,6 @@ export const useEditor = create<EditorState>((set, get) => {
     tab: "agent",
     tracks: {},
     showTracks: false,
-    marks: [],
     before: false,
 
     load: async (id) => {

@@ -25,6 +25,17 @@ export type ChatMessage = { role: "user" | "assistant"; text: string; run_id: st
 /** A still the user wants the grade to look like. */
 export type ReferenceView = { id: string; name: string; url: string };
 
+/** The latest checker verdict. `head` is the newest commit id when it ran; past that, marks may be stale. */
+export type CheckResult = {
+  passed: boolean;
+  issues: string[];
+  marks: { start: number; end: number; label: string }[];
+  render: string;
+  run_id: string;
+  head: string | null;
+  at: string;
+};
+
 export type ProjectView = {
   id: string;
   name: string;
@@ -34,6 +45,7 @@ export type ProjectView = {
   chat: ChatMessage[];
   tracks: TrackView[];
   references: ReferenceView[];
+  last_check: CheckResult | null;
   speech: [number, number][];
   spent: number;
   last_render_url: string | null;

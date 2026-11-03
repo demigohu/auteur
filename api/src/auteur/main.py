@@ -26,7 +26,7 @@ from auteur.render import RenderError, render
 from auteur.auth import ClerkAuth
 from auteur.store import NotFound, Store
 from auteur.timeline import Media, Op, OpError, Project, Timeline
-from auteur.timeline.history import ChatMessage, ReferenceImage
+from auteur.timeline.history import ChatMessage, CheckResult, ReferenceImage
 from auteur.tracking import load_track
 from auteur.timeline.models import Aspect
 from auteur.timeline.ops import SetGrade, new_id
@@ -181,6 +181,7 @@ class ProjectView(BaseModel):
     chat: list[ChatMessage]
     tracks: list[TrackView]
     references: list[ReferenceView]
+    last_check: CheckResult | None
     speech: list[tuple[float, float]]
     spent: float
     last_render_url: str | None
@@ -222,6 +223,7 @@ class ProjectView(BaseModel):
             references=[
                 ReferenceView(id=r.id, name=r.name, url=f"/files/{p.id}/refs/{r.id}.jpg") for r in p.references.values()
             ],
+            last_check=p.last_check,
             last_render_url=f"/files/{p.id}/{p.last_render}" if p.last_render else None,
             can_undo=bool(p.history),
             can_redo=bool(p.redo_stack),

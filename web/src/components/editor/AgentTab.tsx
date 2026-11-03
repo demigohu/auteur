@@ -14,7 +14,7 @@ import {
   XCircle,
 } from "@phosphor-icons/react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { briefKey } from "@/components/studio/CreateProjectDialog";
 import { fileUrl } from "@/lib/api";
 import { type LogItem, type RunState, type StepStatus, useEditor } from "@/lib/store";
@@ -98,13 +98,22 @@ export function AgentTab() {
       if (id) setAttached((a) => (a.includes(id) ? a : [...a, id].slice(0, 4)));
     }
   };
+  // The live run draws its own checker card from events.
+  const check = project?.last_check && project.last_check.run_id !== run?.id ? project.last_check : null;
+  const checkAfter = check ? history.findLastIndex((m) => m.run_id === check.run_id) : -1;
   const refsById = new Map((project?.references ?? []).map((r) => [r.id, r]));
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div ref={scroller} className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
         {history.map((m, i) => (
-          <ChatLine key={`${m.run_id}-${m.role}-${i}`} role={m.role} text={m.text} images={(m.images ?? []).map((id) => refsById.get(id)?.url).filter(Boolean) as string[]} />
+          <Fragment key={`${m.run_id}-${m.role}-${i}`}>
+            <ChatLine role={m.role} text={m.text} images={(m.images ?? []).map((id) => refsById.get(id)?.url).filter(Boolean) as string[]} />
+            {/* The stored verdict sits right after the run it belongs to, so it is still there after a reload. */}
+            {check && i === checkAfter && (
+              <LogRow item={{ kind: "check", passed: check.passed, issues: check.issues, render: check.render }} progress={null} />
+            )}
+          </Fragment>
         ))}
         {run && (
           <>

@@ -34,6 +34,27 @@ class ChatMessage(Model):
     images: list[str] = Field(default_factory=list, description="Reference image ids attached to the message")
 
 
+class CheckMark(Model):
+    """A timeline range the checker flagged, in timeline seconds."""
+
+    start: float
+    end: float
+    label: str
+
+
+class CheckResult(Model):
+    """The latest checker verdict, kept so its marks survive a reload. `head` is the id of the newest commit
+    when it ran: once the timeline moves past it, the marks may no longer line up."""
+
+    passed: bool
+    issues: list[str] = Field(default_factory=list)
+    marks: list[CheckMark] = Field(default_factory=list)
+    render: str
+    run_id: str
+    head: str | None
+    at: datetime
+
+
 class ReferenceImage(Model):
     """A still the user wants the grade to look like; the file is <project_dir>/refs/<id>.jpg."""
 
@@ -61,6 +82,7 @@ class Project(Model):
     last_render: str | None = Field(None, description="Path of the latest render, relative to the project dir")
     tracks: dict[str, TrackInfo] = Field(default_factory=dict)
     references: dict[str, ReferenceImage] = Field(default_factory=dict)
+    last_check: CheckResult | None = None
     spent: float = Field(0, description="Meta Model API spend in USD across all runs")
 
     def commit(self, author: Author, label: str, ops: list[Op], run_id: str | None = None) -> Commit:

@@ -6,6 +6,7 @@ plan step it works on, which lets the UI tick off the plan without spending extr
 
 import asyncio
 import json
+from datetime import UTC, datetime
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -21,7 +22,7 @@ from auteur.media import load_beats, media_dir
 from auteur.reframe import follow_keys, out_of_frame
 from auteur.render import render
 from auteur.timeline import OpError, Project
-from auteur.timeline.history import TrackInfo
+from auteur.timeline.history import CheckMark, CheckResult, TrackInfo
 from auteur.timeline.models import (
     Aspect, Blur, Follow, Grade, Highlight, Model, OverlayLayout, TextLook, TextWord, Timeline, Transition, Zoom,
 )
@@ -518,6 +519,11 @@ async def render_tool(ctx: ToolContext, a: RenderArgs) -> str:
     ctx.save()
 
     issues, marks = periksa(ctx, ctx.project_dir / rel)
+    p.last_check = CheckResult(
+        passed=not issues, issues=issues, marks=[CheckMark(**m) for m in marks], render=rel,
+        run_id=ctx.run_id, head=p.history[-1].id if p.history else None, at=datetime.now(UTC),
+    )
+    ctx.save()
     ctx.emit({"type": "check", "passed": not issues, "issues": issues, "marks": marks, "render": rel})
     if not issues:
         return f"Rendered {rel}. Checker: PASSED."

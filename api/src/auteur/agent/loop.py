@@ -122,6 +122,7 @@ async def _run(
     async with lock:
         p = store.get(project_id)
         p.chat.append(ChatMessage(role="user", text=instruction, run_id=run_id, at=datetime.now(UTC), images=reference_ids))
+        p.last_check = None  # a new instruction starts a new round of checks
         store.save(p)
         emit({"type": "run_started", "instruction": instruction, "images": reference_ids})
 

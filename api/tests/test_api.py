@@ -185,3 +185,23 @@ def test_reference_upload_grade_and_delete(client: TestClient, project: dict) ->
 
     assert client.post(f"/projects/{pid}/runs", json={"instruction": "grade it", "reference_ids": ["ref_nope"]}).status_code == 400
     assert client.delete(f"/projects/{pid}/references/{ref['id']}").json()["references"] == []
+
+
+def test_last_check_survives_a_reload(client: TestClient) -> None:
+    from datetime import UTC, datetime
+
+    import auteur.main as m
+    from auteur.timeline.history import CheckMark, CheckResult
+
+    pid = client.post("/projects", json={"name": "Checked"}).json()["id"]
+    assert client.get(f"/projects/{pid}").json()["last_check"] is None
+    p = m.store.get(pid)
+    p.last_check = CheckResult(
+        passed=False, issues=["Clip c1: subject leaves the frame"], marks=[CheckMark(start=1.0, end=2.5, label="Subject leaves frame")],
+        render="renders/preview-1.mp4", run_id="run_x", head=None, at=datetime.now(UTC),
+    )
+    m.store.save(p)
+    check = client.get(f"/projects/{pid}").json()["last_check"]
+    assert check["passed"] is False
+    assert check["marks"] == [{"start": 1.0, "end": 2.5, "label": "Subject leaves frame"}]
+    assert check["head"] is None

@@ -68,7 +68,9 @@ export function TimelinePanel() {
   const selectedTextId = useEditor((s) => s.selectedTextId);
   const selectedOverlayId = useEditor((s) => s.selectedOverlayId);
   const selectedAudioId = useEditor((s) => s.selectedAudioId);
-  const marks = useEditor((s) => s.marks);
+  const check = useEditor((s) => s.project?.last_check ?? null);
+  // Marks point at times in the timeline the checker saw; a later edit can move what sits there.
+  const stale = check !== null && (project?.history.at(-1)?.id ?? null) !== check.head;
   const multiClipIds = useEditor((s) => s.multiClipIds);
   const toggleMulti = useEditor((s) => s.toggleMulti);
   const [drag, setDrag] = useState<Drag | null>(null);
@@ -446,8 +448,8 @@ export function TimelinePanel() {
             {dropAt?.track === "A1" && <DropLine t={dropAt.t} px={px} />}
           </Track>
 
-          {marks.map((m, i) => (
-            <CheckMarkBand key={i} start={m.start} end={m.end} label={m.label} px={px} onSeek={() => seek(m.start)} />
+          {check?.marks.map((m, i) => (
+            <CheckMarkBand key={i} start={m.start} end={m.end} label={m.label} stale={stale} px={px} onSeek={() => seek(m.start)} />
           ))}
           <Playhead px={px} />
         </div>
@@ -748,19 +750,24 @@ function Filmstrip({ media, clip, width, px }: { media: MediaView; clip: Clip; w
 }
 
 /** A range the checker flagged (e.g. subject out of frame), shown across all tracks. */
-function CheckMarkBand(props: { start: number; end: number; label: string; px: number; onSeek: () => void }) {
+function CheckMarkBand(props: { start: number; end: number; label: string; stale: boolean; px: number; onSeek: () => void }) {
+  const label = props.stale ? `${props.label} · before your edits` : props.label;
   return (
     <motion.button
       type="button"
       onClick={props.onSeek}
-      title={props.label}
+      title={label}
       initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      className="absolute top-0 bottom-0 z-30 border-x border-danger/70 bg-danger/15"
+      animate={{ opacity: props.stale ? 0.55 : 1 }}
+      className={`absolute top-0 bottom-0 z-30 border-x ${props.stale ? "border-dashed border-danger/60 bg-danger/5" : "border-danger/70 bg-danger/15"}`}
       style={{ left: TRACK_LABEL_W + props.start * props.px, width: Math.max((props.end - props.start) * props.px, 3) }}
     >
-      <span className="absolute top-1 left-1 truncate rounded-[3px] bg-danger px-1 text-[9px] leading-[14px] font-medium text-bg">
-        {props.label}
+      <span
+        className={`absolute top-1 left-1 truncate rounded-[3px] px-1 text-[9px] leading-[14px] font-medium ${
+          props.stale ? "border border-dashed border-danger bg-bg text-danger" : "bg-danger text-bg"
+        }`}
+      >
+        {label}
       </span>
     </motion.button>
   );

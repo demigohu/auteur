@@ -19,7 +19,7 @@ api:
 
 test:
 	cd api && uv run pytest -q
-	node web/scripts/check_grade_parity.mjs
+	cd web && npm test
 
 # Regenerate web/src/lib/timeline.ts from the Pydantic models
 types:

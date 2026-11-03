@@ -17,7 +17,7 @@ import {
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { fileUrl, type MediaView, type OpInput } from "@/lib/api";
-import { useEditor } from "@/lib/store";
+import { isCheckStale, useEditor } from "@/lib/store";
 import { clipDuration, clipStarts, timelineDuration } from "@/lib/time";
 import type { AudioItem, Clip, Overlay, TextItem } from "@/lib/timeline";
 
@@ -69,8 +69,7 @@ export function TimelinePanel() {
   const selectedOverlayId = useEditor((s) => s.selectedOverlayId);
   const selectedAudioId = useEditor((s) => s.selectedAudioId);
   const check = useEditor((s) => s.project?.last_check ?? null);
-  // Marks point at times in the timeline the checker saw; a later edit can move what sits there.
-  const stale = check !== null && (project?.history.at(-1)?.id ?? null) !== check.head;
+  const stale = project !== null && isCheckStale(project);
   const multiClipIds = useEditor((s) => s.multiClipIds);
   const toggleMulti = useEditor((s) => s.toggleMulti);
   const [drag, setDrag] = useState<Drag | null>(null);

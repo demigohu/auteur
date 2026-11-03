@@ -1,6 +1,6 @@
 /**
  * Port of api/src/auteur/grade.py so the preview grades exactly like the export.
- * Keep `curve` in lockstep with the Python version (scripts/check_grade_parity.mjs compares them).
+ * Keep `curve` in lockstep with the Python version (grade.test.ts compares them).
  */
 import type { Grade } from "./timeline";
 

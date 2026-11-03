@@ -16,6 +16,13 @@ export type LogItem =
 /** A time range the checker flagged, drawn on the timeline ruler. */
 export type CheckMark = { start: number; end: number; label: string };
 
+/** True once the timeline has moved past the commit the checker saw (an edit, undo or redo), so its
+ * marks may point at the wrong place. */
+export function isCheckStale(project: Pick<ProjectView, "history" | "last_check">): boolean {
+  const check = project.last_check;
+  return check !== null && (project.history.at(-1)?.id ?? null) !== check.head;
+}
+
 export type RunState = {
   id: string;
   instruction: string;

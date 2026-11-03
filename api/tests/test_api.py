@@ -205,3 +205,27 @@ def test_last_check_survives_a_reload(client: TestClient) -> None:
     assert check["passed"] is False
     assert check["marks"] == [{"start": 1.0, "end": 2.5, "label": "Subject leaves frame"}]
     assert check["head"] is None
+
+
+def test_check_head_catches_undo_then_new_edit(client: TestClient, project: dict) -> None:
+    """Undo plus a new edit keeps the history length the same; the head commit id must still change,
+    or marks from the old check would look current."""
+    pid, mid = project["id"], project["media"][0]["id"]
+
+    def edit(label: str) -> dict:
+        r = client.post(f"/projects/{pid}/ops", json={"label": label, "ops": [{"op": "add_clip", "media_id": mid, "src_in": 0, "src_out": 2}]})
+        assert r.status_code == 200, r.text
+        return r.json()
+
+    edit("First")
+    checked = edit("Second")["history"]
+    head = checked[-1]["id"]  # what the render tool stores as last_check.head
+
+    client.post(f"/projects/{pid}/undo")
+    after = edit("Third")["history"]
+    assert len(after) == len(checked)  # the length alone can't tell
+    assert after[-1]["id"] != head  # the head can
+
+    # Undo alone also moves the head.
+    view = client.post(f"/projects/{pid}/undo").json()
+    assert (view["history"][-1]["id"] if view["history"] else None) != head

@@ -112,13 +112,14 @@ def state_message(store: Store, project_id: str) -> str:
 
 async def run_agent(
     store: Store, project_id: str, run_id: str, instruction: str, lock: asyncio.Lock, reference_ids: list[str] | None = None,
+    budget: float | None = None,
 ) -> None:
     def emit(event: dict[str, Any]) -> None:
         bus.publish(project_id, {**event, "run_id": run_id})
 
     status = "error"
     try:
-        status = await _run(store, project_id, run_id, instruction, lock, emit, reference_ids or [])
+        status = await _run(store, project_id, run_id, instruction, lock, emit, reference_ids or [], budget)
     except asyncio.CancelledError:
         status = "cancelled"
         raise
@@ -130,6 +131,7 @@ async def run_agent(
 
 async def _run(
     store: Store, project_id: str, run_id: str, instruction: str, lock: asyncio.Lock, emit, reference_ids: list[str],
+    budget: float | None,
 ) -> str:
     async with lock:
         p = store.get(project_id)
@@ -140,7 +142,7 @@ async def _run(
 
         ctx = ToolContext(
             project=p, project_dir=store.project_dir(project_id), run_id=run_id, emit=emit,
-            save=lambda: store.save(p), attached=list(reference_ids),
+            save=lambda: store.save(p), attached=list(reference_ids), budget=budget,
         )
         items: list[dict[str, Any]] = [
             {"role": m.role, "content": m.text} for m in p.chat[-HISTORY_MESSAGES - 1 : -1]
@@ -212,6 +214,7 @@ async def _run(
 
 async def run_tool(
     store: Store, project_id: str, run_id: str, label: str, tool_name: str, args: dict[str, Any], lock: asyncio.Lock,
+    budget: float | None = None,
 ) -> None:
     """One tool run straight from an editor button (e.g. "Build scenes"), with the same lock, events and
     chat entries as an agent run, but no model choosing what to do."""
@@ -220,7 +223,7 @@ async def run_tool(
 
     status = "error"
     try:
-        status = await _run_tool(store, project_id, run_id, label, tool_name, args, lock, emit)
+        status = await _run_tool(store, project_id, run_id, label, tool_name, args, lock, emit, budget)
     except asyncio.CancelledError:
         status = "cancelled"
         raise
@@ -228,14 +231,18 @@ async def run_tool(
         emit({"type": "run_finished", "status": status})
 
 
-async def _run_tool(store: Store, project_id: str, run_id: str, label: str, tool_name: str, args: dict[str, Any], lock, emit) -> str:
+async def _run_tool(
+    store: Store, project_id: str, run_id: str, label: str, tool_name: str, args: dict[str, Any], lock, emit, budget: float | None,
+) -> str:
     async with lock:
         p = store.get(project_id)
         p.chat.append(ChatMessage(role="user", text=label, run_id=run_id, at=datetime.now(UTC)))
         p.last_check = None
         store.save(p)
         emit({"type": "run_started", "instruction": label, "images": []})
-        ctx = ToolContext(project=p, project_dir=store.project_dir(project_id), run_id=run_id, emit=emit, save=lambda: store.save(p))
+        ctx = ToolContext(
+            project=p, project_dir=store.project_dir(project_id), run_id=run_id, emit=emit, save=lambda: store.save(p), budget=budget,
+        )
         tool = TOOLS_BY_NAME[tool_name]
         status, reply = "done", ""
         try:

@@ -17,7 +17,15 @@ export function MediaBin() {
   if (!project) return null;
 
   const uploading = pending?.startsWith("Uploading") ? pending : null;
-  const total = project.media.filter((m) => m.kind === "video").reduce((s, m) => s + m.duration, 0);
+  // The 300s budget is for footage; scenes made in code don't count.
+  const total = project.media.filter((m) => m.kind === "video" && !m.scene_id).reduce((s, m) => s + m.duration, 0);
+  // Scenes show in storyboard order, latest render only (older renders stay in the project for undo).
+  const sceneIndex = new Map((project.storyboard?.scenes ?? []).map((s, i) => [s.media_id, i]));
+  const shown = project.media
+    .map((m, i) => ({ m, key: m.scene_id ? project.media.length + (sceneIndex.get(m.id) ?? 0) : i }))
+    .filter(({ m }) => !m.scene_id || sceneIndex.has(m.id))
+    .sort((a, b) => a.key - b.key)
+    .map(({ m }) => m);
   const pick = (files: FileList | null) =>
     files && upload(Array.from(files).filter((f) => f.type.startsWith("video/") || f.type.startsWith("audio/")));
 
@@ -41,7 +49,7 @@ export function MediaBin() {
       </div>
 
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
-        {project.media.map((m) => (
+        {shown.map((m) => (
           <MediaCard
             key={m.id}
             media={m}

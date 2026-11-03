@@ -62,6 +62,7 @@ class ToolContext:
     reference_fit: dict[str, float] = field(default_factory=dict)  # clip id -> distance the match reached
     beat_every: int | None = None  # set by potong_di_beat: the checker then keeps cuts on the beat
     attached: list[str] = field(default_factory=list)  # reference images attached to this instruction
+    budget: float | None = None  # USD this run may spend under the spend caps (None = no cap)
 
     def add_cost(self, usd: float) -> None:
         if usd <= 0:
@@ -1006,6 +1007,13 @@ async def build_scenes(ctx: ToolContext, a: BuildScenesArgs) -> str:
         raise ToolError(f"Unknown scenes {missing}; the storyboard has {[s.id for s in board.scenes]}")
     if board.duration > motion.MAX_SECONDS:
         raise ToolError(f"The storyboard is {board.duration:g}s; videos made in code go up to {motion.MAX_SECONDS}s. Shorten it first.")
+    estimate = motion.COST_PER_SCENE * len(ids)
+    if ctx.budget is not None and ctx.cost + estimate > ctx.budget:
+        left = max(0.0, ctx.budget - ctx.cost)
+        raise ToolError(
+            f"Building {len(ids)} scenes costs about ${estimate:.2f} and this account has ${left:.2f} left of its spend cap. "
+            f"Build at most {int(left // motion.COST_PER_SCENE)} scenes (pass scene_ids), or shorten the storyboard."
+        )
     if ids:
         for sid in ids:
             _set_scene(board, sid, status="building", error=None)

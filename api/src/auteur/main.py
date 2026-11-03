@@ -100,6 +100,17 @@ _runs: dict[str, tuple[str, asyncio.Task]] = {}
 _visitor_runs: dict[tuple[str, date], int] = {}
 
 
+def remaining_budget(request: Request) -> float | None:
+    """USD a run may still spend under the configured caps, or None when no cap is set. Expensive tools
+    (scene builds) check their estimate against it, since the caps themselves are only checked when a run starts."""
+    left = []
+    if settings.spend_cap_usd:
+        left.append(settings.spend_cap_usd - store.total_spent())
+    if settings.user_spend_cap_usd:
+        left.append(settings.user_spend_cap_usd - store.spent_by(request.state.account))
+    return max(0.0, min(left)) if left else None
+
+
 def check_run_quota(request: Request) -> None:
     """Spend guards (each off unless configured): a global cap, a cap per account, and runs per visitor
     per day."""
@@ -378,7 +389,9 @@ async def upload_media(project_id: str, file: UploadFile) -> ProjectView:
                 400, f"This video is {media.duration:.0f}s; the public demo takes up to {settings.max_file_seconds:.0f}s per file"
             )
         # The 5-minute budget is for footage (it drives SAM and transcription cost); music is free to add.
-        total = sum(m.duration for m in p.media.values() if m.kind == "video") + (media.duration if media.kind == "video" else 0)
+        # Scenes made in code don't count: the budget limits footage, which drives SAM and transcription cost.
+        footage = sum(m.duration for m in p.media.values() if m.kind == "video" and not m.scene_id)
+        total = footage + (media.duration if media.kind == "video" else 0)
         if total > MAX_TOTAL_SECONDS:
             shutil.rmtree(store.project_dir(p.id) / "media" / media_id, ignore_errors=True)
             raise HTTPException(400, f"Project footage would be {total:.0f}s; the limit is {MAX_TOTAL_SECONDS}s")
@@ -465,7 +478,9 @@ async def start_run(project_id: str, body: RunRequest, request: Request) -> dict
         raise HTTPException(400, f"Unknown reference images {unknown}")
     check_run_quota(request)
     run_id = new_id("run")
-    task = asyncio.create_task(run_agent(store, project_id, run_id, body.instruction, lock, body.reference_ids))
+    task = asyncio.create_task(
+        run_agent(store, project_id, run_id, body.instruction, lock, body.reference_ids, budget=remaining_budget(request))
+    )
     _runs[project_id] = (run_id, task)
     return {"run_id": run_id}
 
@@ -529,7 +544,9 @@ async def build_scenes_now(project_id: str, body: BuildScenesRequest, request: R
         label = "Build scenes"
     run_id = new_id("run")
     args = {"scene_ids": body.scene_ids, "notes": body.notes}
-    task = asyncio.create_task(run_tool(store, project_id, run_id, label, "build_scenes", args, lock))
+    task = asyncio.create_task(
+        run_tool(store, project_id, run_id, label, "build_scenes", args, lock, budget=remaining_budget(request))
+    )
     _runs[project_id] = (run_id, task)
     return {"run_id": run_id}
 

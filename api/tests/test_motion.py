@@ -190,3 +190,18 @@ def test_renderer_refuses_unsafe_code(tmp_path: Path) -> None:
     with pytest.raises(motion.SceneError, match="fetch"):
         asyncio.run(motion.run_renderer(job))
     assert not (tmp_path / "x.mp4").exists()
+
+
+def test_build_scenes_refuses_a_build_the_budget_cannot_cover(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from auteur.agent.tools import ToolError
+
+    async def never(*args, **kwargs):
+        raise AssertionError("no scene may be built over budget")
+
+    monkeypatch.setattr(motion, "build_scene", never)
+    board = Storyboard(brief="b", style="s", scenes=[scene(f"s{i}") for i in range(6)])
+    p = Project(id="p", name="t", storyboard=board)
+    ctx = ToolContext(project=p, project_dir=tmp_path, run_id="r", emit=lambda e: None, save=lambda: None, budget=1.0)
+    with pytest.raises(ToolError, match=r"at most 4 scenes"):
+        asyncio.run(build_scenes(ctx, BuildScenesArgs()))
+    assert {s.status for s in board.scenes} == {"draft"}  # nothing was marked as building

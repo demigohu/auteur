@@ -33,6 +33,7 @@ WONDER = "muse-wonder-1.0"
 MOTION_DIR = Path(os.getenv("AUTEUR_MOTION_DIR", Path(__file__).resolve().parents[3] / "motion"))
 MAX_SECONDS = 180
 MIN_SECONDS = 5
+COST_PER_SCENE = 0.25  # USD, measured: a write, a look at its frames, sometimes a fix
 CODE_TRIES = 3  # writes + fixes of one scene's code before it is marked failed
 PARALLEL_WRITES = 4
 PARALLEL_RENDERS = int(os.getenv("MOTION_PARALLEL_RENDERS", "2"))
@@ -66,7 +67,10 @@ Rules:
 seconds; one idea per scene.
 - `style` is one paragraph every scene follows: background and accent colors as hex codes, which fonts \
 (only from the list below) for what, type scale, motion language (snappy, springy, smooth...), and one or \
-two recurring elements that tie the scenes together. Make it distinctive and fitting for the subject; \
+two recurring elements that tie the scenes together. Give sizes as fractions of the frame, never in pixels \
+(the same storyboard may be built at 16:9 or 9:16): a scene's hero line is big, at least 10% of the frame \
+height and usually spanning half the width or more; supporting text at least 4% of the frame height. \
+Negative space is fine, but a title card is not a small line in an empty frame. Make it distinctive and fitting for the subject; \
 avoid the generic look (purple gradients, glassy cards, centered everything) unless asked.
 - Each scene's `brief`: the EXACT on-screen text in double quotes, the layout, what moves and how, and \
 how it enters and leaves. Keep on-screen text short (at most about 12 words per scene) so it can be read \
@@ -122,7 +126,8 @@ images only from `images[id]` with remotion's <Img src={{images["ref_..."]}} />.
 extrapolateLeft and extrapolateRight "clamp"), spring, Easing, and remotion's random("seed") instead of \
 Math.random. No Date, no timers, no useEffect-driven animation.
 - Size everything relative to width/height (e.g. fontSize: width * 0.06) so it fits any aspect ratio. \
-Keep text inside a 6% safe margin and make sure the longest line fits: measure generously, let text \
+If the brief's sizes look small for the frame, go bigger: the hero text of a scene is at least \
+height * 0.1 and should own the frame. Keep text inside a 6% safe margin and make sure the longest line fits: measure generously, let text \
 wrap with a maxWidth, never let it run off screen. Text must read on a phone: body text at least \
 min(width, height) * 0.035, small labels at least min(width, height) * 0.022; an end card's wordmark is big \
 (at least a fifth of the frame width).
@@ -134,10 +139,15 @@ consecutive scenes look like one film.
 
 Reply with the complete file in a single ```tsx code block and nothing else."""
 
-REVIEW_PROMPT = """Above are frames from the render of your scene, at the times shown. Check them \
-against the brief and the style: text cut off, overflowing or touching the edges; overlapping elements; \
-unreadable contrast; empty or broken frames; typos versus the brief; elements that should be visible but \
-aren't; anything that looks unfinished or off-style.
+REVIEW_PROMPT = """Above are frames from the render of your scene, at the times shown. Look at them \
+as a strict art director would before this goes to a client, against the brief and the style:
+- text cut off, overflowing, touching the edges, or a word split or partly hidden;
+- shapes, boxes or lines overlapping letters in a way that reads as a rendering glitch rather than design;
+- overlapping elements, unreadable contrast, text too small to read on a phone;
+- empty, black or broken frames (other than a deliberate fade at the very start or end);
+- weak composition: hero text that is small for the frame, or a mostly empty frame that looks unfinished;
+- typos versus the brief, elements the brief asks for that are missing;
+- anything that looks unfinished, accidental or off-style.
 If the scene is good, reply with exactly: OK
 Otherwise reply with the complete corrected file in a single ```tsx code block."""
 
@@ -280,9 +290,9 @@ async def run_renderer(job: dict[str, Any], on_progress: Callable[[float], None]
         raise SceneError(str(result.get("error")))
 
 
-def _frames(video: Path, duration: float, workdir: Path, count: int = 4) -> list[tuple[float, Path]]:
+def _frames(video: Path, duration: float, workdir: Path, count: int = 6) -> list[tuple[float, Path]]:
     out = []
-    for i, frac in enumerate((0.15, 0.45, 0.75, 0.97)[:count]):
+    for i, frac in enumerate((0.1, 0.3, 0.5, 0.7, 0.85, 0.97)[:count]):
         t = round(duration * frac, 2)
         f = workdir / f"frame{i}.jpg"
         subprocess.run(
@@ -445,4 +455,4 @@ def place_scenes(tl: Timeline, media: dict[str, Media], board: Storyboard) -> li
 
 def estimate_cost(board: Storyboard) -> float:
     """Rough USD to build every scene that isn't ready: one write, one look at the frames, sometimes a fix."""
-    return round(0.25 * sum(1 for s in board.scenes if s.status != "ready"), 2)
+    return round(COST_PER_SCENE * sum(1 for s in board.scenes if s.status != "ready"), 2)

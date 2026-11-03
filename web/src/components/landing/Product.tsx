@@ -1,11 +1,15 @@
 "use client";
 
-import { ArrowRight, MagnifyingGlass, Sparkle } from "@phosphor-icons/react";
-import { motion, useReducedMotion } from "motion/react";
+import { ArrowUpRight, CursorClick, Heart, MagnifyingGlass, Sparkle } from "@phosphor-icons/react";
+import { gsap } from "gsap";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { AnimatePresence, motion, useInView, useReducedMotion } from "motion/react";
 import Image from "next/image";
+import { useEffect, useRef, useState } from "react";
 import { Kicker } from "./primitives";
+import { Fade, RevealLines } from "./reveal";
 
-const EASE_OUT = [0.16, 1, 0.3, 1] as const;
+gsap.registerPlugin(ScrollTrigger);
 
 /** The stack, set like client logos on a sun-yellow tape. */
 const STACK: { name: string; cls: string }[] = [
@@ -42,6 +46,71 @@ export function StackTape() {
   );
 }
 
+/** Section heading after the reference: kicker, two masked lines (display + serif aside), body on the right. */
+export function Heading(props: {
+  kicker: string;
+  tone: "blue" | "tomato" | "forest" | "lime" | "ink" | "paper";
+  title: string;
+  accent: string;
+  accentClass: string;
+  body: string;
+  dark?: boolean;
+}) {
+  return (
+    <div className="grid gap-10 lg:grid-cols-12 lg:items-end">
+      <div className="lg:col-span-8">
+        <Fade>
+          <Kicker tone={props.tone}>{props.kicker}</Kicker>
+        </Fade>
+        <RevealLines
+          className="mt-6 text-[clamp(58px,8.6vw,156px)] leading-[0.86]"
+          lines={[
+            { text: props.title, className: "display" },
+            { text: props.accent, className: `font-serif italic normal-case pb-[0.04em] ${props.accentClass}` },
+          ]}
+        />
+      </div>
+      <Fade className="lg:col-span-4 lg:justify-self-end">
+        <p className={`max-w-[440px] text-[18px] leading-[1.45] ${props.dark ? "text-paper/90" : ""}`}>{props.body}</p>
+      </Fade>
+    </div>
+  );
+}
+
+/** Numbered rows; on hover a color floods up from the bottom and an arrow slides in (the reference's svc-row). */
+function ServiceList(props: { items: readonly (readonly [string, string])[]; prefix: string; label: string; line: string; hoverBg: string; hoverFg: string; dark?: boolean }) {
+  return (
+    <div>
+      <Fade>
+        <p className={`label mb-5 text-[11px] ${props.dark ? "text-paper/70" : "text-ink/60"}`}>{props.label}</p>
+      </Fade>
+      <Fade>
+        <ul style={{ "--line": props.line, "--hbg": props.hoverBg, "--hfg": props.hoverFg } as React.CSSProperties}>
+          {props.items.map(([name, line], i) => (
+            <li key={name} className="group relative overflow-hidden border-t-2 border-[var(--line)] last:border-b-2">
+              <span className="absolute inset-0 origin-bottom scale-y-0 bg-[var(--hbg)] transition-transform duration-500 ease-[var(--ease-out)] group-hover:scale-y-100" />
+              <div className="relative flex items-center gap-4 py-4 transition-colors duration-300 group-hover:text-[var(--hfg)] md:gap-6 md:py-5">
+                <span className="label w-12 shrink-0 text-[11px] opacity-60">
+                  {props.prefix}/{String(i + 1).padStart(2, "0")}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="display text-[clamp(34px,3.6vw,56px)] leading-[0.95]">{name}</p>
+                  <p className="mt-1 max-w-[46ch] text-[14px] leading-snug opacity-75">{line}</p>
+                </div>
+                <ArrowUpRight
+                  size={34}
+                  weight="bold"
+                  className="mr-2 shrink-0 -translate-x-3 translate-y-3 opacity-0 transition-all duration-500 ease-[var(--ease-out)] group-hover:translate-x-0 group-hover:translate-y-0 group-hover:opacity-100"
+                />
+              </div>
+            </li>
+          ))}
+        </ul>
+      </Fade>
+    </div>
+  );
+}
+
 const AGENT_TOOLS = [
   ["Watch", "Muse Spark looks at sampled frames: who's in shot, what's happening, which moments are alive."],
   ["Listen", "Word-level transcript for subtitles, and for finding the ums worth cutting."],
@@ -50,148 +119,201 @@ const AGENT_TOOLS = [
   ["Grade", "Exposure and white balance fixed, a look applied, every clip matched."],
 ] as const;
 
-function Heading(props: { kicker: string; tone: "blue" | "tomato" | "forest" | "lime" | "ink" | "paper"; title: string; accent: string; accentClass: string; body: string; dark?: boolean }) {
-  const reduce = useReducedMotion();
-  return (
-    <div className="grid items-end gap-8 lg:grid-cols-[1fr_minmax(0,24rem)]">
-      <div>
-        <Kicker tone={props.tone}>{props.kicker}</Kicker>
-        <motion.h2
-          initial={reduce ? false : { opacity: 0, y: 40 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.5 }}
-          transition={{ duration: 0.9, ease: EASE_OUT }}
-          className="display mt-6 text-[clamp(60px,9vw,150px)]"
-        >
-          {props.title}
-        </motion.h2>
-        <motion.p
-          initial={reduce ? false : { opacity: 0, y: 40 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.5 }}
-          transition={{ delay: 0.1, duration: 0.9, ease: EASE_OUT }}
-          className={`pb-2 font-serif text-[clamp(52px,7.4vw,124px)] leading-[0.95] italic ${props.accentClass}`}
-        >
-          {props.accent}
-        </motion.p>
-      </div>
-      <p className={`max-w-[38ch] text-[17px] leading-relaxed ${props.dark ? "text-paper/85" : "text-ink/75"}`}>{props.body}</p>
-    </div>
-  );
-}
+const DEMOS = [
+  {
+    query: "make a 30s day-in-my-life from these clips",
+    plan: ["Order the clips by time of day", "Cut on every bar of the lofi track", "0.5× on the best walking shot", "Warm grade, crossfades, check"],
+    tags: ["9:16", "music", "beat cuts"],
+    toast: "brief to export: 167s",
+  },
+  {
+    query: "cut the ums and add bold subtitles",
+    plan: ["Transcribe every word", "Drop 14 fillers and long pauses", "Karaoke subtitles, misheard words fixed", "Check: no jump cuts on speech"],
+    tags: ["talking head", "subtitles"],
+    toast: "words timed within 150ms",
+  },
+  {
+    query: "blur everyone in the background",
+    plan: ["Track people with SAM 3.1", "Keep the subject sharp", "Blur the rest, frame by frame", "Check: no leaks at the edges"],
+    tags: ["privacy", "tracking"],
+    toast: "83% subject coverage",
+  },
+];
 
-function ToolList({ items, prefix, label, dark }: { items: readonly (readonly [string, string])[]; prefix: string; label: string; dark?: boolean }) {
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * The agent card, alive: a brief types itself, a plan lands, the top result gets the lime ring, a
+ * cursor clicks it and a toast pops, then the next brief. Runs only while on screen.
+ */
+function AgentDemo() {
+  const ref = useRef<HTMLDivElement>(null);
+  const inView = useInView(ref, { amount: 0.4 });
   const reduce = useReducedMotion();
+  const [i, setI] = useState(0);
+  const [typed, setTyped] = useState(reduce ? DEMOS[0].query : "");
+  const [phase, setPhase] = useState<"typing" | "plan" | "picked" | "toast">(reduce ? "toast" : "typing");
+
+  useEffect(() => {
+    if (reduce || !inView) return;
+    let alive = true;
+    (async () => {
+      let k = i;
+      while (alive) {
+        const demo = DEMOS[k];
+        setI(k);
+        setPhase("typing");
+        for (let n = 0; n <= demo.query.length && alive; n++) {
+          setTyped(demo.query.slice(0, n));
+          await sleep(38);
+        }
+        await sleep(300);
+        if (!alive) return;
+        setPhase("plan");
+        await sleep(1300);
+        if (!alive) return;
+        setPhase("picked");
+        await sleep(900);
+        if (!alive) return;
+        setPhase("toast");
+        await sleep(2600);
+        k = (k + 1) % DEMOS.length;
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+    // Restart only on visibility; the loop owns `i` while it runs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inView, reduce]);
+
+  const demo = DEMOS[i];
+  const showPlan = phase !== "typing";
+
   return (
-    <div>
-      <p className={`label text-[10px] ${dark ? "text-paper/60" : "text-ink/50"}`}>{label}</p>
-      <ol className={`mt-4 border-t-2 ${dark ? "border-paper" : "border-ink"}`}>
-        {items.map(([name, line], i) => (
-          <motion.li
-            key={name}
-            initial={reduce ? false : { opacity: 0, x: 30 }}
-            whileInView={{ opacity: 1, x: 0 }}
-            viewport={{ once: true, amount: 0.6 }}
-            transition={{ delay: i * 0.06, duration: 0.7, ease: EASE_OUT }}
-            className={`group grid grid-cols-[3.5rem_1fr] items-start gap-3 border-b-2 py-5 ${dark ? "border-paper" : "border-ink"}`}
-          >
-            <span className={`label pt-3 text-[10px] ${dark ? "text-paper/50" : "text-ink/45"}`}>
-              {prefix}/{String(i + 1).padStart(2, "0")}
-            </span>
-            <span>
-              <span className="display block text-[clamp(36px,3.6vw,56px)] transition-transform duration-500 ease-[var(--ease-out)] group-hover:translate-x-2">{name}</span>
-              <span className={`mt-1 block max-w-[46ch] text-[14px] leading-snug ${dark ? "text-paper/75" : "text-ink/65"}`}>{line}</span>
-            </span>
-          </motion.li>
+    <div ref={ref} className="relative" style={{ "--sel": "var(--blue)" } as React.CSSProperties}>
+      <div className="pointer-events-none absolute -inset-[10px] z-10 border-[1.5px] border-[var(--sel)]">
+        {["-top-[6px] -left-[6px]", "-top-[6px] -right-[6px]", "-bottom-[6px] -left-[6px]", "-right-[6px] -bottom-[6px]"].map((p) => (
+          <span key={p} className={`absolute size-[11px] border-2 border-[var(--sel)] bg-white ${p}`} />
         ))}
-      </ol>
+        <span className="label absolute -top-[26px] left-1/2 -translate-x-1/2 rounded-[4px] bg-[var(--sel)] px-2 py-1 text-[10px] whitespace-nowrap text-paper">agent, run #12</span>
+      </div>
+      <div className="relative overflow-hidden rounded-[22px] border-2 border-ink bg-white p-4 shadow-[8px_8px_0_var(--ink)] md:p-7">
+        <div className="flex items-center gap-3 rounded-full border-2 border-ink/80 bg-white px-4 py-3 md:px-5 md:py-3.5">
+          <MagnifyingGlass size={20} weight="bold" className="shrink-0 text-blue" />
+          <span className="min-w-0 flex-1 truncate text-[16px] md:text-[19px]">
+            {typed}
+            {phase === "typing" && <span className="ml-0.5 inline-block h-[1em] w-[2px] translate-y-[0.15em] animate-pulse bg-ink" />}
+          </span>
+          <span className="hidden rounded-full bg-blue px-4 py-1.5 text-[13px] font-semibold text-white sm:inline">Send</span>
+        </div>
+        <div className="label mt-3 flex gap-5 border-b border-ink/10 pb-2 text-[11px] text-ink/50">
+          <span className="-mb-[10px] border-b-2 border-blue pb-2 text-blue">Plan</span>
+          <span>Tools</span>
+          <span>Checks</span>
+          <span className="hidden sm:inline">Timeline</span>
+        </div>
+
+        <div className="relative mt-5 min-h-[360px]">
+          <AnimatePresence mode="wait">
+            {showPlan && (
+              <motion.div key={i} className="absolute inset-0" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.3 }}>
+                <motion.div
+                  initial={{ y: 16, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+                  className="relative rounded-xl p-3 transition-[box-shadow,background-color] duration-500 md:p-4"
+                  style={{
+                    boxShadow: phase === "plan" ? "none" : "0 0 0 3px var(--lime), 0 0 0 5px var(--ink)",
+                    background: phase === "plan" ? "transparent" : "rgb(200 245 60 / 0.18)",
+                  }}
+                >
+                  <p className="label text-[10px] text-ink/50">edit plan · auteur agent</p>
+                  <p className="mt-1 text-[18px] font-semibold text-[#1a0dab] md:text-[20px]">{demo.query}</p>
+                  <ol className="mt-2 space-y-1 text-[14px] text-ink/80">
+                    {demo.plan.map((step, k) => (
+                      <motion.li key={step} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.15 + k * 0.08 }} className="flex gap-2.5">
+                        <span className="w-5 shrink-0 font-mono text-[11px] text-ink/40">{String(k + 1).padStart(2, "0")}</span>
+                        {step}
+                      </motion.li>
+                    ))}
+                  </ol>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {demo.tags.map((t) => (
+                      <span key={t} className="rounded-full border border-ink/40 px-2.5 py-0.5 text-[12px]">
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                </motion.div>
+                {[0.75, 0.5, 0.62].map((w, k) => (
+                  <motion.div key={k} initial={{ opacity: 0 }} animate={{ opacity: 0.6 }} transition={{ delay: 0.4 + k * 0.1 }} className="mt-5 space-y-2 px-3 md:px-4">
+                    <div className="h-2.5 rounded-full bg-blue/25" style={{ width: `${w * 100}%` }} />
+                    <div className="h-2 w-[85%] rounded-full bg-ink/10" />
+                  </motion.div>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {!reduce && (
+            <motion.span
+              className="pointer-events-none absolute top-0 left-0 z-10 text-ink"
+              animate={
+                phase === "plan"
+                  ? { x: 420, y: 330, opacity: 1, scale: 1 }
+                  : phase === "picked"
+                    ? { x: 180, y: 40, opacity: 1, scale: [1, 0.8, 1] }
+                    : { x: 520, y: 360, opacity: 0 }
+              }
+              transition={{ duration: 0.8, ease: [0.65, 0, 0.35, 1] }}
+            >
+              <CursorClick size={28} weight="fill" />
+            </motion.span>
+          )}
+        </div>
+
+        <AnimatePresence>
+          {phase === "toast" && (
+            <motion.div
+              initial={{ y: 40, opacity: 0, scale: 0.8 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: 20, opacity: 0 }}
+              transition={{ duration: 0.5, ease: [0.34, 1.56, 0.64, 1] }}
+              className="absolute right-5 bottom-5 z-20 flex items-center gap-3 rounded-2xl border-2 border-ink bg-lime px-4 py-3 text-forest shadow-[4px_4px_0_var(--ink)]"
+            >
+              <span className="display text-[28px] leading-none">+1</span>
+              <span className="text-[13px] leading-tight font-semibold">
+                keeper
+                <br />
+                <span className="font-normal opacity-70">{demo.toast}</span>
+              </span>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
     </div>
   );
 }
 
-/** (02) The agent: a brief goes in, a plan comes out, on a search-results-style card. */
+/** (02) The agent: intent in, a plan out. */
 export function AgentSection() {
-  const reduce = useReducedMotion();
   return (
-    <section id="agent" className="paper-texture bg-paper px-[var(--gutter)] pt-[clamp(140px,20vh,220px)] pb-[clamp(110px,16vh,180px)] text-ink">
-      <div className="mx-auto max-w-[1400px]">
-        <Heading
-          kicker="(02) The agent · intent"
-          tone="blue"
-          title="Tell it once."
-          accent="it does the rest."
-          accentClass="text-blue"
-          body="You already know what you want. Say it like you would to an editor. The agent plans the cut, uses the tools it needs, and hands back a timeline, not a black box."
-        />
-
-        <div className="mt-20 grid gap-14 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-start">
-          <motion.div
-            initial={reduce ? false : { opacity: 0, y: 60, rotate: -2 }}
-            whileInView={{ opacity: 1, y: 0, rotate: 0 }}
-            viewport={{ once: true, amount: 0.3 }}
-            transition={{ duration: 1, ease: EASE_OUT }}
-            className="relative"
-          >
-            <span className="label absolute -top-3 left-1/2 z-10 -translate-x-1/2 rounded-[3px] bg-blue px-2 py-0.5 text-[9px] text-paper">Agent, run #12</span>
-            {/* Selection handles, as if the card were picked on a canvas. */}
-            <div className="pointer-events-none absolute -inset-3 border border-blue">
-              {["-top-1 -left-1", "-top-1 -right-1", "-bottom-1 -left-1", "-bottom-1 -right-1"].map((p) => (
-                <span key={p} className={`absolute size-2 border border-blue bg-paper ${p}`} />
-              ))}
-            </div>
-            <div className="rounded-[18px] border-2 border-ink bg-[#fbf9f4] p-5 shadow-[8px_8px_0_0_var(--ink)]">
-              <div className="flex items-center gap-3 rounded-full border-2 border-ink px-4 py-2.5">
-                <MagnifyingGlass size={18} className="text-blue" />
-                <span className="flex-1 truncate text-[15px]">make a 30s day-in-my-life from these clips</span>
-                <span className="rounded-full bg-blue px-3 py-1 text-[12px] font-semibold text-paper">Send</span>
-              </div>
-              <div className="label mt-4 flex gap-5 border-b border-ink/10 pb-2 text-[9px] text-ink/50">
-                <span className="text-blue underline decoration-2 underline-offset-[6px]">Plan</span>
-                <span>Tools</span>
-                <span>Checks</span>
-                <span>Timeline</span>
-              </div>
-              <div className="mt-4 rounded-[12px] border-2 border-lime bg-lime/15 p-4">
-                <p className="label text-[9px] text-ink/60">Edit plan</p>
-                <ol className="mt-2 space-y-1.5 text-[14px]">
-                  {[
-                    "Watch all clips, order them by time of day",
-                    "Cut on every bar of the lofi track (120 BPM)",
-                    "0.5× on the best walking shot (60 fps source)",
-                    "Crossfades, slow zoom on the stage, warm grade",
-                    "Check: subject in frame, cuts on beat, 30s",
-                  ].map((step, i) => (
-                    <li key={step} className="flex gap-2.5">
-                      <span className="w-5 shrink-0 font-mono text-[11px] text-ink/40">{String(i + 1).padStart(2, "0")}</span>
-                      <span>{step}</span>
-                    </li>
-                  ))}
-                </ol>
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                  {["9:16", "music", "beat cuts", "slow-mo"].map((t) => (
-                    <span key={t} className="rounded-full border border-ink/40 px-2 py-0.5 text-[11px]">
-                      {t}
-                    </span>
-                  ))}
-                </div>
-              </div>
-              <div className="mt-4 space-y-2.5">
-                {[0.8, 0.55, 0.7].map((w, i) => (
-                  <div key={i} className="flex items-center gap-3">
-                    <span className="size-6 rounded-full bg-ink/10" />
-                    <span className="h-2 rounded-full bg-blue/20" style={{ width: `${w * 100}%` }} />
-                  </div>
-                ))}
-              </div>
-              <div className="mt-4 flex justify-end">
-                <span className="inline-flex items-center gap-2 rounded-[10px] border-2 border-ink bg-lime px-3 py-1.5 text-[12px] font-semibold">
-                  <span className="display text-[20px]">167s</span> start to export · $0.53
-                </span>
-              </div>
-            </div>
-          </motion.div>
-
-          <ToolList items={AGENT_TOOLS} prefix="A" label="What it does on its own" />
+    <section id="agent" className="paper-texture relative overflow-hidden bg-paper px-[var(--gutter)] pt-[12vw] pb-[11vw] text-ink">
+      <Heading
+        kicker="(02) The agent · intent"
+        tone="blue"
+        title="Tell it once."
+        accent="it does the rest."
+        accentClass="text-blue"
+        body="You already know what you want. Say it like you would to an editor. The agent plans the cut, uses the tools it needs, and hands back a timeline, not a black box."
+      />
+      <div className="mt-16 grid gap-14 lg:mt-24 lg:grid-cols-12 lg:gap-12">
+        <Fade className="lg:col-span-7">
+          <AgentDemo />
+        </Fade>
+        <div className="lg:col-span-5">
+          <ServiceList items={AGENT_TOOLS} prefix="A" label="What it does on its own" line="var(--ink)" hoverBg="var(--blue)" hoverFg="var(--paper)" />
         </div>
       </div>
     </section>
@@ -202,95 +324,130 @@ const EDITOR_TOOLS = [
   ["Timeline", "Four tracks: B-roll, main, text, music. Drag, trim, split, snap."],
   ["Keyframes", "Speed ramps, volume and framing that move over time."],
   ["Color", "Wheels, curves, LOG profiles and looks, previewed exactly as exported."],
+  ["Subtitles", "Five creator styles, every word editable on the text track."],
   ["Undo a run", "Every agent instruction is one step back in the history."],
 ] as const;
 
-/** (03) The editor: the timeline stays yours, shown on a phone mid-edit. */
+const FEED_COLORS = ["#ffc22e", "#c8f53c", "#2e3bff", "#ff8fcf", "#ff4f1f", "#1d1c1a"];
+
+/**
+ * (03) The editor. A phone scrolls its feed as you scroll the page; when our edit reaches the middle a
+ * finger taps it, hearts burst and a "checked. shipped." stamp slams down.
+ */
 export function EditorSection() {
+  const root = useRef<HTMLElement>(null);
   const reduce = useReducedMotion();
+
+  useEffect(() => {
+    if (reduce || !root.current) return;
+    const ctx = gsap.context(() => {
+      const st = { trigger: "[data-phone-zone]", start: "top 85%", end: "bottom 15%", scrub: 1 };
+      gsap.fromTo("[data-phone]", { y: 80, rotate: 8 }, { y: -80, rotate: -3, ease: "none", scrollTrigger: st });
+      gsap.fromTo("[data-feed]", { yPercent: 0 }, { yPercent: -46, ease: "none", scrollTrigger: { ...st, end: "center 45%" } });
+      gsap.from("[data-bubble]", { y: 20, scale: 0.6, opacity: 0, stagger: 0.25, duration: 0.6, ease: "back.out(2)", scrollTrigger: { trigger: "[data-phone-zone]", start: "top 60%" } });
+      const tap = gsap.timeline({ paused: true });
+      tap
+        .fromTo("[data-touch]", { scale: 1.6, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.25 })
+        .to("[data-touch]", { scale: 0.8, opacity: 0, duration: 0.3 })
+        .fromTo(
+          "[data-heart]",
+          { y: 0, x: 0, opacity: 1, scale: 0.4 },
+          { y: () => gsap.utils.random(-170, -90), x: () => gsap.utils.random(-70, 70), rotate: () => gsap.utils.random(-40, 40), scale: 1, opacity: 0, duration: 1, stagger: 0.04, ease: "power2.out" },
+          "<",
+        )
+        .fromTo("[data-stamp]", { scale: 2.4, rotate: -30, opacity: 0 }, { scale: 1, rotate: -12, opacity: 1, duration: 0.45, ease: "back.out(2.5)" }, "-=0.8");
+      ScrollTrigger.create({ trigger: "[data-phone-zone]", start: "center 55%", onEnter: () => tap.play(0), onLeaveBack: () => tap.reverse() });
+    }, root);
+    return () => ctx.revert();
+  }, [reduce]);
+
   return (
-    <section className="paper-texture bg-blue px-[var(--gutter)] py-[clamp(120px,18vh,200px)] text-paper [--texture-strength:0.6]">
-      <div className="mx-auto max-w-[1400px]">
-        <Heading
-          kicker="(03) The editor · control"
-          tone="paper"
-          title="Every cut"
-          accent="stays yours."
-          accentClass="text-pink"
-          body="Nobody wants a video they can't touch. Whatever the agent builds lands on a real timeline: move a clip, nudge a keyframe, or tell it to try again."
-          dark
-        />
-        <div className="mt-20 grid gap-16 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] lg:items-center">
-          <ToolList items={EDITOR_TOOLS} prefix="E" label="What you can change" dark />
-
-          <div className="relative mx-auto w-full max-w-[320px]">
-            <motion.span
-              initial={reduce ? false : { opacity: 0, x: -30, rotate: -12 }}
-              whileInView={{ opacity: 1, x: 0, rotate: -6 }}
-              viewport={{ once: true }}
-              transition={{ delay: 0.3, duration: 0.7, ease: EASE_OUT }}
-              className="absolute top-24 -left-24 z-10 rounded-[10px] border-2 border-ink bg-paper px-3 py-1.5 text-[13px] text-ink shadow-[0_3px_0_0_var(--ink)]"
-            >
+    <section ref={root} className="paper-texture relative overflow-hidden bg-blue px-[var(--gutter)] pt-[12vw] pb-[12vw] text-paper [--texture-strength:0.3]">
+      <Heading
+        kicker="(03) The editor · control"
+        tone="paper"
+        title="Every cut"
+        accent="stays yours."
+        accentClass="text-pink"
+        body="Nobody wants a video they can't touch. Whatever the agent builds lands on a real timeline: move a clip, nudge a keyframe, or tell it to try again."
+        dark
+      />
+      <div className="mt-16 grid items-center gap-16 lg:mt-24 lg:grid-cols-12">
+        <div className="order-2 lg:order-1 lg:col-span-6">
+          <ServiceList items={EDITOR_TOOLS} prefix="E" label="What you can change" line="var(--paper)" hoverBg="var(--pink)" hoverFg="var(--ink)" dark />
+        </div>
+        <div data-phone-zone className="order-1 flex justify-center lg:order-2 lg:col-span-6">
+          <div data-phone className="relative will-change-transform">
+            <div data-bubble className="absolute top-[16%] -left-[10%] z-20 rounded-2xl rounded-br-sm border-2 border-ink bg-paper px-4 py-2.5 text-[14px] font-medium text-ink">
               make it warmer. <span className="text-tomato">now.</span>
-            </motion.span>
-            <motion.span
-              initial={reduce ? false : { opacity: 0, x: 30, rotate: 10 }}
-              whileInView={{ opacity: 1, x: 0, rotate: 5 }}
-              viewport={{ once: true }}
-              transition={{ delay: 0.5, duration: 0.7, ease: EASE_OUT }}
-              className="absolute -right-16 bottom-36 z-10 rounded-[10px] border-2 border-ink bg-pink px-3 py-1.5 text-[13px] text-ink shadow-[0_3px_0_0_var(--ink)]"
-            >
+            </div>
+            <div data-bubble className="absolute top-[44%] -right-[10%] z-20 rounded-2xl rounded-bl-sm border-2 border-ink bg-pink px-4 py-2.5 text-[14px] font-medium text-ink">
               cut on the drop??
-            </motion.span>
-            <motion.span
-              initial={reduce ? false : { scale: 0, rotate: -30 }}
-              whileInView={{ scale: 1, rotate: -12 }}
-              viewport={{ once: true }}
-              transition={{ delay: 0.7, duration: 0.6, ease: [0.34, 1.56, 0.64, 1] }}
-              className="display absolute top-16 -right-10 z-10 grid size-28 place-items-center rounded-full border-2 border-ink bg-lime text-center text-[22px] leading-[0.9] text-forest"
-            >
-              Checked.
-              <br />
-              Shipped.
-            </motion.span>
+            </div>
+            <div data-bubble className="absolute bottom-[16%] -left-[8%] z-20 rounded-2xl rounded-br-sm border-2 border-ink bg-lime px-4 py-2.5 text-[14px] font-medium text-ink">
+              undo that one
+            </div>
 
-            <motion.div
-              initial={reduce ? false : { y: 80, rotate: 6, opacity: 0 }}
-              whileInView={{ y: 0, rotate: 0, opacity: 1 }}
-              viewport={{ once: true, amount: 0.3 }}
-              transition={{ duration: 1, ease: EASE_OUT }}
-              className="rounded-[40px] border-[3px] border-ink bg-ink p-3 shadow-[12px_14px_0_0_rgba(18,17,16,0.4)]"
-            >
-              <div className="overflow-hidden rounded-[30px] bg-paper text-ink">
-                <div className="flex items-center justify-between px-5 pt-3 pb-2 text-[12px] font-semibold">
-                  <span>9:41</span>
-                  <span className="h-5 w-20 rounded-full bg-ink" />
-                  <span>100%</span>
+            <div className="relative h-[560px] w-[272px] rounded-[46px] border-[10px] border-ink bg-ink shadow-[14px_14px_0_rgb(18_17_16/0.35)] md:h-[640px] md:w-[310px]">
+              <div className="relative h-full w-full overflow-hidden rounded-[36px] bg-white">
+                <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between bg-white px-5 pt-8 pb-2 text-ink">
+                  <span className="text-[17px] font-bold tracking-[-0.02em]">For you</span>
+                  <Heart size={20} />
                 </div>
-                <div className="relative aspect-[9/12] overflow-hidden">
-                  <Image src="/assets/phone-reel.jpg" alt="A vertical edit in the Auteur preview" fill sizes="320px" className="object-cover" />
-                  <p className="absolute inset-x-0 bottom-6 px-4 text-center font-[Montserrat] text-[22px] font-black text-paper uppercase [text-shadow:0_2px_0_#000]">
-                    we <span className="text-lime">finally</span> made it
-                  </p>
+                <div data-feed className="absolute inset-x-0 top-0 flex flex-col gap-3 px-3 pt-[72px] will-change-transform">
+                  {Array.from({ length: 13 }, (_, k) =>
+                    k === 6 ? (
+                      <div key={k} className="shrink-0 rounded-2xl border-2 border-ink bg-white p-2.5 text-ink">
+                        <div className="flex items-center gap-2">
+                          <span className="display grid size-7 place-items-center rounded-full bg-lime text-[12px]">au</span>
+                          <span className="text-[12px] leading-tight font-semibold">
+                            your cut
+                            <span className="block font-normal text-ink/50">made with auteur</span>
+                          </span>
+                        </div>
+                        <div className="relative mt-2 aspect-[4/5] overflow-hidden rounded-xl border-2 border-ink">
+                          <Image src="/assets/phone-reel.jpg" alt="An Auteur edit in a social feed" fill sizes="300px" className="object-cover" />
+                          <p className="absolute inset-x-0 bottom-4 px-3 text-center font-[Montserrat] text-[20px] font-black text-paper uppercase [text-shadow:0_2px_0_#000]">
+                            we <span className="text-lime">finally</span> made it
+                          </p>
+                        </div>
+                        <div className="mt-2 flex items-center justify-between rounded-lg bg-ink px-3 py-2 text-[12px] font-semibold text-paper">
+                          Export · 9:16 · 30 fps <ArrowUpRight size={12} weight="bold" />
+                        </div>
+                      </div>
+                    ) : (
+                      <div key={k} className="shrink-0 rounded-2xl border border-ink/10 bg-white p-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="size-7 rounded-full bg-ink/10" />
+                          <span className="h-2 w-24 rounded-full bg-ink/10" />
+                        </div>
+                        <div className="mt-2 aspect-[4/3] rounded-xl" style={{ background: FEED_COLORS[k % FEED_COLORS.length], opacity: 0.35 }} />
+                      </div>
+                    ),
+                  )}
                 </div>
-                <div className="space-y-1.5 p-3">
-                  {[["bg-tomato", "w-[38%]", "bg-blue", "w-[30%]", "bg-sun", "w-[24%]"]].map((row, k) => (
-                    <div key={k} className="flex gap-1">
-                      <span className={`h-6 rounded-[4px] border border-ink ${row[0]} ${row[1]}`} />
-                      <span className={`h-6 rounded-[4px] border border-ink ${row[2]} ${row[3]}`} />
-                      <span className={`h-6 rounded-[4px] border border-ink ${row[4]} ${row[5]}`} />
-                    </div>
-                  ))}
-                  <div className="h-3 rounded-[3px] bg-lime/60" />
-                  <div className="flex items-center justify-between pt-1">
-                    <span className="label text-[9px] text-ink/50">00:00:12 / 00:00:30</span>
-                    <span className="inline-flex items-center gap-1 rounded-full bg-ink px-2.5 py-1 text-[11px] font-semibold text-paper">
-                      Export <ArrowRight size={11} weight="bold" />
-                    </span>
+                <div data-touch className="pointer-events-none absolute bottom-[30%] left-1/2 z-20 -ml-7 size-14 rounded-full border-2 border-ink/40 bg-ink/15 opacity-0" />
+              </div>
+              <div className="absolute top-[6px] left-1/2 z-20 h-[22px] w-[92px] -translate-x-1/2 rounded-full bg-ink" />
+              <div className="pointer-events-none absolute bottom-[34%] left-1/2 z-30">
+                {Array.from({ length: 8 }, (_, k) => (
+                  <Heart key={k} data-heart size={30} weight="fill" className={`absolute -ml-4 opacity-0 ${k % 2 ? "text-pink" : "text-tomato"}`} />
+                ))}
+              </div>
+              <div
+                data-stamp
+                className="absolute top-[6%] -right-[8%] z-30 grid size-[112px] place-items-center rounded-full border-[3px] border-ink bg-lime text-center text-forest opacity-0 md:top-[8%] md:-right-[18%]"
+              >
+                <div>
+                  <Sparkle size={18} weight="fill" className="mx-auto mb-1 text-tomato" />
+                  <div className="display text-[25px] leading-[0.88]">
+                    checked.
+                    <br />
+                    shipped.
                   </div>
                 </div>
               </div>
-            </motion.div>
+            </div>
           </div>
         </div>
       </div>

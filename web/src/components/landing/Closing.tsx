@@ -11,6 +11,7 @@ import { RainbowArcs } from "@/components/ui/RainbowArcs";
 import { ApiError, api } from "@/lib/api";
 import { useExperience } from "./experience";
 import { Kicker } from "./primitives";
+import { RevealLines } from "./reveal";
 
 const EASE_OUT = [0.16, 1, 0.3, 1] as const;
 
@@ -74,7 +75,7 @@ export function Faq() {
       <div className="mx-auto max-w-[1300px]">
         <div className="text-center">
           <Kicker tone="tomato">(09) FAQ</Kicker>
-          <h2 className="display mt-6 text-[clamp(64px,10vw,170px)] text-tomato">Before you ask</h2>
+          <RevealLines className="display mt-6 text-[clamp(64px,12vw,220px)] leading-[0.84] text-tomato" lines={[{ text: "Before you ask" }]} />
         </div>
         <dl className="mt-16 grid gap-x-12 md:grid-cols-2">
           {FAQ.map(([q, a], i) => (
@@ -144,8 +145,13 @@ export function SayHi() {
       <RainbowArcs corner="top-left" className="pointer-events-none absolute -top-10 -left-10 size-[min(46vw,560px)]" />
       <div className="relative mx-auto max-w-[1000px] text-center">
         <Kicker tone="lime">(10) Say hi</Kicker>
-        <h2 className="display mt-6 text-[clamp(64px,10vw,170px)]">Got footage</h2>
-        <p className="pb-2 font-serif text-[clamp(56px,8.4vw,140px)] leading-[0.9] italic text-lime">to cut?</p>
+        <RevealLines
+          className="mx-auto mt-6 max-w-[14ch] text-[clamp(60px,9.4vw,170px)] leading-[0.86]"
+          lines={[
+            { text: "Got footage", className: "display" },
+            { text: "to cut?", className: "font-serif italic normal-case text-lime pb-[0.04em]" },
+          ]}
+        />
         <p className="mx-auto mt-6 max-w-[48ch] text-[17px] leading-relaxed text-paper/75">
           Make an account and your first project opens with the right recipe. Five minutes of footage, no card, no strings.
         </p>

@@ -3,7 +3,13 @@
 import { Check, FileVideo, Plus, Sparkle, Waveform, X } from "@phosphor-icons/react";
 import { AnimatePresence, animate, motion, useInView, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
+import { gsap } from "gsap";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { Kicker } from "./primitives";
+import { Heading } from "./Product";
+import { Fade, RevealLines } from "./reveal";
+
+gsap.registerPlugin(ScrollTrigger);
 
 const EASE_OUT = [0.16, 1, 0.3, 1] as const;
 
@@ -41,9 +47,16 @@ export function Receipts() {
     <section className="paper-texture relative overflow-hidden bg-tomato px-[var(--gutter)] py-[clamp(120px,18vh,200px)] text-ink [--texture-strength:0.7]">
       <div className="mx-auto grid max-w-[1400px] gap-16 lg:grid-cols-[1fr_minmax(0,22rem)]">
         <div>
-          <Kicker tone="ink">(05) The receipts</Kicker>
-          <h2 className="display mt-6 text-[clamp(60px,9vw,150px)]">We bring</h2>
-          <p className="pb-2 font-serif text-[clamp(56px,8vw,132px)] leading-[0.9] italic text-paper">receipts.</p>
+          <Fade>
+            <Kicker tone="ink">(05) The receipts</Kicker>
+          </Fade>
+          <RevealLines
+            className="mt-6 text-[clamp(64px,10vw,180px)] leading-[0.84]"
+            lines={[
+              { text: "We bring", className: "display" },
+              { text: "receipts.", className: "font-serif italic normal-case text-paper pb-[0.04em]" },
+            ]}
+          />
           <p className="mt-6 max-w-[44ch] text-[17px] leading-relaxed text-ink/85">
             Pretty demos don&apos;t ship videos. These come from Auteur&apos;s own runs and test fixtures, measured, not estimated.
           </p>
@@ -287,59 +300,90 @@ function StepArt({ kind }: { kind: (typeof STEPS)[number]["art"] }) {
   );
 }
 
-/** (07) How it works: five cards that pin and stack as you scroll. */
+/**
+ * (07) How it works: five cards that pin and stack. Each card is paper inside a thick colored frame;
+ * as the next one slides over it, it shrinks a little from the top and dims, and each card's art
+ * rises in as it arrives.
+ */
 export function Process() {
-  return (
-    <section id="process" className="paper-texture bg-paper px-[var(--gutter)] pt-[clamp(120px,18vh,200px)] pb-[20vh] text-ink">
-      <div className="mx-auto max-w-[1400px]">
-        <div className="grid items-end gap-8 lg:grid-cols-[1fr_minmax(0,24rem)]">
-          <div>
-            <Kicker tone="ink">(07) How it works</Kicker>
-            <h2 className="display mt-6 text-[clamp(60px,9vw,150px)]">How it</h2>
-            <p className="pb-2 font-serif text-[clamp(56px,8vw,132px)] leading-[0.9] italic text-tomato">makes the cut.</p>
-          </div>
-          <p className="max-w-[38ch] text-[17px] leading-relaxed text-ink/75">Five steps, no mystery. You can read the plan, watch every tool run, and undo any of it.</p>
-        </div>
+  const root = useRef<HTMLElement>(null);
+  const reduce = useReducedMotion();
 
-        <div className="mt-20">
-          {STEPS.map((s, i) => (
-            <div key={s.n} className="sticky pb-8" style={{ top: `calc(110px + ${i * 22}px)` }}>
-              <article
-                className="grid overflow-hidden rounded-[26px] border-2 border-ink shadow-[0_10px_0_0_var(--ink)] md:min-h-[420px] md:grid-cols-2"
-                style={{ background: s.color, borderColor: "var(--ink)" }}
-              >
-                <div className="m-3 flex flex-col justify-between rounded-[18px] border-2 border-ink bg-paper p-7 md:mr-0">
-                  <div className="flex items-start justify-between">
-                    <span className="display text-[96px] leading-[0.8] text-transparent [-webkit-text-stroke:2px_var(--ink)]">{s.n}</span>
-                    <span className="label text-[10px] text-ink/50">
-                      Step {i + 1} of {STEPS.length}
-                    </span>
-                  </div>
-                  <div className="mt-10">
-                    <h3 className="display text-[clamp(56px,6vw,96px)]">{s.title}</h3>
-                    <p className="font-serif text-[26px] italic text-ink/70">{s.sub}</p>
-                    <p className="mt-4 max-w-[44ch] text-[15px] leading-relaxed text-ink/80">{s.body}</p>
-                    <div className="mt-5 flex flex-wrap gap-2">
-                      {s.chips.map((c) => (
-                        <span key={c} className="rounded-full border-2 border-ink px-3 py-1 text-[12px] font-semibold">
-                          {c}
-                        </span>
-                      ))}
-                    </div>
+  useEffect(() => {
+    if (reduce || !root.current) return;
+    const ctx = gsap.context(() => {
+      const cards = gsap.utils.toArray<HTMLElement>("[data-pcard]");
+      cards.forEach((card, i) => {
+        gsap.fromTo(
+          card.querySelector("[data-part]"),
+          { y: 60, rotate: gsap.utils.random(-4, 4), opacity: 0 },
+          { y: 0, rotate: 0, opacity: 1, duration: 0.9, ease: "back.out(1.6)", scrollTrigger: { trigger: card, start: "top 70%" } },
+        );
+        const next = cards[i + 1];
+        if (!next) return;
+        const st = { trigger: next, start: "top bottom", end: "top 20%", scrub: true };
+        gsap.to(card.querySelector("[data-pinner]"), { scale: 0.92, ease: "none", scrollTrigger: st });
+        gsap.to(card.querySelector("[data-pshade]"), { opacity: 0.22, ease: "none", scrollTrigger: st });
+      });
+    }, root);
+    return () => ctx.revert();
+  }, [reduce]);
+
+  return (
+    <section ref={root} id="process" className="paper-texture relative bg-paper px-[var(--gutter)] pt-[12vw] pb-[8vw] text-ink">
+      <Heading
+        kicker="(07) How it works"
+        tone="ink"
+        title="How it"
+        accent="makes the cut."
+        accentClass="text-tomato"
+        body="Five steps, no mystery. You can read the plan, watch every tool run, and undo any of it."
+      />
+
+      <div className="mt-16 md:mt-24">
+        {STEPS.map((s, i) => (
+          <div key={s.n} data-pcard className="relative mb-6 md:sticky md:mb-[6vh]" style={{ top: `calc(90px + ${i * 22}px)` }}>
+            <div
+              data-pinner
+              className="relative grid origin-top overflow-hidden rounded-[30px] border-[3px] border-ink bg-paper shadow-[0_24px_60px_-20px_rgb(18_17_16/0.45)] will-change-transform md:grid-cols-2"
+              style={{ outline: `14px solid ${s.color}`, outlineOffset: "-17px" }}
+            >
+              <div className="flex flex-col justify-between gap-8 p-8 md:p-12">
+                <div className="flex items-start justify-between">
+                  <span className="display text-[clamp(80px,9vw,150px)] leading-[0.8] text-transparent [-webkit-text-stroke:2.5px_var(--ink)]">{s.n}</span>
+                  <span className="label mt-2 text-[11px] text-ink/60">
+                    step {i + 1} of {STEPS.length}
+                  </span>
+                </div>
+                <div>
+                  <h3 className="display text-[clamp(64px,8vw,140px)] leading-[0.82]">{s.title}</h3>
+                  <p className="mt-1 font-serif text-[clamp(26px,2.6vw,40px)] italic text-ink/70">{s.sub}</p>
+                  <p className="mt-5 max-w-[440px] text-[18px] leading-[1.45]">{s.body}</p>
+                  <div className="mt-6 flex flex-wrap gap-2">
+                    {s.chips.map((c) => (
+                      <span key={c} className="rounded-full border-2 border-ink px-3 py-1 text-[13px] font-semibold">
+                        {c}
+                      </span>
+                    ))}
                   </div>
                 </div>
-                <div className="relative grid min-h-[280px] place-items-center p-8">
-                  <StepArt kind={s.art} />
-                  {i === STEPS.length - 1 && (
-                    <span className="display absolute top-8 right-8 grid size-20 rotate-12 place-items-center rounded-full border-2 border-ink bg-tomato text-[18px] text-ink">
-                      <Sparkle size={30} weight="fill" />
-                    </span>
-                  )}
+              </div>
+              <div className="relative min-h-[320px] overflow-hidden border-t-[3px] border-ink md:border-t-0 md:border-l-[3px]" style={{ background: s.color }}>
+                <div className="absolute inset-0 grid place-items-center">
+                  <div data-part>
+                    <StepArt kind={s.art} />
+                  </div>
                 </div>
-              </article>
+                {i === STEPS.length - 1 && (
+                  <span className="absolute top-8 right-8 grid size-20 rotate-12 place-items-center rounded-full border-2 border-ink bg-tomato text-ink">
+                    <Sparkle size={30} weight="fill" />
+                  </span>
+                )}
+              </div>
+              <div data-pshade className="pointer-events-none absolute inset-0 bg-ink opacity-0" />
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
       </div>
     </section>
   );

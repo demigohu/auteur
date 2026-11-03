@@ -161,7 +161,7 @@ function EmptyPreview({ hasMedia }: { hasMedia: boolean }) {
       <p className="mt-1.5 text-sm leading-relaxed text-muted">
         {hasMedia
           ? "Ask the agent to build the video in the right panel, or add clips from the media bin."
-          : "Upload footage to the media bin, then direct the agent like a human editor."}
+          : "Upload footage and direct the agent like a human editor, or make a video in code in the Story tab."}
       </p>
     </div>
   );

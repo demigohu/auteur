@@ -17,8 +17,8 @@ from starlette.concurrency import run_in_threadpool
 from starlette.types import ASGIApp, Receive, Scope, Send
 from sse_starlette.sse import EventSourceResponse
 
-from auteur import colorist, reference
-from auteur.agent.loop import run_agent
+from auteur import colorist, motion, reference
+from auteur.agent.loop import run_agent, run_tool
 from auteur.config import settings
 from auteur.events import bus
 from auteur.media import MAX_TOTAL_SECONDS, MediaError, ingest
@@ -26,7 +26,7 @@ from auteur.render import RenderError, render
 from auteur.auth import ClerkAuth
 from auteur.store import NotFound, Store
 from auteur.timeline import Media, Op, OpError, Project, Timeline
-from auteur.timeline.history import ChatMessage, CheckResult, ReferenceImage
+from auteur.timeline.history import ChatMessage, CheckResult, ReferenceImage, Storyboard
 from auteur.tracking import load_track
 from auteur.timeline.models import Aspect
 from auteur.timeline.ops import SetGrade, new_id
@@ -182,6 +182,7 @@ class ProjectView(BaseModel):
     tracks: list[TrackView]
     references: list[ReferenceView]
     last_check: CheckResult | None
+    storyboard: Storyboard | None
     speech: list[tuple[float, float]]
     spent: float
     last_render_url: str | None
@@ -224,6 +225,7 @@ class ProjectView(BaseModel):
                 ReferenceView(id=r.id, name=r.name, url=f"/files/{p.id}/refs/{r.id}.jpg") for r in p.references.values()
             ],
             last_check=p.last_check,
+            storyboard=p.storyboard,
             last_render_url=f"/files/{p.id}/{p.last_render}" if p.last_render else None,
             can_undo=bool(p.history),
             can_redo=bool(p.redo_stack),
@@ -464,6 +466,70 @@ async def start_run(project_id: str, body: RunRequest, request: Request) -> dict
     check_run_quota(request)
     run_id = new_id("run")
     task = asyncio.create_task(run_agent(store, project_id, run_id, body.instruction, lock, body.reference_ids))
+    _runs[project_id] = (run_id, task)
+    return {"run_id": run_id}
+
+
+class StoryboardSceneEdit(BaseModel):
+    id: str = Field("", description="Existing scene id; empty for a new scene")
+    title: str = Field(min_length=1, max_length=80)
+    duration: float = Field(ge=1, le=20)
+    brief: str = Field(min_length=1, max_length=2000)
+    images: list[str] = Field(default_factory=list, max_length=4)
+
+
+class StoryboardEdit(BaseModel):
+    style: str = Field(max_length=3000)
+    scenes: list[StoryboardSceneEdit] = Field(min_length=1, max_length=40)
+
+
+@app.put("/projects/{project_id}/storyboard")
+async def edit_storyboard(project_id: str, body: StoryboardEdit) -> ProjectView:
+    """The storyboard panel's edits: scenes whose text or timing changed need a rebuild; order and
+    removals apply to the timeline right away."""
+    async with ensure_idle(project_id):
+        p = load(project_id)
+        if p.storyboard is None:
+            raise HTTPException(400, "This project has no storyboard yet; ask the agent for a video made in code")
+        total = sum(s.duration for s in body.scenes)
+        if total > motion.MAX_SECONDS:
+            raise HTTPException(400, f"The scenes add up to {total:g}s; the limit is {motion.MAX_SECONDS}s")
+        p.storyboard = motion.merge_storyboard(
+            p.storyboard, p.storyboard.brief, body.model_dump(), set(p.references),
+        )
+        ops = motion.place_scenes(p.timeline, p.media, p.storyboard)
+        if ops:
+            try:
+                p.commit("user", "Storyboard order", ops)
+            except OpError as e:
+                raise HTTPException(400, str(e)) from None
+        store.save(p)
+        return ProjectView.of(p, busy=False)
+
+
+class BuildScenesRequest(BaseModel):
+    scene_ids: list[str] | None = Field(None, max_length=40)
+    notes: list[dict[str, str]] = Field(default_factory=list, max_length=40)
+
+
+@app.post("/projects/{project_id}/scenes/build")
+async def build_scenes_now(project_id: str, body: BuildScenesRequest, request: Request) -> dict[str, str]:
+    """The storyboard panel's Build buttons: runs `build_scenes` directly, as a run the editor follows."""
+    p = load(project_id)
+    lock = ensure_idle(project_id)
+    if (run := _runs.get(project_id)) and not run[1].done():
+        raise HTTPException(409, "The agent is already running")
+    if p.storyboard is None:
+        raise HTTPException(400, "This project has no storyboard yet")
+    check_run_quota(request)
+    names = {s.id: f"{i + 1}" for i, s in enumerate(p.storyboard.scenes)}
+    if body.scene_ids and len(body.scene_ids) == 1 and body.scene_ids[0] in names:
+        label = f"Build scene {names[body.scene_ids[0]]}"
+    else:
+        label = "Build scenes"
+    run_id = new_id("run")
+    args = {"scene_ids": body.scene_ids, "notes": body.notes}
+    task = asyncio.create_task(run_tool(store, project_id, run_id, label, "build_scenes", args, lock))
     _runs[project_id] = (run_id, task)
     return {"run_id": run_id}
 

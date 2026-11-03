@@ -25,6 +25,10 @@ const SUGGESTIONS = [
   "Give it a warm cinematic grade, nothing over the top.",
 ];
 
+/** Works without footage: Muse Wonder writes the video in code. */
+const MOTION_SUGGESTION =
+  "Make a 30-second launch video in code for my app: a bold title, three features, and an end card with the name.";
+
 // Human labels for the agent's tools, shown in the log instead of function names.
 const TOOL_LABEL: Record<string, string> = {
   plan: "Planning",
@@ -46,6 +50,8 @@ const TOOL_LABEL: Record<string, string> = {
   remove_fillers: "Removing fillers and pauses",
   subtitles: "Writing subtitles",
   render: "Rendering",
+  storyboard: "Writing the storyboard with Muse Wonder",
+  build_scenes: "Building scenes with Muse Wonder",
 };
 
 export function AgentTab() {
@@ -122,7 +128,7 @@ export function AgentTab() {
             {runReply && run.status !== "running" && <ChatLine role="assistant" text={runReply.text} />}
           </>
         )}
-        {!history.length && !run && <Suggestions onPick={send} disabled={!project?.media.length} />}
+        {!history.length && !run && <Suggestions onPick={(s) => (s === MOTION_SUGGESTION ? setDraft(s) : send(s))} disabled={!project?.media.length} />}
       </div>
 
       <form
@@ -270,14 +276,16 @@ function Suggestions({ onPick, disabled }: { onPick: (t: string) => void; disabl
     <div className="pt-2">
       <p className="display text-[34px] text-text">What are we editing?</p>
       <p className="mt-1 text-sm leading-relaxed text-muted">
-        {disabled ? "Upload footage to the media bin first." : "The agent watches and listens to your footage. Try one:"}
+        {disabled
+          ? "Upload footage to the media bin, or have Muse Wonder make a video in code:"
+          : "The agent watches and listens to your footage. Try one:"}
       </p>
       <div className="mt-3 space-y-1.5">
-        {SUGGESTIONS.map((s) => (
+        {[...SUGGESTIONS, MOTION_SUGGESTION].map((s) => (
           <button
             key={s}
             type="button"
-            disabled={disabled}
+            disabled={disabled && s !== MOTION_SUGGESTION}
             onClick={() => onPick(s)}
             className="block w-full rounded-[14px] border-2 border-line px-3 py-2 text-left text-[13px] leading-snug text-muted transition hover:border-line-strong hover:bg-card hover:text-text active:scale-[0.99] disabled:pointer-events-none disabled:opacity-40"
           >

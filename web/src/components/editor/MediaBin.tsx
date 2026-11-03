@@ -110,6 +110,11 @@ function MediaCard({ media, locked, onAdd }: { media: MediaView; locked: boolean
           alt={media.name}
           className={`h-full w-full ${portrait || audio ? "object-contain" : "object-cover"}`}
         />
+        {media.scene_id && (
+          <span className="label absolute top-1.5 left-1.5 rounded-full border-2 border-ink bg-sun px-1.5 py-px text-[9px] text-ink">
+            Code
+          </span>
+        )}
         <button
           type="button"
           onClick={onAdd}

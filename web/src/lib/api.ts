@@ -1,5 +1,5 @@
 import { getToken } from "@clerk/nextjs";
-import type { Media, Schema, Timeline } from "./timeline";
+import type { Media, Schema, Storyboard, Timeline } from "./timeline";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -46,6 +46,7 @@ export type ProjectView = {
   tracks: TrackView[];
   references: ReferenceView[];
   last_check: CheckResult | null;
+  storyboard: Storyboard | null;
   speech: [number, number][];
   spent: number;
   last_render_url: string | null;
@@ -66,6 +67,12 @@ export type ProjectSummary = {
   media: number;
 };
 
+
+/** The storyboard panel's edits; scenes without an id are new. */
+export type StoryboardEdit = {
+  style: string;
+  scenes: { id: string; title: string; duration: number; brief: string; images: string[] }[];
+};
 
 export type NewProject = { name: string; aspect: Timeline["aspect"]; fps: 24 | 30 | 60 };
 
@@ -135,5 +142,8 @@ export const api = {
     body: { clip_ids: string[] | null; look: string | null; intensity: number; auto: boolean; match: boolean; reference_id?: string | null },
   ) =>
     request<ProjectView>(`/projects/${id}/grade`, json(body)),
+  editStoryboard: (id: string, body: StoryboardEdit) => request<ProjectView>(`/projects/${id}/storyboard`, json(body, "PUT")),
+  buildScenes: (id: string, sceneIds: string[] | null, notes: { scene_id: string; note: string }[] = []) =>
+    request<{ run_id: string }>(`/projects/${id}/scenes/build`, json({ scene_ids: sceneIds, notes })),
   render: (id: string, final: boolean) => request<ProjectView>(`/projects/${id}/render`, json({ final })),
 };

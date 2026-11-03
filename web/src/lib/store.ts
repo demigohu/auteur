@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import { api, API_URL, fileUrl, type OpInput, type ProjectView } from "./api";
+import { api, API_URL, fileUrl, type OpInput, type ProjectView, type StoryboardEdit } from "./api";
 import { clipDuration, clipStarts } from "./time";
 import type { Clip, Grade } from "./timeline";
 import type { TrackData } from "./tracks";
@@ -36,7 +36,7 @@ export type RunState = {
 
 type AgentEvent = { type: string; run_id: string; [key: string]: unknown };
 
-export type SideTab = "agent" | "inspector" | "history";
+export type SideTab = "agent" | "story" | "inspector" | "history";
 
 type EditorState = {
   project: ProjectView | null;
@@ -67,6 +67,9 @@ type EditorState = {
   upload: (files: File[]) => Promise<void>;
   startRun: (instruction: string, referenceIds?: string[]) => Promise<void>;
   uploadReference: (file: File) => Promise<string | null>;
+  editStoryboard: (body: StoryboardEdit) => Promise<boolean>;
+  /** Build storyboard scenes with Muse Wonder (null = every scene that isn't ready). */
+  buildScenes: (sceneIds: string[] | null, notes?: { scene_id: string; note: string }[]) => Promise<void>;
   deleteReference: (refId: string) => Promise<void>;
   stopRun: () => Promise<void>;
   undoRun: (runId: string) => Promise<void>;
@@ -127,7 +130,8 @@ export const useEditor = create<EditorState>((set, get) => {
     if (e.type === "run_started") {
       set({
         run: { id: e.run_id, instruction: String(e.instruction), images: (e.images as string[] | undefined) ?? [], plan: [], log: [], progress: null, cost: 0, status: "running" },
-        tab: "agent",
+        // Scene builds started from the storyboard stay there, where each scene shows its progress.
+        tab: get().tab === "story" ? "story" : "agent",
       });
       const project = get().project;
       if (project) set({ project: { ...project, last_check: null } });
@@ -296,6 +300,22 @@ export const useEditor = create<EditorState>((set, get) => {
       const ok = await act(`Attaching ${file.name}`, () => api.uploadReference(project.id, file));
       if (!ok) return null;
       return get().project?.references.find((r) => !before.has(r.id))?.id ?? null;
+    },
+    editStoryboard: (body) => {
+      const id = get().project?.id;
+      return id ? act("Saving storyboard", () => api.editStoryboard(id, body)) : Promise.resolve(false);
+    },
+    buildScenes: async (sceneIds, notes = []) => {
+      const id = get().project?.id;
+      if (!id) return;
+      set({ error: null });
+      try {
+        await api.buildScenes(id, sceneIds, notes);
+        const project = get().project;
+        if (project) set({ project: { ...project, busy: true } });
+      } catch (e) {
+        set({ error: e instanceof Error ? e.message : String(e) });
+      }
     },
     deleteReference: async (refId) => {
       const id = get().project?.id;

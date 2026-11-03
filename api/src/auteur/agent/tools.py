@@ -16,9 +16,9 @@ from pydantic import Field
 
 from typing import Literal
 
-from auteur import colorist, costs, reference, subtitles
+from auteur import colorist, costs, motion, reference, subtitles
 from auteur import grade as G
-from auteur.media import load_beats, media_dir
+from auteur.media import ingest, load_beats, media_dir
 from auteur.reframe import follow_keys, out_of_frame
 from auteur.render import render
 from auteur.timeline import OpError, Project
@@ -61,6 +61,7 @@ class ToolContext:
     reference_id: str | None = None  # set by grade with a reference: the checker then measures the match
     reference_fit: dict[str, float] = field(default_factory=dict)  # clip id -> distance the match reached
     beat_every: int | None = None  # set by potong_di_beat: the checker then keeps cuts on the beat
+    attached: list[str] = field(default_factory=list)  # reference images attached to this instruction
 
     def add_cost(self, usd: float) -> None:
         if usd <= 0:
@@ -185,7 +186,7 @@ class DengarArgs(ToolArgs):
 
 
 async def dengar(ctx: ToolContext, a: DengarArgs) -> str:
-    ids = a.media_ids or [m.id for m in ctx.project.media.values() if m.kind == "video"]
+    ids = a.media_ids or [m.id for m in ctx.project.media.values() if m.kind == "video" and not m.scene_id]
     transcripts = await asyncio.gather(*(get_transcript(ctx, mid) for mid in ids))
     parts = []
     for mid, t in zip(ids, transcripts):
@@ -807,7 +808,7 @@ class TontonArgs(ToolArgs):
 
 
 async def tonton(ctx: ToolContext, a: TontonArgs) -> str:
-    ids = a.media_ids or [m.id for m in ctx.project.media.values() if m.kind == "video"]
+    ids = a.media_ids or [m.id for m in ctx.project.media.values() if m.kind == "video" and not m.scene_id]
     for mid in ids:
         if mid not in ctx.project.media or ctx.project.media[mid].kind != "video":
             raise ToolError(f"{mid!r} is not a video in this project")
@@ -925,6 +926,142 @@ async def efek(ctx: ToolContext, a: EfekArgs) -> str:
     return f"{a.kind} applied to {len(clips)} clips. It shows in the render and as an overlay in the editor preview."
 
 
+# --- videos made in code: storyboard, build_scenes ----------------------------------------------------
+
+class StoryboardArgs(ToolArgs):
+    instruction: str = Field(
+        description="What the video is, or what to change in the current storyboard. Include every fact the "
+        "user gave (names, numbers, wording, audience, tone); the storyboard may only use those facts."
+    )
+    duration: float | None = Field(None, ge=5, le=180, description="Target length in seconds; default 60, or the current length")
+    image_ids: list[str] | None = Field(
+        None, description="Reference images the video may show (screenshots, logos). Default: the ones attached to this instruction"
+    )
+
+
+def _images(ctx: ToolContext) -> dict[str, motion.ImageRef]:
+    return {
+        r.id: motion.ImageRef(r.id, r.name, ctx.project_dir / "refs" / f"{r.id}.jpg")
+        for r in ctx.project.references.values()
+    }
+
+
+def describe_storyboard(board) -> str:
+    lines = [f"Storyboard, {len(board.scenes)} scenes, {board.duration:g}s. Style: {board.style}"]
+    for i, s in enumerate(board.scenes):
+        extra = f" [{s.status}{': ' + s.error if s.error else ''}]"
+        imgs = f" images {s.images}" if s.images else ""
+        lines.append(f"  {i + 1}. {s.id} \"{s.title}\" {s.duration:g}s{extra}{imgs}: {s.brief}")
+    return "\n".join(lines)
+
+
+async def storyboard(ctx: ToolContext, a: StoryboardArgs) -> str:
+    p = ctx.project
+    ids = a.image_ids if a.image_ids is not None else ctx.attached
+    images = _images(ctx)
+    if missing := [i for i in ids if i not in images]:
+        raise ToolError(f"Unknown images {missing}; the project has {list(images)}")
+    try:
+        board = await motion.write_storyboard(
+            a.instruction, p.timeline.aspect, [images[i] for i in ids], p.storyboard, a.duration, ctx.add_cost,
+        )
+    except motion.SceneError as e:
+        raise ToolError(str(e)) from None
+    p.storyboard = board
+    ctx.save()
+    ctx.emit({"type": "timeline", "label": "Storyboard"})
+    todo = sum(1 for s in board.scenes if s.status != "ready")
+    return (
+        describe_storyboard(board)
+        + f"\n\n{todo} scenes to build, roughly ${motion.estimate_cost(board):.2f} with Muse Wonder. "
+        "Call `build_scenes` next (it builds every scene that isn't ready)."
+    )
+
+
+class SceneNote(Model):
+    scene_id: str
+    note: str = Field(description="What to change in this scene, e.g. 'make the headline bigger, slower entrance'")
+
+
+class BuildScenesArgs(ToolArgs):
+    scene_ids: list[str] | None = Field(None, description="Scenes to (re)build; omit for every scene that isn't ready")
+    notes: list[SceneNote] = Field(default_factory=list, description="Change requests; those scenes are rebuilt from their current code")
+
+
+def _set_scene(board, scene_id: str, **update) -> None:
+    for i, s in enumerate(board.scenes):
+        if s.id == scene_id:
+            board.scenes[i] = s.model_copy(update=update)
+
+
+async def build_scenes(ctx: ToolContext, a: BuildScenesArgs) -> str:
+    p = ctx.project
+    board = p.storyboard
+    if board is None:
+        raise ToolError("No storyboard yet; call `storyboard` first.")
+    notes = {n.scene_id: n.note for n in a.notes}
+    ids = a.scene_ids or [s.id for s in board.scenes if s.status != "ready" or not s.media_id]
+    ids = list(dict.fromkeys([*ids, *notes]))
+    if missing := [i for i in ids if board.scene(i) is None]:
+        raise ToolError(f"Unknown scenes {missing}; the storyboard has {[s.id for s in board.scenes]}")
+    if board.duration > motion.MAX_SECONDS:
+        raise ToolError(f"The storyboard is {board.duration:g}s; videos made in code go up to {motion.MAX_SECONDS}s. Shorten it first.")
+    if ids:
+        for sid in ids:
+            _set_scene(board, sid, status="building", error=None)
+        ctx.save()
+        ctx.emit({"type": "timeline", "label": "Building scenes"})
+
+    workdir = ctx.project_dir / "scenes"
+    workdir.mkdir(parents=True, exist_ok=True)  # a blank project has no folder until something is saved in it
+    images = _images(ctx)
+    done = 0
+    results: list[str] = []
+
+    async def one(sid: str) -> None:
+        nonlocal done
+        scene = board.scene(sid)
+        assert scene is not None
+        number = board.scenes.index(scene) + 1
+        try:
+            built = await motion.build_scene(
+                board, scene, p.timeline.size, p.timeline.fps, images, workdir, ctx.add_cost, notes.get(sid),
+                log=lambda text: ctx.emit({"type": "thought", "text": text}),
+            )
+            media_id = new_id("media")
+            m = await asyncio.to_thread(ingest, ctx.project_dir, media_id, f"Scene {number}: {scene.title}", built.video)
+            p.media[media_id] = m.model_copy(update={"scene_id": sid})
+            _set_scene(board, sid, code=built.code, media_id=media_id, status="ready", error=None)
+            results.append(f"  {number}. {sid} ready ({'; '.join(built.notes) or 'first try'})")
+        except (motion.SceneError, OSError) as e:
+            _set_scene(board, sid, status="failed", error=str(e)[:400])
+            results.append(f"  {number}. {sid} FAILED: {str(e)[:300]}")
+        done += 1
+        ctx.emit({"type": "progress", "value": round(done / len(ids), 2)})
+        ctx.save()
+        ctx.emit({"type": "timeline", "label": f"Scene {number}"})
+
+    try:
+        await asyncio.gather(*(one(sid) for sid in ids))
+    finally:
+        # A stopped run leaves no scene stuck in "building".
+        for s in board.scenes:
+            if s.status == "building":
+                _set_scene(board, s.id, status="draft")
+        ctx.save()
+
+    ops = motion.place_scenes(p.timeline, p.media, board)
+    if ops:
+        ctx.commit("Scenes on the timeline", ops)
+    failed = [s for s in board.scenes if s.status == "failed"]
+    summary = "\n".join(sorted(results, key=lambda r: int(r.split(".")[0]))) or "  (nothing to build)"
+    tail = (
+        f"\n{len(failed)} scenes failed; rebuild them with a note that addresses the error, or simplify their brief with `storyboard`."
+        if failed else ""
+    )
+    return f"Built scenes:\n{summary}{tail}\n\n" + describe_timeline(p)
+
+
 TOOLS = [
     Tool("plan", "Show the edit plan to the user. Call this first, once, before editing.", RencanaArgs, rencana),
     Tool("listen", "Transcribe media with per-turn and estimated per-word times; filler words are marked.", DengarArgs, dengar),
@@ -986,6 +1123,20 @@ TOOLS = [
         "(Re)generate subtitles for everything on the timeline, word-timed from the transcript, with misheard "
         "words fixed and a creator-style look. Call after all cuts and after setting the aspect.",
         SubtitleArgs, subtitle,
+    ),
+    Tool(
+        "storyboard",
+        "Write or revise the storyboard of a video made in code (motion graphics: launch films, explainers, promos, "
+        "title cards, pitch videos) with Muse Wonder: shared style plus scenes with exact on-screen text. Set the "
+        "aspect first. Works with or without footage.",
+        StoryboardArgs, storyboard,
+    ),
+    Tool(
+        "build_scenes",
+        "Muse Wonder writes each storyboard scene as a Remotion component, renders it, checks frames of the render "
+        "and fixes it; the scenes then go on the video track in storyboard order (footage clips stay where they are). "
+        "Also rebuilds scenes with change notes. Scenes are silent: add `music` after.",
+        BuildScenesArgs, build_scenes,
     ),
     Tool(
         "render",

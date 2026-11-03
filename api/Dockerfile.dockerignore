@@ -1,0 +1,12 @@
+# Context is the repository root; only api/ and motion/ go in.
+*
+!api/pyproject.toml
+!api/uv.lock
+!api/.python-version
+!api/assets
+!api/src
+!motion
+motion/node_modules
+motion/.cache
+motion/test
+**/__pycache__

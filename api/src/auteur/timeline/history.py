@@ -71,6 +71,37 @@ class TrackInfo(Model):
     object_ids: list[str]
 
 
+SceneStatus = Literal["draft", "building", "ready", "failed"]
+
+
+class StoryScene(Model):
+    """One scene of a video made in code: Muse Wonder writes it as a Remotion component, and its render
+    becomes an ordinary (silent) media file on the timeline."""
+
+    id: str
+    title: str
+    duration: float = Field(ge=1, le=20, description="Seconds")
+    brief: str = Field(description="What is on screen: the exact on-screen text, layout, motion")
+    images: list[str] = Field(default_factory=list, description="Reference image ids the scene shows")
+    code: str | None = Field(None, description="The scene's Remotion component (TSX)")
+    media_id: str | None = Field(None, description="The latest render of `code`")
+    status: SceneStatus = Field("draft", description="draft: brief changed since the last build")
+    error: str | None = None
+
+
+class Storyboard(Model):
+    brief: str = Field(description="What the whole video is for, in the user's words")
+    style: str = Field(description="Palette, fonts and motion language every scene shares")
+    scenes: list[StoryScene] = Field(default_factory=list)
+
+    @property
+    def duration(self) -> float:
+        return round(sum(s.duration for s in self.scenes), 2)
+
+    def scene(self, scene_id: str) -> StoryScene | None:
+        return next((s for s in self.scenes if s.id == scene_id), None)
+
+
 class Project(Model):
     id: str
     name: str
@@ -83,6 +114,7 @@ class Project(Model):
     tracks: dict[str, TrackInfo] = Field(default_factory=dict)
     references: dict[str, ReferenceImage] = Field(default_factory=dict)
     last_check: CheckResult | None = None
+    storyboard: Storyboard | None = None
     spent: float = Field(0, description="Meta Model API spend in USD across all runs")
 
     def commit(self, author: Author, label: str, ops: list[Op], run_id: str | None = None) -> Commit:

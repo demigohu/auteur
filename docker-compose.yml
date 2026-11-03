@@ -2,7 +2,10 @@
 # Setup: copy deploy/.env.example to .env, fill it in, then `docker compose up -d --build`.
 services:
   api:
-    build: ./api
+    # Repository root as context: the API image also carries motion/ (the Remotion renderer).
+    build:
+      context: .
+      dockerfile: api/Dockerfile
     env_file: ./api/.env
     environment:
       # These win over api/.env, whose values are meant for local development.

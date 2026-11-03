@@ -14,6 +14,17 @@ export type Recipe = {
 
 export const RECIPES: Recipe[] = [
   {
+    id: "motion",
+    title: "Launch video in code",
+    blurb: "No footage needed. Muse Wonder writes every scene in Remotion.",
+    aspect: "16:9",
+    fps: 30,
+    brief:
+      "Make a 30-second launch video in code for my product, [name]: [what it does in one line]. Headline: '[your headline]'. Show three features: [feature], [feature], [feature]. End on the name.",
+    color: "var(--ink)",
+    ink: "var(--paper)",
+  },
+  {
     id: "vlog",
     title: "Day-in-my-life",
     blurb: "Chronological, cut on the beat, slow-mo on the best moments.",

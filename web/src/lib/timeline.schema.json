@@ -428,15 +428,97 @@
         "at": {
           "format": "date-time",
           "type": "string"
+        },
+        "images": {
+          "description": "Reference image ids attached to the message",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         }
       },
       "required": [
         "role",
         "text",
         "run_id",
-        "at"
+        "at",
+        "images"
       ],
       "title": "ChatMessage",
+      "type": "object"
+    },
+    "CheckMark": {
+      "additionalProperties": false,
+      "description": "A timeline range the checker flagged, in timeline seconds.",
+      "properties": {
+        "start": {
+          "type": "number"
+        },
+        "end": {
+          "type": "number"
+        },
+        "label": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "start",
+        "end",
+        "label"
+      ],
+      "title": "CheckMark",
+      "type": "object"
+    },
+    "CheckResult": {
+      "additionalProperties": false,
+      "description": "The latest checker verdict, kept so its marks survive a reload. `head` is the id of the newest commit\nwhen it ran: once the timeline moves past it, the marks may no longer line up.",
+      "properties": {
+        "passed": {
+          "type": "boolean"
+        },
+        "issues": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "marks": {
+          "items": {
+            "$ref": "#/$defs/CheckMark"
+          },
+          "type": "array"
+        },
+        "render": {
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "head": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "at": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "passed",
+        "issues",
+        "marks",
+        "render",
+        "run_id",
+        "head",
+        "at"
+      ],
+      "title": "CheckResult",
       "type": "object"
     },
     "Clip": {
@@ -1142,6 +1224,18 @@
           ],
           "default": null,
           "description": "Capture time from the file's metadata (ISO 8601), if any"
+        },
+        "scene_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Storyboard scene this video was rendered from (made in code, silent)"
         }
       },
       "required": [
@@ -1154,7 +1248,8 @@
         "height",
         "has_audio",
         "kind",
-        "recorded_at"
+        "recorded_at",
+        "scene_id"
       ],
       "title": "Media",
       "type": "object"
@@ -1322,6 +1417,34 @@
           },
           "type": "object"
         },
+        "references": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ReferenceImage"
+          },
+          "type": "object"
+        },
+        "last_check": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CheckResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "storyboard": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Storyboard"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "spent": {
           "default": 0,
           "description": "Meta Model API spend in USD across all runs",
@@ -1338,9 +1461,30 @@
         "chat",
         "last_render",
         "tracks",
+        "references",
+        "last_check",
+        "storyboard",
         "spent"
       ],
       "title": "Project",
+      "type": "object"
+    },
+    "ReferenceImage": {
+      "additionalProperties": false,
+      "description": "A still the user wants the grade to look like; the file is <project_dir>/refs/<id>.jpg.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "ReferenceImage",
       "type": "object"
     },
     "SetAspect": {
@@ -1778,6 +1922,120 @@
         "new_clip_id"
       ],
       "title": "Split",
+      "type": "object"
+    },
+    "StoryScene": {
+      "additionalProperties": false,
+      "description": "One scene of a video made in code: Muse Wonder writes it as a Remotion component, and its render\nbecomes an ordinary (silent) media file on the timeline.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "duration": {
+          "description": "Seconds",
+          "maximum": 20,
+          "minimum": 1,
+          "type": "number"
+        },
+        "brief": {
+          "description": "What is on screen: the exact on-screen text, layout, motion",
+          "type": "string"
+        },
+        "images": {
+          "description": "Reference image ids the scene shows",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The scene's Remotion component (TSX)"
+        },
+        "media_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The latest render of `code`"
+        },
+        "status": {
+          "default": "draft",
+          "description": "draft: brief changed since the last build",
+          "enum": [
+            "draft",
+            "building",
+            "ready",
+            "failed"
+          ],
+          "type": "string"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "duration",
+        "brief",
+        "images",
+        "code",
+        "media_id",
+        "status",
+        "error"
+      ],
+      "title": "StoryScene",
+      "type": "object"
+    },
+    "Storyboard": {
+      "additionalProperties": false,
+      "properties": {
+        "brief": {
+          "description": "What the whole video is for, in the user's words",
+          "type": "string"
+        },
+        "style": {
+          "description": "Palette, fonts and motion language every scene shares",
+          "type": "string"
+        },
+        "scenes": {
+          "items": {
+            "$ref": "#/$defs/StoryScene"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "brief",
+        "style",
+        "scenes"
+      ],
+      "title": "Storyboard",
       "type": "object"
     },
     "TextItem": {

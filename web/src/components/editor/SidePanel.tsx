@@ -5,9 +5,11 @@ import { type SideTab, useEditor } from "@/lib/store";
 import { AgentTab } from "./AgentTab";
 import { HistoryTab } from "./HistoryTab";
 import { InspectorTab } from "./InspectorTab";
+import { StoryboardTab } from "./StoryboardTab";
 
 const TABS = [
   { id: "agent", label: "Agent" },
+  { id: "story", label: "Story" },
   { id: "inspector", label: "Inspector" },
   { id: "history", label: "History" },
 ] as const satisfies readonly { id: SideTab; label: string }[];
@@ -30,13 +32,14 @@ export function SidePanel() {
           >
             {tab === t.id && <motion.span layoutId="tab-pill" className="absolute inset-0 rounded-full border-2 border-ink bg-lime" />}
             <span className="relative">{t.label}</span>
-            {t.id === "agent" && runStatus === "running" && (
+            {t.id === (tab === "story" ? "story" : "agent") && runStatus === "running" && (
               <span className="relative ml-1.5 inline-block size-1.5 animate-pulse rounded-full bg-tomato align-middle" aria-label="The agent is working" />
             )}
           </button>
         ))}
       </div>
       {tab === "agent" && <AgentTab />}
+      {tab === "story" && <StoryboardTab />}
       {tab === "inspector" && <InspectorTab />}
       {tab === "history" && <HistoryTab />}
     </aside>

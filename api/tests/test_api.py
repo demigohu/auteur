@@ -229,3 +229,39 @@ def test_check_head_catches_undo_then_new_edit(client: TestClient, project: dict
     # Undo alone also moves the head.
     view = client.post(f"/projects/{pid}/undo").json()
     assert (view["history"][-1]["id"] if view["history"] else None) != head
+
+
+def test_storyboard_edits_redraft_scenes_and_reorder_the_timeline(client: TestClient, sample_video: Path) -> None:
+    import shutil as sh
+
+    import auteur.main as m
+    from auteur.media import ingest
+    from auteur.motion import place_scenes
+    from auteur.timeline.history import Storyboard, StoryScene
+
+    pid = client.post("/projects", json={"name": "Promo"}).json()["id"]
+    assert client.put(f"/projects/{pid}/storyboard", json={"style": "x", "scenes": [{"title": "a", "duration": 2, "brief": "b"}]}).status_code == 400
+
+    p = m.store.get(pid)
+    scenes = []
+    for sid in ("s1", "s2"):
+        copy = Path(m.settings.data_dir) / f"{sid}.mp4"
+        sh.copy(sample_video, copy)
+        media = ingest(m.store.project_dir(pid), f"media_{sid}", sid, copy).model_copy(update={"scene_id": sid})
+        p.media[media.id] = media
+        scenes.append(StoryScene(id=sid, title=sid, duration=4, brief=f"brief {sid}", code="//", media_id=media.id, status="ready"))
+    p.storyboard = Storyboard(brief="promo", style="dark", scenes=scenes)
+    p.commit("agent", "place", place_scenes(p.timeline, p.media, p.storyboard))
+    m.store.save(p)
+
+    body = {"style": "dark", "scenes": [
+        {"id": "s2", "title": "s2", "duration": 4, "brief": "brief s2"},
+        {"id": "s1", "title": "s1", "duration": 4, "brief": "a sharper headline"},
+    ]}
+    view = client.put(f"/projects/{pid}/storyboard", json=body).json()
+    assert [s["status"] for s in view["storyboard"]["scenes"]] == ["ready", "draft"]
+    assert [c["media_id"] for c in view["timeline"]["clips"]] == ["media_s2", "media_s1"]
+    assert view["history"][-1]["label"] == "Storyboard order"
+
+    too_long = {"style": "dark", "scenes": [{"title": f"t{i}", "duration": 20, "brief": "b"} for i in range(10)]}
+    assert client.put(f"/projects/{pid}/storyboard", json=too_long).status_code == 400

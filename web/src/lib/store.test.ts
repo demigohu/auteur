@@ -27,7 +27,7 @@ const commit = (id: string): CommitView => ({ id, author: "agent", label: id, ru
 function project(over: Partial<ProjectView> = {}): ProjectView {
   return {
     id: "proj_1", name: "Test", media: [], timeline: { clips: [] } as unknown as ProjectView["timeline"],
-    history: [], chat: [], tracks: [], references: [], last_check: null, speech: [], spent: 0,
+    history: [], chat: [], tracks: [], references: [], last_check: null, storyboard: null, speech: [], spent: 0,
     last_render_url: null, can_undo: false, can_redo: false, busy: false, ...over,
   };
 }

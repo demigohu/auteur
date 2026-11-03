@@ -3,6 +3,7 @@
 install:
 	cd web && npm install
 	cd api && uv sync
+	cd motion && npm install
 
 # Jalankan web (port 3000) dan api (port 8000) bersamaan; Ctrl+C menghentikan keduanya
 dev:
@@ -20,6 +21,7 @@ api:
 test:
 	cd api && uv run pytest -q
 	cd web && npm test
+	cd motion && npm test
 
 # Regenerate web/src/lib/timeline.ts from the Pydantic models
 types:

@@ -41,6 +41,7 @@ class Media(Model):
     has_audio: bool
     kind: Literal["video", "audio"] = "video"
     recorded_at: str | None = Field(None, description="Capture time from the file's metadata (ISO 8601), if any")
+    scene_id: str | None = Field(None, description="Storyboard scene this video was rendered from (made in code, silent)")
 
 
 class Grade(Model):

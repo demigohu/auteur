@@ -10,21 +10,23 @@ Built for the [Meta Global AI Developer Hackathon](https://cerebralvalley.ai/e/m
 
 - **It sees, not just hears.** Transcript-based editors cut on words. Auteur also knows who is on screen, where they are and what happens, so it can follow a subject in a vertical crop or blur every face but one.
 - **A timeline, not a black box.** Every agent action is a small, validated edit on the same timeline the editor shows: clips slide into place live, you can trim or move anything yourself, and the agent continues from your changes. Each instruction can be undone as a whole.
+- **No footage? It writes the video.** Muse Wonder writes a storyboard, then each scene as a Remotion component; every scene is rendered, checked against frames of its own render and fixed, then lands on the same timeline as clips you can trim, reorder, grade and score. Up to 3 minutes.
 - **It checks its own work.** After every render a checker outside the agent's control verifies length, format, that the followed subject stays in frame and that blurred faces don't leak. Problems are marked on the timeline and the agent fixes them on its own.
 
 ## How it uses Meta's models
 
 | Model | Role |
 | --- | --- |
-| **Muse Spark 1.3** | The agent: plans, calls one tool per turn through the Responses API, and reads sampled frames (`tonton`) to describe scenes and pick moments |
-| **SAM 3.1** (video) | `lacak`: tracks people, faces, plates... through the footage. Drives subject-following reframes, tracked blur/highlight, and the checker's framing test |
-| **Muse Voice Transcribe** | `dengar`: what is said, used for subtitles, cutting filler words and long pauses, and choosing moments |
+| **Muse Spark 1.3** | The agent: plans, calls one tool per turn through the Responses API, and reads sampled frames (`watch`) to describe scenes and pick moments |
+| **Muse Wonder 1.0** | Videos made in code: writes the storyboard (`storyboard`) and each scene as a Remotion component (`build_scenes`), then looks at frames of its render and fixes clipped or overlapping text |
+| **SAM 3.1** (video) | `track`: tracks people, faces, plates... through the footage. Drives subject-following reframes, tracked blur/highlight, and the checker's framing test |
+| **Muse Voice Transcribe** | `listen`: what is said, used for subtitles, cutting filler words and long pauses, and choosing moments |
 
 Every run shows its Meta Model API cost live in the editor.
 
 ## Agent tools
 
-`rencana` (plan) · `dengar` (listen) · `tonton` (watch) · `lacak` (track) · `reframe` · `efek` (blur / highlight) · `susun` (assemble) · `ubah_timeline` (any timeline op) · `buang_filler` · `subtitle` · `render` + automatic checker
+`plan` · `listen` · `watch` · `track` · `reframe` · `grade` (looks, or match a reference image) · `music` · `cut_on_beat` · `transitions` · `speed` · `zoom` · `cinematic_finish` · `broll` · `effect` (blur / highlight) · `assemble` · `edit_timeline` (any timeline op) · `remove_fillers` · `subtitles` · `storyboard` · `build_scenes` · `render` + automatic checker
 
 ## Architecture
 
@@ -33,7 +35,10 @@ web/  Next.js 16 editor: Remotion Player preview (from the timeline JSON), timel
       agent panel fed by Server-Sent Events, inspector, history
 api/  FastAPI: agent loop, timeline op layer + history (SQLite), media ingest,
       SAM tracking, ffmpeg renderer with an OpenCV effects pass, checker
+motion/  Remotion renderer for scenes made in code (Node), called by the API per scene
 ```
+
+Scene code comes from a model that read user text, so it is untrusted and never runs in the editor's browser. The renderer's headless Chromium runs it behind three layers: a parser-based check (only `react`, `remotion` and a few Remotion packages may be imported; no network, storage, globals or code-from-strings), shadowed browser globals with Function constructors disabled, and a Content-Security-Policy that blocks every request off the renderer's own server (`motion/test/`, `api/tests/test_motion.py`).
 
 The timeline is one JSON document described by Pydantic models in `api/src/auteur/timeline/`; the editor's TypeScript types are generated from them (`make types`). The agent's tools and the editor's buttons go through the same op layer, so history, undo and validation behave the same for both.
 
@@ -51,7 +56,7 @@ Needs Node 24+, [uv](https://docs.astral.sh/uv/) and ffmpeg.
 cp api/.env.example api/.env   # set META_API_KEY
 make install
 make dev                       # editor on :3000, API on :8000
-make test                      # backend tests
+make test                      # API, editor and renderer tests
 ```
 
 ## Deploy (one VPS)

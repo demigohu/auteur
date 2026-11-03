@@ -62,6 +62,11 @@ export interface Project {
   tracks: {
     [k: string]: TrackInfo;
   };
+  references: {
+    [k: string]: ReferenceImage;
+  };
+  last_check: CheckResult | null;
+  storyboard: Storyboard | null;
   /**
    * Meta Model API spend in USD across all runs
    */
@@ -85,6 +90,10 @@ export interface Media {
    * Capture time from the file's metadata (ISO 8601), if any
    */
   recorded_at: string | null;
+  /**
+   * Storyboard scene this video was rendered from (made in code, silent)
+   */
+  scene_id: string | null;
 }
 /**
  * This interface was referenced by `Schema`'s JSON-Schema
@@ -777,6 +786,10 @@ export interface ChatMessage {
   text: string;
   run_id: string;
   at: string;
+  /**
+   * Reference image ids attached to the message
+   */
+  images: string[];
 }
 /**
  * Index entry for an object track; the boxes live in <project_dir>/tracks/<id>.json.
@@ -789,4 +802,92 @@ export interface TrackInfo {
   media_id: string;
   prompt: string;
   object_ids: string[];
+}
+/**
+ * A still the user wants the grade to look like; the file is <project_dir>/refs/<id>.jpg.
+ *
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "ReferenceImage".
+ */
+export interface ReferenceImage {
+  id: string;
+  name: string;
+}
+/**
+ * The latest checker verdict, kept so its marks survive a reload. `head` is the id of the newest commit
+ * when it ran: once the timeline moves past it, the marks may no longer line up.
+ *
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "CheckResult".
+ */
+export interface CheckResult {
+  passed: boolean;
+  issues: string[];
+  marks: CheckMark[];
+  render: string;
+  run_id: string;
+  head: string | null;
+  at: string;
+}
+/**
+ * A timeline range the checker flagged, in timeline seconds.
+ *
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "CheckMark".
+ */
+export interface CheckMark {
+  start: number;
+  end: number;
+  label: string;
+}
+/**
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "Storyboard".
+ */
+export interface Storyboard {
+  /**
+   * What the whole video is for, in the user's words
+   */
+  brief: string;
+  /**
+   * Palette, fonts and motion language every scene shares
+   */
+  style: string;
+  scenes: StoryScene[];
+}
+/**
+ * One scene of a video made in code: Muse Wonder writes it as a Remotion component, and its render
+ * becomes an ordinary (silent) media file on the timeline.
+ *
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "StoryScene".
+ */
+export interface StoryScene {
+  id: string;
+  title: string;
+  /**
+   * Seconds
+   */
+  duration: number;
+  /**
+   * What is on screen: the exact on-screen text, layout, motion
+   */
+  brief: string;
+  /**
+   * Reference image ids the scene shows
+   */
+  images: string[];
+  /**
+   * The scene's Remotion component (TSX)
+   */
+  code: string | null;
+  /**
+   * The latest render of `code`
+   */
+  media_id: string | null;
+  /**
+   * draft: brief changed since the last build
+   */
+  status: "draft" | "building" | "ready" | "failed";
+  error: string | null;
 }

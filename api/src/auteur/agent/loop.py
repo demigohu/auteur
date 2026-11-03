@@ -15,7 +15,9 @@ from openai import AsyncOpenAI
 from PIL import Image
 
 from auteur import costs
-from auteur.agent.tools import TOOLS_BY_NAME, StopRun, ToolContext, ToolError, describe_timeline, parse_args, tool_specs
+from auteur.agent.tools import (
+    TOOLS_BY_NAME, StopRun, ToolContext, ToolError, describe_storyboard, describe_timeline, parse_args, tool_specs,
+)
 from auteur.config import settings
 from auteur.events import bus
 from auteur.store import Store
@@ -61,6 +63,13 @@ strong look, and keep `auto_correct` on. Read the measured results it returns.
 `grade` with its `reference_id` and `intensity` 0.8-0.9 instead of a look. Look at the image yourself too: \
 if it has letterbox bars, visible grain or a strong vignette, add them with `cinematic_finish` or `adjust`. \
 Tell the user the match copies palette and contrast, not the scene's lighting.
+- Videos made in code (motion graphics, launch or pitch videos, explainers, promos, title sequences, or \
+anything the user wants made "from scratch" without footage): set the aspect first if needed, then \
+`storyboard` with every fact the user gave, then `build_scenes`. Muse Wonder writes and checks each scene; \
+don't call `watch` on the scenes. Then `transitions` between scenes, `music` if a song was uploaded (and \
+`cut_on_beat` only if the user asks for beat cuts), then `render`. Footage can be mixed in: scenes and \
+footage clips share the video track. For a change to existing scenes, use `build_scenes` with `notes`; for \
+new, removed, reordered or retimed scenes or a new style, revise with `storyboard` first. Up to 180 seconds.
 - Finish with `render`. The checker also verifies the subject stays in frame and blurs do not \
 leak. If it FAILS, fix exactly what it reports (e.g. `reframe` those clips with a smaller `smoothing`) \
 and render again.
@@ -84,6 +93,8 @@ def state_message(store: Store, project_id: str) -> str:
         if m.kind == "audio":
             return f"  {m.id}: {m.name}, MUSIC/AUDIO, {m.duration:.1f}s"
         shot = f", recorded {m.recorded_at}" if m.recorded_at else ""
+        if m.scene_id:
+            return f"  {m.id}: {m.name}, SCENE made in code (storyboard {m.scene_id}), {m.duration:.1f}s, silent"
         return (f"  {m.id}: {m.name}, video {m.duration:.1f}s, {m.width}x{m.height} @ {m.fps:.0f}fps, "
                 f"{'with sound' if m.has_audio else 'silent'}{shot}")
 
@@ -91,8 +102,9 @@ def state_message(store: Store, project_id: str) -> str:
     history = "\n".join(f"  {h}" for h in p.history_summary(15)) or "  (no edits yet)"
     tracks = "\n".join(f"  {t.id}: '{t.prompt}' on {t.media_id}" for t in p.tracks.values()) or "  (none)"
     refs = "\n".join(f"  {r.id}: {r.name}" for r in p.references.values()) or "  (none)"
+    board = describe_storyboard(p.storyboard) if p.storyboard else "  (none)"
     return (
-        f"Current project state.\nMedia:\n{media}\nTimeline:\n{describe_timeline(p)}\n"
+        f"Current project state.\nMedia:\n{media}\nTimeline:\n{describe_timeline(p)}\nStoryboard:\n{board}\n"
         f"Existing tracks (reuse them):\n{tracks}\nReference images uploaded to the project:\n{refs}\n"
         f"Recent edit history (oldest first):\n{history}"
     )
@@ -128,7 +140,7 @@ async def _run(
 
         ctx = ToolContext(
             project=p, project_dir=store.project_dir(project_id), run_id=run_id, emit=emit,
-            save=lambda: store.save(p),
+            save=lambda: store.save(p), attached=list(reference_ids),
         )
         items: list[dict[str, Any]] = [
             {"role": m.role, "content": m.text} for m in p.chat[-HISTORY_MESSAGES - 1 : -1]
@@ -186,6 +198,55 @@ async def _run(
                 "I stopped because the checker still found problems after 3 tries. "
                 "The problem spots are marked red on the timeline."
             )
+        except asyncio.CancelledError:
+            status, reply = "cancelled", "Stopped."
+            raise
+        except Exception as e:
+            status, reply = "error", f"Something went wrong: {e}"
+        finally:
+            p.chat.append(ChatMessage(role="assistant", text=reply or "Done.", run_id=run_id, at=datetime.now(UTC)))
+            store.save(p)
+            emit({"type": "message", "text": reply or "Done."})
+        return status
+
+
+async def run_tool(
+    store: Store, project_id: str, run_id: str, label: str, tool_name: str, args: dict[str, Any], lock: asyncio.Lock,
+) -> None:
+    """One tool run straight from an editor button (e.g. "Build scenes"), with the same lock, events and
+    chat entries as an agent run, but no model choosing what to do."""
+    def emit(event: dict[str, Any]) -> None:
+        bus.publish(project_id, {**event, "run_id": run_id})
+
+    status = "error"
+    try:
+        status = await _run_tool(store, project_id, run_id, label, tool_name, args, lock, emit)
+    except asyncio.CancelledError:
+        status = "cancelled"
+        raise
+    finally:
+        emit({"type": "run_finished", "status": status})
+
+
+async def _run_tool(store: Store, project_id: str, run_id: str, label: str, tool_name: str, args: dict[str, Any], lock, emit) -> str:
+    async with lock:
+        p = store.get(project_id)
+        p.chat.append(ChatMessage(role="user", text=label, run_id=run_id, at=datetime.now(UTC)))
+        p.last_check = None
+        store.save(p)
+        emit({"type": "run_started", "instruction": label, "images": []})
+        ctx = ToolContext(project=p, project_dir=store.project_dir(project_id), run_id=run_id, emit=emit, save=lambda: store.save(p))
+        tool = TOOLS_BY_NAME[tool_name]
+        status, reply = "done", ""
+        try:
+            a = tool.args.model_validate(args)
+            emit({"type": "tool_call", "tool": tool_name, "args": a.model_dump(exclude={"step"}), "step": None})
+            output = await tool.run(ctx, a)
+            emit({"type": "tool_result", "tool": tool_name, "ok": True, "output": output[:2000], "step": None})
+            reply = output.split("\n\n")[0]
+        except ToolError as e:
+            emit({"type": "tool_result", "tool": tool_name, "ok": False, "output": str(e), "step": None})
+            status, reply = "failed", str(e)
         except asyncio.CancelledError:
             status, reply = "cancelled", "Stopped."
             raise

@@ -35,7 +35,7 @@ function CountUp({ to, decimals = 0, prefix = "", suffix = "" }: { to: number; d
 const STATS = [
   { label: "Subjects tracked by SAM 3.1", to: 83, suffix: "%" },
   { label: "Words timed within 150ms", to: 86, suffix: "%" },
-  { label: "Agent tools", to: 19, suffix: "" },
+  { label: "Agent tools", to: 26, suffix: "" },
   { label: "Cost of a full 30s edit", to: 0.53, prefix: "$", decimals: 2 },
   { label: "Brief to export, in seconds", to: 167, suffix: "" },
 ];
@@ -123,7 +123,7 @@ const TOOLKIT = [
     color: "#ff4f1f",
     ink: "#121110",
     body: "Auto exposure and white balance, eight looks, shot matching across clips, and real LOG profiles. The preview runs the same curve as the export.",
-    chips: ["Apple Log", "S-Log3", "V-Log", "Shot matching", "Wheels + curves"],
+    chips: ["Apple Log", "S-Log3", "V-Log", "Shot matching", "LUTs", "Split toning"],
   },
   {
     name: "Subtitles",
@@ -147,11 +147,32 @@ const TOOLKIT = [
     chips: ["SAM 3.1", "Blur", "Highlight", "Exclude IDs"],
   },
   {
+    name: "Masks & keys",
+    color: "#121110",
+    ink: "#f2eee3",
+    body: "SAM 3.1 draws a pixel mask of your subject in every frame, so the background blurs or turns a solid color without a green screen. If you did shoot on green, it keys out too.",
+    chips: ["SAM 3.1 masks", "Background blur", "Chroma key", "Blend modes"],
+  },
+  {
+    name: "Voice & languages",
+    color: "#f2eee3",
+    ink: "#121110",
+    body: "Cut by deleting words from the transcript. Take the hiss out of a noisy room. Translate the subtitles and dub them. Each line is spoken at its subtitle's time, over the original sound turned down.",
+    chips: ["Edit by words", "Noise reduction", "Translate", "Dub", "Voice-over"],
+  },
+  {
     name: "Reframe & export",
     color: "#2e3bff",
     ink: "#f2eee3",
-    body: "One timeline, three formats. The crop follows the subject with keyframes you can edit, then exports at 24, 30 or 60 fps.",
+    body: "One timeline, four formats. The crop follows the subject with keyframes you can edit, then exports MP4 up to 4K, a GIF or the sound alone.",
     chips: ["16:9", "9:16", "1:1", "4:5", "Follow subject", "Keyframes"],
+  },
+  {
+    name: "Video from code",
+    color: "#0e3a22",
+    ink: "#c8f53c",
+    body: "Describe a launch video, an explainer or a title sequence. Muse Wonder writes the storyboard and every scene as Remotion code, renders it, checks its own frames, and puts the scenes on your timeline. Muse Image paints a shot you didn't film.",
+    chips: ["Muse Wonder", "Muse Image", "Storyboard", "Remotion", "Up to 3 min"],
   },
 ];
 

@@ -15,7 +15,9 @@ gsap.registerPlugin(ScrollTrigger);
 const STACK: { name: string; cls: string }[] = [
   { name: "Muse Spark", cls: "font-serif italic text-[1.15em]" },
   { name: "SAM 3.1", cls: "font-display uppercase" },
+  { name: "Muse Wonder", cls: "font-sans font-extrabold tracking-[-0.03em]" },
   { name: "voice transcribe", cls: "font-mono tracking-[0.2em] uppercase text-[0.7em]" },
+  { name: "Muse Image", cls: "font-hand text-[1.25em] font-semibold" },
   { name: "FFmpeg", cls: "font-sans font-extrabold tracking-[-0.03em]" },
   { name: "Remotion", cls: "font-hand text-[1.25em] font-semibold" },
   { name: "OpenCV", cls: "font-display uppercase" },
@@ -35,7 +37,7 @@ export function StackTape() {
   );
   return (
     <div className="relative z-10 -my-6 overflow-hidden py-6">
-      <div className="-mx-4 -rotate-[2deg] border-y-2 border-ink bg-sun py-3" role="img" aria-label="Built with Muse Spark, SAM 3.1, Voice Transcribe, FFmpeg, Remotion, OpenCV and FastAPI">
+      <div className="-mx-4 -rotate-[2deg] border-y-2 border-ink bg-sun py-3" role="img" aria-label="Built with Muse Spark, SAM 3.1, Muse Wonder, Voice Transcribe, Muse Image, FFmpeg, Remotion, OpenCV and FastAPI">
         <div className="flex w-max motion-safe:animate-[marquee_44s_linear_infinite]">
           {row}
           {row}
@@ -113,10 +115,12 @@ function ServiceList(props: { items: readonly (readonly [string, string])[]; pre
 
 const AGENT_TOOLS = [
   ["Watch", "Muse Spark samples frames from every clip: who's in shot, what's happening, which moments have energy."],
-  ["Listen", "Word-level transcripts, used for subtitles and for finding the ums."],
+  ["Listen", "Voice Transcribe hears every word, timed for subtitles and for finding the ums."],
   ["Track", "SAM 3.1 follows a person, a face or a license plate through the whole clip."],
   ["Reframe", "Vertical and square versions where the crop follows the subject."],
   ["Grade", "Exposure and white balance fixed per clip, then every clip matched to the others."],
+  ["Mask", "SAM 3.1 draws the person in every frame, so the background blurs or turns a color without a green screen."],
+  ["Write", "With no footage at all, Muse Wonder writes the video as Remotion scenes, renders them and fixes any text it sees cut off."],
 ] as const;
 
 const DEMOS = [
@@ -323,8 +327,10 @@ export function AgentSection() {
 const EDITOR_TOOLS = [
   ["Timeline", "B-roll, main, text and music tracks. Drag, trim, split, snap."],
   ["Keyframes", "Speed ramps, volume and framing that change over time."],
-  ["Color", "Wheels, curves, LOG profiles and looks. The preview uses the export's color math."],
-  ["Subtitles", "Five caption styles; fix any word on the text track."],
+  ["Transitions", "Crossfades, dips, slides, wipes, circle and zoom, drawn the same in the preview as in the export."],
+  ["Color", "Exposure to split toning, LOG profiles, LUTs and eight looks. The preview uses the export's color math."],
+  ["Words", "Delete a word from the transcript and the clip is cut there. The subtitles move with it."],
+  ["Subtitles", "Five caption styles; fix any word on the text track, or translate them all."],
   ["History", "Undo a single edit or a whole instruction."],
 ] as const;
 

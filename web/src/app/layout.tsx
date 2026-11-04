@@ -17,7 +17,7 @@ export const metadata: Metadata = {
   description: "A video editor whose agent watches your clips, hears every word and builds the edit on a timeline you can change.",
   openGraph: {
     title: "Auteur · Say the edit, get the cut",
-    description: "A video editor whose agent watches your clips, hears every word and builds the edit on a timeline you can change. Built on Muse Spark, SAM 3.1 and Voice.",
+    description: "A video editor whose agent watches your clips, hears every word and builds the edit on a timeline you can change. Built on Muse Spark, SAM 3.1, Muse Wonder, Muse Image and Voice Transcribe.",
   },
 };
 

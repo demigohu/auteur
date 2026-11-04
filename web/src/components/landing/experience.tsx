@@ -166,9 +166,9 @@ function Leader({ onEnter }: { onEnter: (sound: boolean) => void }) {
         <div className="flex items-start justify-between">
           <p className="label text-[10px] text-paper/50">Auteur / reel 01</p>
           <p className="label text-right text-[10px] leading-relaxed text-paper/50">
-            Muse Spark
+            Muse Spark · SAM 3.1
             <br />
-            SAM 3.1 · Voice
+            Wonder · Image · Voice
           </p>
         </div>
 

@@ -59,6 +59,8 @@ const FAQ = [
   ["Do I need to know how to edit?", "No. Describe the video you want. If you do know how, every cut is on a normal timeline you can change by hand."],
   ["What footage works best?", "Phone or camera clips up to five minutes in total. 16:9 gives the reframe room to move; LOG footage is graded properly."],
   ["Does it really watch the video?", "Yes. Muse Spark looks at sampled frames, Voice Transcribe hears every word, and SAM 3.1 tracks people and objects frame by frame."],
+  ["Can it make a video without footage?", "Yes. Describe it, and Muse Wonder writes the video as Remotion code, scene by scene, up to three minutes. You can reorder, trim and grade the scenes like any clip."],
+  ["Which languages does it speak?", "Write your brief in any language. Subtitles translate into the language you name, and dubbed voices cover 15 languages written in the Latin alphabet, including English, Indonesian, Spanish and French."],
   ["Can I undo what the agent did?", "Every instruction is one entry in the history. Undo the whole run in one click, or single edits inside it."],
   ["Is the preview what I'll export?", "Yes. The preview uses the same color curve, the same subtitle renderer and the same timing as the export."],
   ["What does it cost to run?", "A full 30-second edit with tracking and transcription came to $0.53 in Meta Model API calls. The editor shows the running cost."],
@@ -192,12 +194,12 @@ export function Footer() {
           <Logo />
           <p className="mt-5 max-w-[34ch] text-[14px] leading-relaxed text-paper/65">
             A video editor with an agent that watches your clips, cuts them on a timeline you can change, and checks the result before you see it. Built for the
-            Meta AI developer hackathon on Muse Spark, SAM 3.1 and Voice Transcribe.
+            Meta AI developer hackathon on Muse Spark, SAM 3.1, Muse Wonder, Muse Image and Voice Transcribe.
           </p>
         </div>
         <FooterCol title="Sitemap" links={[["Work", "#work"], ["Agent", "#agent"], ["Process", "#process"], ["FAQ", "#faq"]]} />
         <FooterCol title="App" links={[["Studio", "/studio"], ["Sign in", "/login"], ["Create account", "/signup"]]} />
-        <FooterCol title="Built on" links={[["Muse Spark", null], ["SAM 3.1", null], ["Voice Transcribe", null]]} />
+        <FooterCol title="Built on" links={[["Muse Spark", null], ["SAM 3.1", null], ["Muse Wonder", null], ["Muse Image", null], ["Voice Transcribe", null]]} />
       </div>
       <p aria-hidden className="display mt-14 text-center text-[34vw] leading-[0.76] tracking-[-0.01em] text-lime select-none">
         Auteur

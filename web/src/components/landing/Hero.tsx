@@ -11,7 +11,7 @@ import { PillButton, RotatingBadge } from "./primitives";
 const EASE_OUT = [0.16, 1, 0.3, 1] as const;
 const EASE_BACK = [0.34, 1.56, 0.64, 1] as const;
 
-const BRIEFS = ["make a 30s vlog", "cut the ums", "reframe it to 9:16", "grade it warm", "blur the plates", "cut on the beat"];
+const BRIEFS = ["make a 30s vlog", "cut the ums", "reframe it to 9:16", "blur the strangers", "remove the background", "grade it warm", "cut on the beat", "write a launch video"];
 
 function Typewriter() {
   const reduce = useReducedMotion();
@@ -201,7 +201,7 @@ export function Hero() {
       <div className="relative px-[var(--gutter)]">
         <motion.div {...fade(0.5)} className="label flex items-center justify-between text-[11px] text-ink/70">
           <span>(01) AI video editor</span>
-          <span className="hidden md:inline">Built on Muse Spark, SAM 3.1 and Voice</span>
+          <span className="hidden md:inline">Built on five Meta models</span>
         </motion.div>
         <motion.p {...fade(0.55)} className="mt-5 font-mono text-[clamp(15px,1.5vw,21px)] md:mt-7">
           <Typewriter />
@@ -225,14 +225,13 @@ export function Hero() {
         <div className="mt-8 flex flex-col gap-8 md:mt-10 md:flex-row md:items-end md:justify-between">
           <div className="max-w-[460px]">
             <motion.p {...fade(0.8)} className="text-[clamp(17px,1.45vw,21px)] leading-[1.35] tracking-[-0.01em]">
-              Auteur&apos;s agent <strong className="font-semibold">watches your clips, hears every word</strong> and builds the edit on a timeline you can still
-              change. In our test it turned 88 seconds of night-walk footage into a <strong className="font-semibold">30-second vertical vlog</strong> in under three
-              minutes.
+              Describe the video you want. Auteur&apos;s agent <strong className="font-semibold">watches your clips, hears every word</strong> and edits them on a
+              timeline you can still change, then <strong className="font-semibold">checks the render</strong> before you see it.
             </motion.p>
             <motion.div {...fade(0.9)} className="mt-6 flex flex-wrap gap-3">
               <PillButton href="/signup">Start my first edit</PillButton>
               <PillButton href="#work" tone="paper">
-                See the test runs
+                See real edits
               </PillButton>
             </motion.div>
           </div>

@@ -1,21 +1,23 @@
 # PRD Auteur Labs — AI Agent Video Editor
 
-Oct 30, 2026 · @sdsd
+Nov 4, 2026 · @sdsd · versi 2 (menggantikan versi Oct 30; mencerminkan produk yang sudah dibangun)
 
 ## Ringkasan
 
-**Auteur Labs adalah AI agent video editor: kamu bicara seperti ke editor manusia, lalu dia mengedit di timeline seperti DaVinci, karena dia benar-benar _melihat_ dan _mendengar_ footage-mu.** Contoh perintahnya: "jadikan 40 menit footage mentah ini vlog 3 menit, buka dengan momen paling seru, versi 9:16 untuk Reels, kasih subtitle, warna hangat cinematic, buang bagian 'eee' dan diam." Agen menyusun rencana, membangun timeline (klip, potongan, reframe, teks, efek, warna), memeriksa hasil, lalu render.
+**Auteur Labs adalah editor video yang kamu arahkan dengan kalimat, seperti mengarahkan editor manusia. Agen yang dibangun di atas model Meta menonton dan mendengar footage-mu, lalu mengedit timeline sungguhan yang tetap bisa kamu ubah sendiri.** Contoh arahannya: "jadikan footage ini vlog 45 detik, buka dengan momen paling seru, buang 'eee', kasih subtitle, warna hangat cinematic, lalu bikin versi 9:16 dan blur wajah orang asing." Agen menyusun rencana, mengedit timeline langkah demi langkah, me-render, dan memeriksa hasilnya dengan pemeriksa di luar kendalinya sebelum menyerahkan.
 
-Rasanya seperti Cursor, tapi untuk video: editor di tengah, agen di panel kanan. Pengguna tetap bisa mengedit sendiri dengan tools yang sama (split, trim, geser, teks, warna), dan semua perubahan, dari agen maupun pengguna, tercatat di riwayat yang bisa di-undo.
+Kalau tidak ada footage sama sekali, Muse Wonder menulis videonya sebagai kode: storyboard, lalu tiap adegan sebagai komponen Remotion yang dirender, diperiksa dari frame render-nya sendiri, dan ditaruh di timeline yang sama.
 
-- **Untuk siapa:** kreator, vlogger, brand dan UMKM yang bikin konten, siapa saja yang punya footage mentah tapi nggak punya waktu atau skill DaVinci dan Premiere.
-- **Bedanya:** editor AI lain hanya mengerti _ucapan_ (transkrip). Auteur Labs mengerti ucapan _dan_ visual: siapa di layar, benda apa, adegan apa, di mana subjek berada. Hasilnya bukan video jadi yang tertutup, tapi **timeline yang bisa dilihat dan diubah**, seperti hasil kerja editor manusia.
-- **Kenapa sekarang:** SAM 3.1 baru tersedia lewat Meta Model API dengan pelacakan objek di video ($0,20 per 1.000 frame), dan Muse Spark bisa menonton frame dan memakai tool. Kombinasi ini membuat edit berbasis isi visual jadi murah dan otomatis.
-- **Target lomba:** Meta Global AI Developer Hackathon, Indie Developer track, plus bonus Best Agentic Use-Case. Submit paling lambat 4 Nov 21.00 ET (5 Nov 09.00 WIB).
+Rasanya seperti Cursor untuk video: editor di tengah, agen di panel kanan. Di luar agen, editornya lengkap untuk edit manual: potong, transisi, keyframe, teks bergaya, LUT, hapus background, dubbing, edit lewat transkrip, dan export sampai 4K.
+
+- **Untuk siapa:** kreator, vlogger, brand dan UMKM, siapa saja yang punya footage mentah tapi tidak punya waktu atau skill DaVinci dan Premiere.
+- **Bedanya:** editor AI lain hanya mengerti _ucapan_ (transkrip). Auteur mengerti ucapan _dan_ visual (siapa di layar, di mana, sedang apa), memeriksa hasilnya sendiri, dan hasilnya adalah **timeline yang bisa dilihat dan diubah**, bukan video tertutup.
+- **Kenapa sekarang:** SAM 3.1 tersedia lewat Meta Model API dengan pelacakan dan masker per frame ($0,20 per 1.000 frame), Muse Spark bisa menonton frame dan memakai tool, dan Muse Wonder bisa menulis video sebagai kode. Kombinasi ini membuat edit berbasis isi visual murah dan otomatis.
+- **Lomba:** Meta Global AI Developer Hackathon, problem statement **Build for Your World**, Indie Developer track. Submit paling lambat 4 Nov 21.00 ET (5 Nov 09.00 WIB). Semua kode dibangun 1–4 Nov, di dalam masa building 27 Okt – 4 Nov.
 
 ## Masalah & kompetitor
 
-**Editor video AI saat ini mengerti apa yang _diucapkan_, bukan apa yang _terlihat_.** Manusia berpikir dalam isi ("bagian anakku tiup lilin", "orang asing di belakang"), sedangkan editor berpikir dalam detik. Akibatnya, pekerjaan seperti memblur orang lewat, mencari momen tertentu, atau crop vertikal yang mengikuti subjek masih dikerjakan manual.
+**Editor video AI saat ini mengerti apa yang _diucapkan_, bukan apa yang _terlihat_.** Manusia berpikir dalam isi ("bagian anakku tiup lilin", "orang asing di belakang"), sedangkan editor berpikir dalam detik. Pekerjaan seperti memblur orang lewat, mencari momen tertentu, crop vertikal yang mengikuti subjek, atau mengganti background tanpa green screen masih dikerjakan manual.
 
 | Produk                        | Cara kerja                            | Yang belum bisa                                                                     |
 | ----------------------------- | ------------------------------------- | ----------------------------------------------------------------------------------- |
@@ -24,216 +26,210 @@ Rasanya seperti Cursor, tapi untuk video: editor di tengah, agen di panel kanan.
 | CapCut, Captions, Opus Clip   | Potong otomatis dari ucapan, template | Tidak bisa diberi arahan bebas; hasilnya template, bukan timeline yang direncanakan |
 | Runway                        | Efek visual dan generasi video        | Bukan editor; tidak menyusun cerita dari footage mentah                             |
 
-**Pembeda Auteur Labs:** (1) agen yang mengerti visual dan ucapan sekaligus, bukan transkrip saja, (2) satu arahan bebas dipecah jadi banyak langkah edit di timeline yang bisa dilihat dan diubah, dan pengguna bisa ikut mengedit di timeline yang sama, (3) setiap hasil diperiksa di luar agen sebelum diserahkan, misalnya subjek selalu di dalam frame 9:16, durasi sesuai permintaan, dan warna tidak terbakar, (4) color grading dari arahan bebas ("hangat cinematic") yang diterapkan dan diukur, bukan sekadar filter template.
+**Pembeda Auteur Labs:**
 
-## Tujuan & target juri
+1. Agen yang mengerti visual dan ucapan sekaligus.
+2. Satu arahan bebas jadi banyak langkah edit di timeline yang bisa dilihat dan diubah; pengguna dan agen mengedit timeline yang sama dengan satu riwayat.
+3. Setiap render diperiksa di luar agen (subjek di dalam frame, blur tidak bocor, durasi, warna, potongan di beat), dan agen memperbaiki sendiri masalah yang ditemukan.
+4. Video dari kode dengan Muse Wonder yang memeriksa render-nya sendiri, di timeline yang sama dengan footage.
+5. Editor manual yang setara editor konsumen (transisi, keyframe, LUT, teks bergaya, hapus background, dubbing), sehingga hasil agen bisa dipoles tanpa pindah aplikasi.
 
-**Targetnya masuk 5 besar Indie track dan menang Best Agentic Use-Case ($5k).** Best Creative tidak dikejar karena syaratnya Muse Image atau Muse Wonder sebagai inti.
+## Tujuan & penilaian
 
-| Kriteria (bobot)          | Cara Auteur Labs menjawabnya                                                                                                            |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Impact (30%)              | Siapa pun yang punya footage mentah bisa menghasilkan video siap posting tanpa skill editing; pasar kreator dan brand global       |
-| Use of Meta tooling (25%) | SAM 3.1 video tracking (kemampuan terbaru Meta) jadi inti, Muse Spark sebagai otak agen dan penilai, Voice Transcribe untuk ucapan |
-| Technical depth (20%)     | Loop agen dengan tool calling, satu lapisan operasi untuk agen dan pengguna, pemeriksa hasil di luar agen, pipeline ffmpeg, masker per frame, grading terukur |
-| Demo (25%)                | Hasil sebelum dan sesudah bicara sendiri, agen terlihat bekerja live, juri bisa mencoba dengan video mereka sendiri                |
+**Targetnya masuk 5 besar Indie Developer track, plus bonus Best Agentic Use-Case, Best Creative Build, dan Most Viral.**
 
-Untuk Best Agentic, juri menilai otonomi, efektivitas, dan kegunaan praktis. Auteur Labs menunjukkan ketiganya lewat satu momen kunci: pemeriksa menemukan subjek keluar frame di versi 9:16, lalu agen memperbaikinya tanpa campur tangan pengguna.
+Penilaian tahap dua memakai empat kriteria dengan **bobot sama**, skala 0–10. Lima besar per track masuk babak final, di mana juri menonton video demo secara langsung dengan rubrik yang sama.
 
-## Pengguna & skenario utama
+| Kriteria                        | Pertanyaan juri                                                                 | Jawaban Auteur Labs |
+| ------------------------------- | ------------------------------------------------------------------------------- | ------------------- |
+| Impact                          | Siapa yang terbantu, seberapa penting, bisa jadi produk? Cocok dengan problem statement? | Siapa pun yang punya footage mentah membuat video siap posting dengan beberapa kalimat; pasar kreator dan brand global |
+| Use of Meta AI Tooling          | Kreatif, lebih dari integrasi dasar, ada kemampuan yang mengejutkan?            | Lima model Meta lewat API plus MMS-TTS: SAM 3.1 untuk tracking, reframe, blur, dan masker piksel; Muse Spark sebagai otak dan "mata" agen; Muse Wonder menulis video sebagai kode; Muse Image; Voice Transcribe. Temuan teknis SAM (ID disambung antar segmen, 53% → 83%) |
+| Technical Depth & Execution     | Engineering-nya matang dan rapi?                                                | Satu lapisan operasi untuk agen dan pengguna, pemeriksa di luar agen, preview dan export identik (tes piksel dan paritas), sandbox untuk kode dari model, 200+ tes otomatis |
+| Demo                            | Jalan, tahan dipakai live, enak ditonton?                                       | Video peluncuran produk; demo publik dengan project contoh |
 
-**Skenario 1 (footage mentah jadi vlog) jadi tulang punggung demo; skenario lain membuktikan agen bisa diberi arahan apa saja.**
+| Bonus                    | Syarat                                                                 | Momen di produk |
+| ------------------------ | ---------------------------------------------------------------------- | --------------- |
+| Best Agentic Use-Case    | Otonomi, efektivitas, kegunaan praktis                                 | Pemeriksa menemukan subjek keluar frame di versi 9:16, agen memperbaikinya tanpa diminta |
+| Best Creative Build      | Proyek kreatif dengan Muse Image atau Muse Wonder                      | Video dari kode: Wonder menulis, me-render, dan memeriksa tiap adegan; Muse Image membuat shot yang tidak direkam |
+| Most Viral               | Engagement post demo di X sampai 8 Nov                                 | Versi vertikal 45 detik dari video demo |
 
-| Pengguna           | Arahan contoh                                                                                    | Yang dikerjakan agen                                                           |
-| ------------------ | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ |
-| Vlogger            | "Jadikan footage 20 menit ini vlog 2 menit, buka dengan momen paling seru, buang 'eee' dan diam" | Tonton dan dengar semua klip, pilih momen, susun cerita, potong filler, render |
-| Kreator short-form | "Bikin 3 Reels 9:16 dari podcast ini, kamera selalu ke orang yang bicara, kasih subtitle"        | Cari momen terbaik, lacak pembicara, reframe vertikal, subtitle                |
-| Brand atau UMKM    | "Video produk 30 detik, fokus ke produknya, kasih teks harga di akhir"                           | Pilih shot dengan produk paling jelas, reframe ke produk, tambah teks          |
-| Siapa saja         | "Blur wajah orang asing dan plat nomor"                                                          | Lacak face dan license plate, blur, periksa sampai 0 bocor                     |
-| Revisi             | "Bagian pantai kepanjangan, potong jadi 5 detik dan ganti urutannya ke awal"                     | Ubah klip di timeline yang sudah ada, render ulang                             |
-| Siapa saja         | "Warnanya hangat cinematic, dan samakan warna klip HP dengan klip kamera"                        | Lihat frame sampel, tentukan parameter grading, terapkan, ukur hasilnya        |
-| Kolaborasi         | Pengguna trim satu klip manual, lalu: "sekarang kasih subtitle"                                 | Baca timeline terbaru termasuk edit pengguna, lanjutkan tanpa menimpanya       |
+Tidak dikejar: Best Build on Meta Open Weight Models (syaratnya Muse Glimmer atau Muse Spark Open).
 
-Di luar scope hackathon: musik latar otomatis, grading per objek dengan masker SAM, dan multi-kamera. Semua masuk roadmap.
+**Aturan yang dijaga:** demo hanya menampilkan yang dibangun selama hackathon, dan juri harus bisa melihatnya. Sebelum submit, README perlu bagian "Built during the hackathon" yang memisahkan yang dibangun dari yang dipakai (model Meta, MMS-TTS, Remotion, ffmpeg, Next.js, FastAPI, Clerk); video demo menyebutnya di kartu penutup.
 
-## Fitur & scope MVP
+## Pengguna & skenario
 
-**MVP = editor dengan timeline yang diisi agen dan bisa diedit pengguna, plus tool yang cukup untuk mengubah footage mentah jadi video siap posting.** Timeline-nya tampil seperti DaVinci (track video dan teks). Agen dan pengguna memakai operasi yang sama, jadi tools manual hanya butuh UI, bukan logika baru. Tools manual dibatasi ke yang ringan; pekerjaan berat (masker, tracking, keyframe) tetap dikerjakan agen.
+**Footage mentah jadi vlog adalah tulang punggung produk; skenario lain membuktikan agen dan editor bisa dipakai untuk apa saja.**
 
-| Fitur                                                 | Prioritas    | Keterangan                                                         |
-| ----------------------------------------------------- | ------------ | ------------------------------------------------------------------ |
-| Upload beberapa klip (maks 5 menit total)             | Wajib        | Batas durasi menjaga biaya dan waktu proses                        |
-| Arahan bebas lewat chat, termasuk revisi              | Wajib        | "potong bagian pantai jadi 5 detik" mengubah timeline yang ada     |
-| Rencana edit tampil sebelum dikerjakan                | Wajib        | Pengguna bisa setuju atau mengubah                                 |
-| Timeline visual (track video + teks), preview, export | Wajib        | Inti rasa "editor"; data timeline = satu JSON yang dirender ffmpeg |
-| tonton + dengar (adegan dan transkrip)                | Wajib        | Muse Spark + Voice Transcribe                                      |
-| cari\_momen, susun cerita                             | Wajib        | Memilih dan mengurutkan bagian terbaik                             |
-| Buang "eee" dan diam                                  | Wajib        | Dari timestamp transkrip                                           |
-| Reframe 9:16 mengikuti subjek                         | Wajib        | SAM 3.1 melacak subjek                                             |
-| Subtitle dan teks overlay                             | Wajib        | Transkrip + ffmpeg                                                 |
-| Blur atau sorot objek                                 | Wajib        | Masker SAM 3.1 + OpenCV                                            |
-| periksa + perbaikan otomatis                          | Wajib        | Momen kunci untuk Best Agentic                                     |
-| Color grading: koreksi otomatis                       | Wajib        | Statistik frame (kecerahan, white balance, saturasi) + filter ffmpeg |
-| Color grading: look dari arahan                       | Wajib        | Muse Spark lihat frame, keluarkan parameter; bisa diubah lewat slider |
-| Edit manual: pilih, split, trim, geser, hapus         | Wajib        | Memanggil operasi yang sama dengan agen                            |
-| Edit manual: teks dan slider efek/warna di inspector  | Wajib        | Mengubah properti klip yang dipilih                                |
-| Riwayat perubahan + undo                              | Wajib        | Tiap operasi dicatat dengan penulisnya (agen atau pengguna)        |
-| Gaya Proyek (catatan gaya yang selalu dibaca agen)    | Kalau sempat | Mirip `.cursorrules`: font subtitle, warna brand, look grading     |
-| Samakan warna antar klip                              | Kalau sempat | Klip HP dan kamera dibuat seragam, dicek lewat statistik           |
-| Arahan lewat suara                                    | Kalau sempat | Voice Transcribe                                                   |
-| Musik otomatis, grading per objek (masker SAM)        | Jangan dulu  | Bukan pembeda utama, makan waktu                                   |
-| Masker dan keyframe manual                            | Jangan dulu  | Berat di UI; agen yang mengerjakan                                 |
-| Pilih subjek dengan klik di preview ("ikuti dia")     | Kalau sempat | Klik jadi prompt kotak SAM; default-nya subjek terbesar dan terlama |
-| Multi-kamera                                          | Jangan dulu  | Butuh sinkronisasi antar sumber                                    |
+| Pengguna           | Arahan atau aksi                                                                                  | Yang terjadi                                                                    |
+| ------------------ | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| Vlogger            | "Jadikan footage ini vlog 45 detik, buka dengan momen paling seru, buang 'eee' dan diam"           | Agen menonton dan mendengar semua klip, memilih momen, menyusun cerita, memotong filler, me-render |
+| Kreator short-form | "Versi 9:16 untuk Reels, kamera selalu ke aku, kasih subtitle"                                     | SAM melacak subjek, crop mengikuti, subtitle karaoke, pemeriksa memastikan subjek di dalam frame |
+| Siapa saja         | "Blur wajah semua orang kecuali cewek berhijab hitam"                                              | SAM melacak semua wajah, blur semua kecuali satu ID, pemeriksa mencari celah deteksi |
+| Brand atau UMKM    | "Video produk 30 detik, warna hangat, samakan warna klip HP dengan klip kamera"                    | Grading dari arahan atau gambar referensi, diukur dengan statistik frame |
+| Tanpa footage      | "Launch video 20 detik untuk aplikasiku: judul besar, tiga fitur, end card"                        | Muse Wonder menulis storyboard dan adegan Remotion, memeriksa render-nya, menaruhnya di timeline |
+| Kreator global     | Klik **Dub** ke bahasa Indonesia                                                                   | Subtitle diterjemahkan Muse Spark, diucapkan MMS-TTS di waktu tiap subtitle, suara asli dikecilkan |
+| Podcaster          | Hapus kata di tab **Words**                                                                        | Klip terpotong di kata itu; subtitle dan item lain ikut bergeser |
+| Siapa saja         | **Remove background** dengan prompt "person"                                                       | Masker SAM per frame, latar diganti blur atau warna, tanpa green screen |
+| Revisi             | Trim manual, lalu "bagian kopi kepanjangan, jadikan 4 detik"                                       | Agen membaca timeline terbaru termasuk edit manual dan melanjutkan tanpa menimpanya |
+
+## Fitur
+
+**Semua fitur di bawah sudah dibangun dan dites (API, editor, dan renderer), kecuali yang ditandai belum.**
+
+### Agen (26 tool)
+
+| Kelompok | Tool | Model atau mesin |
+| --- | --- | --- |
+| Memahami footage | `plan`, `listen` (transkrip), `watch` (deskripsi adegan dari frame), `track` (pelacakan objek) | Muse Spark, Voice Transcribe, SAM 3.1 |
+| Menyusun | `assemble`, `remove_fillers`, `edit_timeline` (operasi apa pun), `freeze_frame` | Kode di atas lapisan operasi |
+| Visual | `reframe` (crop mengikuti subjek), `effect` (blur atau sorot objek), `remove_background`, `grade` (look atau cocokkan gambar referensi), `zoom`, `speed`, `transitions`, `cinematic_finish`, `broll` | SAM 3.1, Muse Spark, kode, OpenCV, ffmpeg |
+| Suara dan teks | `music`, `cut_on_beat`, `subtitles`, `translate_texts`, `voiceover` | Voice Transcribe, Muse Spark, MMS-TTS, deteksi beat |
+| Generatif | `storyboard`, `build_scenes`, `generate_image` | Muse Wonder, Muse Image |
+| Hasil | `render` + pemeriksa otomatis | ffmpeg, statistik frame, data track SAM |
+
+### Editor manual
+
+| Area | Yang ada |
+| --- | --- |
+| Media | Upload video, audio, gambar (PNG, JPG, WebP), GIF; import dari link (dijaga dari SSRF); upload dari HP lewat QR; maks 5 menit footage per project |
+| Timeline | Split, trim, geser, hapus, duplikat; linkage (teks dan B-roll ikut klip); baris tambahan otomatis untuk item yang tumpang tindih; frame step dengan keyboard |
+| Kanvas | Geser, skala, rotasi, flip langsung di preview; crop bebas; fit dengan latar blur atau warna; keyframe posisi, skala, rotasi, opacity; animasi masuk dan keluar |
+| Transisi | Crossfade, dip hitam/putih, slide, wipe, circle, zoom |
+| Kecepatan | Slow-mo, fast, speed ramp, reverse, freeze frame |
+| Warna | Grade (exposure, kontras, saturasi, temperatur, dll.), preset look, cocokkan gambar referensi, upload LUT `.cube` dengan intensitas |
+| Teks | 8 font, warna, outline, shadow, kotak latar, 7 preset, subtitle karaoke, animasi kata per kata |
+| Audio | Musik dengan ducking, fade, volume keyframe, lepas audio ke track musik, waveform, bersihkan suara (noise reduction, suara lebih jelas) |
+| Overlay | B-roll dengan posisi bebas, opacity, 7 blend mode, chroma key |
+| AI di editor | Edit lewat transkrip (tab Words), generate gambar, voice-over dari teks, terjemahan, dubbing, hapus background |
+| Video dari kode | Panel storyboard: edit adegan, ubah urutan, rebuild per adegan |
+| Export | MP4 480p–4K (preset kualitas atau bitrate), GIF, MP3; aspek 16:9, 9:16, 1:1, 4:5; 24–60 fps; berjalan di background dengan progres dan batal |
+| Riwayat | Setiap operasi dicatat dengan penulisnya; edit agen dikelompokkan per arahan; undo dan redo |
+
+### Platform
+
+| Area | Yang ada |
+| --- | --- |
+| Akun | Login Clerk; project hanya bisa dibuka pemiliknya |
+| Biaya | Biaya tiap run tampil live; batas belanja per akun dan total; kuota run per pengunjung |
+| Deploy | Satu VPS: Docker Compose dengan Caddy (HTTPS), web, dan API (ffmpeg, renderer Remotion); data dan model suara di volume |
+
+### Belum dibangun
+
+| Fitur | Alasan |
+| --- | --- |
+| Arahan lewat suara | Bukan pembeda; mengetik cukup untuk demo |
+| Pilih subjek dengan klik di preview | SAM mendukung prompt kotak, tapi UI-nya belum; default-nya subjek terbesar dan terlama |
+| Gaya Proyek (catatan gaya yang selalu dibaca agen) | Ditunda |
+| Multi-kamera | Butuh sinkronisasi antar sumber |
+| Modul 3, 5, 6, 7, 8 dari daftar perbandingan CapCut | Ditunda setelah lomba; modul 1, 2, dan 4 selesai |
+| Pemeriksa yang melihat hasil render untuk blur | Pemeriksa blur saat ini membaca celah deteksi di data track, bukan piksel render |
 
 ## Model Meta & biaya
 
-**Tiga model Meta, masing-masing punya peran yang tidak bisa dihapus; perkiraan biaya sekitar $1 per menit video.** Muse Wonder dan Muse Image tidak dipakai di MVP.
+**Lima model Meta lewat Meta Model API dan satu model open weights Meta, masing-masing dengan peran yang terlihat di produk. Biaya tiap run tampil live di editor.**
 
-| Model                 | Peran di Auteur Labs                                                                                                                                                     | Harga                                               |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| SAM 3.1               | Melacak objek dari perintah teks (face, person, dog, logo, license plate) dan menghasilkan masker per frame. Dipakai lagi oleh pemeriksa untuk mengecek video hasil | $0,20 per 1.000 frame video; $2,50 per 1.000 gambar |
-| Muse Spark 1.3        | Otak agen: memahami perintah, menyusun rencana, memilih tool. Menonton frame sampel untuk mencari adegan dan menentukan look grading. Menilai apakah hasil sesuai perintah | $1,25 / $4,25 per 1 juta token input / output       |
-| Muse Voice Transcribe | Transkrip per giliran bicara untuk subtitle, membuang "eee" dan diam, dan mencari momen dari ucapan                                                                 | $3 per 1.000 menit audio                            |
+| Model                 | Peran di Auteur Labs                                                                                                                              | Harga                                         |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| Muse Spark 1.3        | Otak agen: rencana, satu tool per giliran. Menonton frame sampel untuk memilih momen dan look. Menerjemahkan teks                                  | $1,25 / $4,25 per 1 juta token input / output |
+| SAM 3.1 (video)       | Melacak objek dari prompt teks untuk reframe, blur, sorot, dan pemeriksa; masker piksel untuk hapus background                                   | $0,20 per 1.000 frame (min. 50 frame per request) |
+| Muse Voice Transcribe | Transkrip untuk subtitle, buang filler, edit lewat transkrip, memilih momen                                                                      | $3 per 1.000 menit audio                      |
+| Muse Wonder 1.0       | Video dari kode: storyboard, tiap adegan sebagai komponen Remotion, memeriksa frame render-nya sendiri dan memperbaiki teks terpotong            | $4 / $20 per 1 juta token input / output      |
+| Muse Image 1.0        | Gambar dari prompt sesuai aspek project (1792×1024, 1024×1792, 1024×1024, 1024×1280)                                                             | $0,01 per gambar                              |
+| MMS-TTS (open weights, `facebook/mms-tts-*`) | Voice-over dan dubbing di 15 bahasa beraksara Latin, dijalankan di CPU server                                              | Gratis; lisensi CC BY-NC 4.0                  |
 
-Hitungan kasar untuk video 1 menit di 30 fps (1.800 frame): satu kali lacak sekitar $0,36. Satu edit lengkap (lacak wajah, lacak objek kedua, periksa ulang) sekitar $1. Memproses di 15 fps memotong biaya SAM jadi separuh. Muse Spark membaca sekitar 1 frame per detik, jadi biayanya hanya beberapa sen per menit video. Kredit $150 cukup untuk development, demo, dan juri yang mencoba.
+Contoh biaya nyata: run agen yang menambah subtitle, membersihkan suara, dan freeze frame di klip 16 detik sekitar $0,19; run lacak wajah, blur, dan subtitle di klip 50 detik sekitar $0,45; hapus background klip 4 detik sekitar $0,01.
 
-Temuan tes API (1 Nov) yang memengaruhi desain:
+### Temuan teknis
 
-- **SAM 3.1:** video dikirim langsung sebagai data base64 di `input_video` (tanpa URL publik); output di-parse dengan `meta-sam-parser`. Video resolusi penuh 60 fps (38 detik, 9 MB) memutus koneksi, jadi SAM selalu menerima **proxy 15 fps, tinggi 640 px, tanpa audio**. Batas 16 ID objek berlaku **per request, bukan per frame**: di adegan ramai, ID habis untuk orang lewat dan subjek yang muncul belakangan tidak terlacak sama sekali (klip uji: subjek hanya 53% frame). Dikirim per segmen 10 detik, subjek yang sama terlacak 100%; di pembukaan yang ramai 10 detik pun masih kehabisan ID, jadi `lacak` memakai segmen 5 detik yang diproses paralel dan ID disambung antar segmen (klip uji: 53% jadi 83%, sisanya memang subjek belum muncul). Selain teks, SAM menerima **prompt kotak dan titik**, jadi pengguna bisa klik subjek. ID subjek utama stabil sepanjang segmen. Waktu proses 1–4,5x durasi video (10 detik: 10–47 s; 38 detik: 81 s), hasil pertama keluar sekitar 5 detik.
-- **Voice Transcribe:** bukan endpoint OpenAI, tapi `POST /v1/asr/transcribe` (multipart, WAV mono 24 kHz, maks 10 menit per file). Wajib `languageBias: ["id"]` untuk bahasa Indonesia. Filler seperti "eh" dan "hmm" ikut tertulis. **Tidak ada timestamp per kata**, hanya per giliran bicara; mode stream (`text/event-stream`) mengirim transkrip sebagian tiap 80 ms, sehingga waktu kata bisa diperkirakan dari situ.
-- **Muse Spark 1.3:** input gambar (base64) dan tool calling via Responses API berjalan; sekitar 5–7 detik per panggilan karena reasoning.
+Dari tes API (1 Nov) dan pembangunan:
 
-Sumber harga: [KuCoin](https://www.kucoin.com/news/flash/meta-launches-sam-3-1-api-for-image-and-video-segmentation), [LiteLLM](https://github.com/BerriAI/litellm/pull/47395), [LLM Reference](https://www.llmreference.com/provider/meta-model-api/muse-spark-1.3).
+- **SAM 3.1:** video dikirim sebagai base64 di `input_video` (tanpa URL publik), output di-parse dengan `meta-sam-parser`. Resolusi penuh 60 fps memutus koneksi, jadi SAM selalu menerima **proxy 15 fps, 640 px, tanpa audio**. Batas 16 ID objek berlaku **per request**: di adegan ramai ID habis untuk orang lewat dan subjek tidak terlacak (klip uji: 53% frame). `track` mengirim segmen 5 detik paralel dan menyambung ID antar segmen lewat overlap kotak: **53% jadi 83%**, sisanya memang subjek belum muncul. Waktu proses 1–4,5× durasi video.
+- **Masker SAM untuk hapus background:** masker per frame berupa raster di dalam kotak objek; disusun jadi video grayscale di ukuran proxy, diskalakan ke sumber saat export, dan dipakai sebagai alpha. Objek utama dipilih dari luas kotak terbesar sepanjang segmen; deteksi yang hilang sebentar ditahan 7 frame.
+- **Voice Transcribe:** endpoint `POST /v1/asr/transcribe` (WAV mono 24 kHz, maks 10 menit). **Tanpa timestamp per kata**; waktu kata diperkirakan dari transkrip sebagian di mode stream (tiap 80 ms) dan dirapikan ke titik hening. Kadang mengulang kata di akhir giliran.
+- **Muse Spark 1.3:** gambar dan tool calling lewat Responses API; 5–7 detik per panggilan. Menerima sampai 48 frame berlabel waktu dalam satu request.
+- **Muse Wonder:** kode adegan berasal dari model yang membaca teks pengguna, jadi diperlakukan tidak tepercaya: validasi parser (hanya `react`, `remotion`, dan beberapa paket Remotion), global browser dibayangi, konstruktor Function dimatikan, dan CSP yang memblokir semua request keluar.
+- **Footage HP:** sering frame rate variabel dan punya flag rotasi. Semua jalur mengambil frame berdasarkan waktu atau dari proxy frame rate konstan; jalur efek OpenCV sempat menghitung waktu dari nomor frame dan meleset sampai 4,8 detik, sekarang dites dengan footage variabel dan berotasi.
 
 ## Arsitektur & alur agen
 
-**Agen mengerjakan satu tool per giliran, lalu pemeriksa di luar kendali agen yang memutuskan hasilnya diterima atau diulang.** Polanya sama dengan Legal Agent Workshop Meta: rencana, aksi, hasil, verifikasi, ulang.
+**Agen mengerjakan satu tool per giliran; pemeriksa di luar kendali agen yang memutuskan hasilnya diterima atau diulang.** Polanya rencana, aksi, hasil, verifikasi, ulang.
 
-&#91;embedded content: alur agen Auteur Labs · loop rencana, aksi, periksa\]
+Loop ditulis dengan OpenAI Python SDK ke `https://api.meta.ai/v1` (Responses API). Pemeriksa dipanggil otomatis setelah render, jadi agen tidak bisa melewatinya. Masalah yang ditemukan ditandai di timeline dan dikirim balik ke agen dengan instruksi perbaikan.
 
-Loopnya ditulis dengan OpenAI Python SDK yang diarahkan ke `https://api.meta.ai/v1` (Responses API, satu tool per giliran, progres disimpan per run). Pemeriksa dipanggil otomatis setelah render, sehingga agen tidak bisa melewatinya. Setelah 3 kali gagal, run berhenti dan menampilkan frame bermasalah ke pengguna.
+**Satu lapisan operasi untuk agen dan pengguna.** Timeline adalah satu dokumen JSON yang dideskripsikan model Pydantic; tipe TypeScript editor dibuat dari model yang sama. Timeline hanya bisa diubah lewat operasi kecil yang tervalidasi (`split`, `trim`, `move`, `set_grade`, `set_bg_remove`, dan puluhan lainnya). Tool agen merangkai operasi ini; tombol dan drag di editor memanggil operasi yang sama. Akibatnya:
 
-Semua tool mengubah satu objek **timeline** (JSON: daftar klip dengan sumber, potongan masuk dan keluar, crop per frame, teks, efek, parameter warna). UI menggambar timeline itu, dan `render` mengubahnya jadi video lewat ffmpeg. Revisi cukup mengubah timeline, bukan mengedit ulang dari nol.
+- **Riwayat:** setiap commit disimpan dengan penulis, waktu, arahan asal, dan timeline sebelumnya. Undo dan redo berlaku sama untuk agen dan pengguna.
+- **Agen sadar edit pengguna:** setiap giliran, agen membaca timeline terbaru, jadi edit manual tidak ditimpa.
+- **Linkage:** teks dan B-roll mengikuti momen sumber tempat mereka berada saat klip dipotong, dipindah, atau dipercepat; subtitle yang ucapannya terpotong ikut hilang atau memendek.
 
-**Satu lapisan operasi untuk agen dan pengguna.** Timeline hanya bisa diubah lewat operasi kecil yang tervalidasi: `split`, `trim`, `move`, `delete`, `add_text`, `set_effect`, `set_grade`, `set_crop`. Tool agen di tabel bawah merangkai operasi ini; tombol dan drag di UI memanggil operasi yang sama lewat API. Akibatnya:
+**Preview sama dengan export.** Preview di browser adalah Remotion Player yang membaca timeline JSON; export adalah ffmpeg. Setiap aturan yang ada di keduanya (crop, transform, keyframe, transisi, teks) ditulis dua kali dan dijaga dengan tes paritas dan tes piksel. Varian preview yang berat (reverse, LUT, suara dibersihkan, background dihapus, chroma key) dibuat di background dan editor diberi tahu lewat Server-Sent Events.
 
-- **Riwayat:** setiap operasi disimpan dengan penulis (agen atau pengguna), waktu, dan arahan asalnya. Undo per operasi atau per arahan agen ("batalkan arahan terakhir").
-- **Agen sadar edit pengguna:** setiap giliran, agen membaca timeline terbaru beserta ringkasan riwayat, jadi edit manual tidak ditimpa diam-diam.
-- **Gaya Proyek (kalau sempat):** catatan teks per proyek yang selalu masuk ke prompt agen, misalnya "subtitle putih tebal di bawah, warna brand #FF5A00, grading hangat, potongan cepat".
-
-**Color grading terukur.** Muse Spark menentukan niat ("hangat, kontras tinggi") dari frame sampel dan arahan, lalu kode menerjemahkannya ke parameter ffmpeg (`eq`, `colorbalance`, `colortemperature`, `curves`). Penilaian hasil memakai statistik frame, bukan penilaian model: tidak ada area terbakar atau hancur di bayangan, white balance wajar, dan antar klip konsisten.
-
-| Tool           | Fungsi                                                                                                      | Dijalankan oleh         |
-| -------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------- |
-| `tonton`       | Ringkasan adegan per segmen dari frame sampel (sekitar 1 fps)                                               | Muse Spark              |
-| `dengar`       | Transkrip per giliran; waktu tiap kata diperkirakan dari transkrip sebagian di mode stream                  | Voice Transcribe        |
-| `cari_momen`   | Mencari rentang waktu sesuai deskripsi visual atau ucapan                                                   | Muse Spark              |
-| `susun`        | Menaruh, memotong, dan mengurutkan klip di timeline                                                         | Kode (timeline JSON)    |
-| `buang_filler` | Memotong "eee", "hmm", dan diam panjang; batas potong dirapikan ke titik hening (`silencedetect` ffmpeg)    | Kode dari transkrip + ffmpeg |
-| `lacak`        | Masker dan posisi objek per frame dari prompt teks atau kotak; proxy 15 fps dipecah per segmen 10 detik, diproses paralel, ID disambung antar segmen lewat overlap kotak | SAM 3.1                 |
-| `reframe`      | Crop 9:16 halus yang mengikuti subjek                                                                       | Kode dari hasil `lacak` |
-| `teks`         | Subtitle dan teks overlay                                                                                   | Kode + transkrip        |
-| `efek`         | Blur atau sorot objek                                                                                       | OpenCV + ffmpeg         |
-| `warna`        | Koreksi otomatis, look dari arahan, dan menyamakan warna antar klip                                         | Muse Spark + kode statistik + ffmpeg |
-| `render`       | Menghasilkan video dari timeline                                                                            | ffmpeg                  |
-| `periksa`      | Mengecek hasil: durasi sesuai, subjek di dalam frame, momen yang diminta ada, objek yang diblur tidak bocor, warna tidak terbakar dan konsisten | SAM 3.1 + Muse Spark + statistik frame |
+**Pemeriksa** mengecek: durasi dan aspek sesuai permintaan, ada audio, tidak ada klip terlalu pendek, subjek yang diikuti tetap di dalam crop, objek yang di-blur tidak punya celah deteksi, grade tidak membakar highlight atau menghancurkan bayangan, warna antar klip cocok bila diminta, cocok dengan gambar referensi, dan potongan tetap di beat.
 
 ## UI: tata letak editor
 
-**Tata letaknya meniru editor profesional seperti DaVinci, dengan panel agen di kanan seperti Cursor.** Orang yang pernah membuka editor video langsung paham, dan juri melihat agen bekerja di dalam editor, bukan di kotak chat terpisah. Pengguna bisa berganti antara mengedit sendiri dan menyuruh agen kapan saja.
+**Tata letaknya meniru editor profesional, dengan panel agen di kanan seperti Cursor.** Juri melihat agen bekerja di dalam editor, bukan di kotak chat terpisah.
 
-1. **Kiri, media bin:** klip yang di-upload, masing-masing dengan thumbnail dan ringkasan adegan dari agen.
-2. **Tengah, preview:** pemutar video timeline saat ini, dengan overlay kotak SAM saat agen melacak, dan tombol sebelum dan sesudah (termasuk sebelum dan sesudah grading).
-3. **Kanan, panel dengan tab:**
-   - **Agen:** chat untuk arahan dan revisi, rencana edit berupa checklist dengan status per langkah (menunggu, jalan, lolos, gagal), dan log giliran (Rencana, Aksi, Hasil) seperti Agent Console di workshop Meta.
-   - **Inspector:** properti klip yang dipilih: potongan masuk dan keluar, teks, slider warna (exposure, kontras, saturasi, temperatur), dan efek.
-   - **Riwayat:** daftar perubahan dengan penulis (agen atau pengguna), undo per langkah atau per arahan.
-4. **Bawah, timeline:** toolbar kecil (pilih, split, hapus, undo, redo), track video dan track teks. Klip bisa digeser dan di-trim dengan drag, dan ikut bergeser live saat agen mengedit. Playhead sinkron dengan preview.
-5. **Atas:** pilihan format (16:9, 9:16, 1:1), tombol export, dan biaya proses run ini.
+1. **Kiri, media bin:** klip, gambar, audio, dengan filter jenis; tombol generate gambar, voice-over, import link, dan upload dari HP.
+2. **Tengah, preview:** pemutar timeline dengan kotak tracking SAM, tombol sebelum/sesudah grading, dan handle transform di kanvas.
+3. **Kanan, panel bertab:**
+   - **Agent:** arahan, rencana edit sebagai checklist, log tiap langkah (planning, watching, tracking, rendering), kartu pemeriksa.
+   - **Story:** storyboard video dari kode.
+   - **Words:** transkrip; hapus kata untuk memotong.
+   - **Inspector:** properti item yang dipilih: frame, transform, keyframe, warna, LUT, suara, hapus background, teks, terjemahan, dubbing.
+   - **History:** perubahan timeline per arahan atau per edit manual, undo dan redo.
+4. **Bawah, timeline:** track video, B-roll, teks, dan musik dengan baris tambahan otomatis; toolbar (split, freeze, duplikat, teks, hapus, undo, redo, linkage, snap, zoom).
+5. **Atas:** aspek, fps, tema, biaya run dan total, render terakhir, export.
 
-Saat agen sedang menjalankan run, timeline dikunci untuk edit manual supaya tidak terjadi konflik; pengguna bisa menghentikan run kapan saja.
+Saat agen menjalankan run, timeline dikunci untuk edit manual; pengguna bisa menghentikan run kapan saja.
 
 ## Stack
 
-**Next.js untuk editor, Python untuk agen dan pemrosesan video, tanpa monorepo tooling.** Bottleneck-nya ada di API Meta dan ffmpeg, bukan bahasa backend, jadi dipilih ekosistem yang paling lengkap untuk video dan AI (OpenCV, numpy, OpenAI SDK) daripada Go atau Rust.
+**Next.js untuk editor, Python untuk agen dan pemrosesan video, Node untuk merender video dari kode.**
 
-| Lapisan        | Pilihan                                                        | Alasan                                                                    |
-| -------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| Frontend       | Next.js + TypeScript, Tailwind + shadcn/ui                     | Cepat membangun panel, tab, slider; deploy mudah                          |
-| State editor   | Zustand                                                        | Timeline, seleksi, riwayat, dan undo di satu store                        |
-| Timeline UI    | Komponen sendiri (div + pointer events)                        | Drag dan trim sesuai kebutuhan; library timeline siap pakai kaku          |
-| Preview        | Remotion Player, membaca timeline JSON langsung                | Edit langsung terlihat tanpa render ulang di server; seek dan sinkronisasi klip sudah ditangani library; export tetap ffmpeg |
-| Backend        | Python 3.12 + FastAPI, dikelola `uv`                           | Ekosistem video dan AI paling matang                                      |
-| Model data     | Pydantic                                                       | Satu definisi untuk validasi, skema tool agen, dan tipe TypeScript di FE  |
-| Agen           | OpenAI Python SDK ke `https://api.meta.ai/v1`                  | Format yang dipakai Meta Model API dan workshop Meta                      |
-| Video          | ffmpeg (subprocess), OpenCV + numpy                            | Potong, render, masker, blur, statistik warna                             |
-| Progres live   | Server-Sent Events (`sse-starlette`)                           | Satu arah server ke browser, cukup untuk log agen                         |
-| Job            | asyncio task di proses yang sama                               | Tanpa Celery atau Redis; cukup untuk skala demo                           |
-| Penyimpanan    | SQLite (proyek, timeline, riwayat) + disk lokal (video)        | Nol setup                                                                 |
-| Deploy         | Frontend di Vercel; backend di satu server Docker dengan disk (Railway atau Fly.io) | Backend butuh ffmpeg dan ruang file; kredit Modal jadi cadangan komputasi |
-
-Struktur repo, tanpa Turborepo karena hanya ada satu aplikasi JS dan satu Python:
+| Lapisan        | Pilihan                                                        |
+| -------------- | -------------------------------------------------------------- |
+| Frontend       | Next.js 16 + TypeScript, Tailwind, Zustand, ikon Phosphor       |
+| Preview        | Remotion Player membaca timeline JSON                           |
+| Auth           | Clerk                                                           |
+| Backend        | Python 3.12 + FastAPI, dikelola `uv`; model data Pydantic       |
+| Agen           | OpenAI Python SDK ke Meta Model API (Responses API)             |
+| Video          | ffmpeg, OpenCV + numpy; MMS-TTS lewat `transformers` + PyTorch CPU |
+| Video dari kode | `motion/`: renderer Remotion di Node dengan Chromium headless yang di-sandbox |
+| Progres live   | Server-Sent Events                                              |
+| Penyimpanan    | SQLite (project, timeline, riwayat) + disk (media, render)      |
+| Deploy         | Docker Compose di satu VPS: Caddy, web, api                     |
+| Tes            | pytest (API), Vitest (editor), node:test (renderer)            |
 
 ```
 auteur/
-├── web/        # Next.js
-├── api/        # FastAPI (uv)
-├── docs/       # PRD.md
-└── Makefile    # make dev menjalankan web + api bersamaan
+├── web/      # Next.js: editor, preview Remotion
+├── api/      # FastAPI: agen, lapisan operasi, render ffmpeg, pemeriksa
+├── motion/   # Renderer Remotion untuk video dari kode
+├── deploy/   # Caddyfile, contoh .env
+└── docs/     # PRD.md, DESIGN.md
 ```
 
-## Skrip demo 3 menit & cara juri menguji
+## Demo & cara juri menguji
 
-**Video demo memperlihatkan footage mentah berubah jadi video siap posting lewat dua arahan, termasuk agen yang memperbaiki kesalahannya sendiri.**
+**Video demo 3 menit memperkenalkan produk: hasil dulu, lalu agen bekerja, pemeriksa memperbaiki kesalahan, edit manual, fitur AI, video dari kode, dan lima model Meta.**
 
-| Waktu     | Yang tampil                                                                                                                                            | Pesan                                   |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------- |
-| 0:00–0:20 | 15 menit footage jalan-jalan mentah di media bin. "Di DaVinci, ini kerja 3 jam."                                                                       | Masalahnya nyata                        |
-| 0:20–0:45 | Ketik: "Vlog 60 detik, buka dengan momen paling seru, buang 'eee', kasih subtitle, warna hangat cinematic." Rencana edit muncul                         | Agen merencanakan                       |
-| 0:45–1:30 | Media bin terisi ringkasan adegan, klip berjatuhan ke timeline, filler terpotong, subtitle muncul di track teks, grading diterapkan (sebelum/sesudah)   | Agen mengedit seperti editor manusia    |
-| 1:30–1:55 | Arahan kedua: "versi 9:16 untuk Reels." Kotak SAM melacak subjek, crop mengikuti. Pemeriksa menemukan 2 detik subjek keluar frame, agen memperbaikinya | Momen "wow" Best Agentic                |
-| 1:55–2:20 | Pengguna trim satu klip manual di timeline, lalu: "bagian pantai kepanjangan, potong jadi 5 detik." Agen mengubah timeline tanpa menimpa edit tadi; riwayat menunjukkan keduanya | Agen dan pengguna mengedit bersama      |
-| 2:20–3:00 | Hasil akhir diputar, lalu penutup: siapa penggunanya, model Meta yang dipakai, dan kenapa sekarang                                                     | Hasilnya siap posting                   |
+Alurnya: hasil vlog 9:16 di detik pertama → arahan pertama (footage jadi vlog) → arahan kedua (versi 9:16, blur wajah, pemeriksa menemukan subjek keluar frame dan agen memperbaikinya) → edit manual dan lewat transkrip → hapus background, dubbing, Muse Image → video dari kode dengan Muse Wonder → lima model Meta dan biaya → link untuk mencoba. Setiap model Meta diberi label namanya di layar saat bekerja.
 
-Cara juri menguji: satu link publik berisi proyek contoh yang sudah di-upload (footage siap pakai) dan tombol arahan contoh, ditambah opsi upload footage sendiri (maks 2 menit). Kuota per pengunjung membatasi biaya. Repo publik berisi README yang menandai semua yang dibangun selama hackathon, sesuai aturan "new work only".
+Cara juri menguji: link publik dengan login, project contoh berisi footage siap pakai, dan opsi upload footage sendiri. Batas belanja per akun dan kuota run membatasi biaya. Repo publik; README memisahkan apa yang dibangun selama hackathon dari yang dipakai (belum ditulis, lihat Tujuan & penilaian).
 
-## Batas waktu & urutan prioritas
+## Risiko
 
-**Tidak ada jadwal harian yang kaku; yang dipegang adalah urutan pengerjaan dan batas submit 4 Nov 21.00 ET (5 Nov 09.00 WIB).**
-
-1. Tes API SAM 3.1, Muse Spark, dan Voice Transcribe.
-2. Model timeline, lapisan operasi, dan riwayat (agen dan UI sama-sama bergantung padanya).
-3. Loop agen + `dengar`, `buang_filler`, `susun`, `render`.
-4. UI editor: media bin, preview, timeline, panel agen.
-5. `teks`, `warna`, lalu `lacak` dan `reframe`.
-6. `periksa` + perbaikan otomatis.
-7. `tonton`, `cari_momen`, `efek`, dan edit manual tambahan.
-8. Deploy, footage demo, video demo, README.
-
-Kalau waktu menipis, potong dari bawah: blur, menyamakan warna antar klip, dan edit manual selain trim dan hapus lebih dulu. Inti yang harus tetap ada: footage mentah jadi vlog, grading dari arahan, reframe 9:16, dan pemeriksa.
-
-## Risiko & pertanyaan terbuka
-
-**Risiko terbesar ada di cara kerja API SAM untuk video, jadi itu dites pertama, sebelum menulis kode lain.**
-
-| Risiko                                                             | Dampak                            | Rencana cadangan                                                                           |
-| ------------------------------------------------------------------ | --------------------------------- | ------------------------------------------------------------------------------------------ |
-| SAM lambat (1–4,5x durasi video) dan waktunya tidak stabil         | Demo live terasa lama             | Segmen 10 detik diproses paralel, kotak tampil bertahap di preview, footage demo diproses sebelumnya |
-| Batas 16 ID objek per request habis di adegan ramai                | Subjek utama tidak terlacak       | Pecah per segmen 10 detik; untuk subjek tertentu pakai prompt kotak, bukan teks              |
-| Tidak ada timestamp per kata dari Voice Transcribe                 | Potongan filler dan subtitle meleset | Perkiraan dari transkrip sebagian (resolusi 80 ms), dirapikan ke titik hening ffmpeg      |
-| Upload resolusi penuh ke SAM memutus koneksi                       | Pelacakan gagal                   | Selalu kirim proxy 15 fps, 640 px, tanpa audio                                             |
-| Masker berkedip antar frame                                        | Blur bocor sesaat                 | Perlebar masker beberapa piksel dan haluskan antar frame, lalu pemeriksa menangkap sisanya |
-| Model tidak akurat menilai warna dari gambar                       | Grading berlebihan atau kusam     | Model hanya menentukan niat; nilai akhir dibatasi rentang aman dan dicek statistik frame   |
-| Edit pengguna dan agen bentrok                                     | Edit manual tertimpa              | Timeline dikunci selama run agen; agen selalu membaca timeline dan riwayat terbaru         |
-| Scope bertambah (edit manual, riwayat, grading)                    | Inti agen telat jadi              | Lapisan operasi dibuat sekali untuk agen dan UI; ikuti urutan potong fitur di atas         |
-| Akses API dari Indonesia atau kartu kredit bermasalah              | Tidak bisa mulai                  | Klaim kredit sekarang, tanya di Discord #office-hours                                      |
-| Data video demo                                                    | Butuh izin orang di video         | Rekam footage sendiri di tempat umum, atau pakai video berlisensi bebas                    |
-
-**Pertanyaan tes hari pertama** (skrip di `api/scripts/probe_meta.py` dan `probe_sam_tracking.py`):
-
-- [x] Format request video ke `sam-3.1`: Responses API, `input_text` + `input_video` (data base64), `stream=True`, parse dengan `meta-sam-parser`.
-- [ ] Batas pasti durasi, resolusi, dan ukuran file belum diketahui; proxy 15 fps 640 px untuk 38 detik (2,2 MB) lolos, file asli 9 MB 60 fps gagal.
-- [x] Waktu proses: klip 38 detik dengan prompt "person" sekitar 81 detik; segmen 10 detik 10–47 detik.
-- [x] Format output: per frame, kotak + masker (dipotong ke kotak) per objek; frame tanpa deteksi dilewati; ID subjek utama konsisten dalam satu request, tapi batas 16 ID per request.
-- [x] Muse Spark menerima puluhan gambar dalam satu request: `tonton` mengirim sampai 48 frame berlabel waktu dan mendapat deskripsi adegan dalam 13-16 detik. Input video langsung belum dites.
-- [x] ID disambung antar segmen lewat IoU kotak di frame batas; subjek utama tersambung tanpa celah di semua segmen klip uji.
+| Risiko                                                    | Dampak                             | Penanganan                                                                       |
+| --------------------------------------------------------- | ---------------------------------- | -------------------------------------------------------------------------------- |
+| SAM lambat (1–4,5× durasi) dan waktunya tidak stabil      | Demo live terasa lama              | Segmen 5 detik paralel; kotak tampil bertahap; masker disimpan per media dan prompt |
+| Batas 16 ID objek SAM habis di adegan ramai               | Subjek tidak terlacak              | Segmen pendek dan ID disambung antar segmen                                      |
+| Tanpa timestamp per kata dari Voice Transcribe            | Potongan dan subtitle meleset      | Perkiraan dari transkrip sebagian, dirapikan ke titik hening                     |
+| Footage HP frame rate variabel dan berotasi               | Efek atau masker di waktu yang salah | Frame diambil berdasarkan waktu atau dari proxy frame rate konstan; dites        |
+| Kode adegan dari model tidak tepercaya                    | Eksekusi kode berbahaya            | Validasi parser, global dibayangi, CSP, render hanya di server                   |
+| Biaya demo publik                                         | Kredit habis                       | Batas belanja per akun ($3) dan total ($25), kuota run, batas export 1080p di server |
+| Model suara pertama kali di-download (~145 MB per bahasa) | Dub pertama lambat                 | Disimpan di volume data, sekali per bahasa                                       |
+| MMS-TTS berlisensi CC BY-NC                               | Tidak bisa dipakai di produk berbayar | Cukup untuk lomba; ganti model suara sebelum komersial                         |
+| Pemeriksa blur hanya membaca data track                   | Bug render blur tidak tertangkap   | Tes otomatis untuk jalur efek; pemeriksa berbasis piksel di roadmap              |
+| Data video demo                                           | Butuh izin orang di video          | Rekam footage sendiri; wajah orang asing di-blur                                 |

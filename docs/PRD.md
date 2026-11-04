@@ -228,7 +228,7 @@ Cara juri menguji: link publik dengan login, project contoh berisi footage siap 
 | Tanpa timestamp per kata dari Voice Transcribe            | Potongan dan subtitle meleset      | Perkiraan dari transkrip sebagian, dirapikan ke titik hening                     |
 | Footage HP frame rate variabel dan berotasi               | Efek atau masker di waktu yang salah | Frame diambil berdasarkan waktu atau dari proxy frame rate konstan; dites        |
 | Kode adegan dari model tidak tepercaya                    | Eksekusi kode berbahaya            | Validasi parser, global dibayangi, CSP, render hanya di server                   |
-| Biaya demo publik                                         | Kredit habis                       | Batas belanja per akun ($3) dan total ($25), kuota run, batas export 1080p di server |
+| Biaya demo publik                                         | Kredit habis                       | Batas belanja per akun ($5) dan total ($140), kuota run, batas export 1080p di server |
 | Model suara pertama kali di-download (~145 MB per bahasa) | Dub pertama lambat                 | Disimpan di volume data, sekali per bahasa                                       |
 | MMS-TTS berlisensi CC BY-NC                               | Tidak bisa dipakai di produk berbayar | Cukup untuk lomba; ganti model suara sebelum komersial                         |
 | Pemeriksa blur hanya membaca data track                   | Bug render blur tidak tertangkap   | Tes otomatis untuk jalur efek; pemeriksa berbasis piksel di roadmap              |

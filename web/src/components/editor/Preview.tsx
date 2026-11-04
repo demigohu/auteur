@@ -126,12 +126,9 @@ export function Preview() {
         <button
           type="button"
           disabled={!hasPlayer}
-          onPointerDown={() => setBefore(true)}
-          onPointerUp={() => setBefore(false)}
-          onPointerLeave={() => setBefore(false)}
-          onKeyDown={(e) => e.key === "Enter" && setBefore(true)}
-          onKeyUp={() => setBefore(false)}
-          title="Hold to see the footage before edits"
+          aria-pressed={before}
+          onClick={() => setBefore(!before)}
+          title={before ? "Back to the edit" : "Show the footage before edits"}
           className={`ml-auto flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] transition-colors select-none disabled:opacity-40 ${
             before ? "bg-accent-soft text-accent" : "text-muted hover:bg-raised hover:text-text"
           }`}

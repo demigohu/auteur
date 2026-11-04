@@ -18,6 +18,10 @@ export type CheckMark = { start: number; end: number; label: string };
 
 /** True once the timeline has moved past the commit the checker saw (an edit, undo or redo), so its
  * marks may point at the wrong place. */
+/** Timeline zoom in pixels per second: 1 fits half an hour in a wide window; 240 shows single frames. */
+export const ZOOM_MIN = 1;
+export const ZOOM_MAX = 240;
+
 export function isCheckStale(project: Pick<ProjectView, "history" | "last_check">): boolean {
   const check = project.last_check;
   return check !== null && (project.history.at(-1)?.id ?? null) !== check.head;
@@ -513,7 +517,7 @@ export const useEditor = create<EditorState>((set, get) => {
     },
     setTime: (t) => set({ time: t }),
     seek: (t) => set({ time: t, seekRequest: { time: t, nonce: Date.now() } }),
-    setZoom: (px) => set({ pxPerSecond: Math.min(240, Math.max(12, px)) }),
+    setZoom: (px) => set({ pxPerSecond: Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, px)) }),
     clearError: () => set({ error: null }),
   };
 });

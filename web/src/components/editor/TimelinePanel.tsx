@@ -21,13 +21,13 @@ import { useEffect, useRef, useState } from "react";
 import { fileUrl, type MediaView, type OpInput } from "@/lib/api";
 import { laneCount, packLanes } from "@/lib/lanes";
 import { clipLength } from "@/lib/media";
-import { isCheckStale, useEditor } from "@/lib/store";
+import { isCheckStale, useEditor, ZOOM_MAX, ZOOM_MIN } from "@/lib/store";
 import { clipDuration, clipStarts, timelineDuration } from "@/lib/time";
 import type { AudioItem, Clip, Overlay, TextItem } from "@/lib/timeline";
 
 const MIN_CLIP = 0.1;
 const TRACK_LABEL_W = 44;
-const TICK_STEPS = [0.25, 0.5, 1, 2, 5, 10, 15, 30, 60];
+const TICK_STEPS = [0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300];
 const CLIP_H = 64;
 const LANE_H = 26;
 const OVERLAY_ROW = 34;
@@ -157,7 +157,7 @@ export function TimelinePanel() {
     e.preventDefault();
     const el = scrollRef.current!;
     const t = timeAt(e.clientX);
-    const next = Math.min(240, Math.max(12, px * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
+    const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, px * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
     setZoom(next);
     requestAnimationFrame(() => {
       el.scrollLeft = t * next - (e.clientX - el.getBoundingClientRect().left - TRACK_LABEL_W);
@@ -494,7 +494,7 @@ function ToolButton(props: { label: string; onClick: () => void; disabled?: bool
 }
 
 function Ruler({ px, width, end, onSeek }: { px: number; width: number; end: number; onSeek: (clientX: number) => void }) {
-  const step = TICK_STEPS.find((s) => s * px >= 64) ?? 120;
+  const step = TICK_STEPS.find((s) => s * px >= 64) ?? 600;
   const ticks = Array.from({ length: Math.ceil(width / (step * px)) + 1 }, (_, i) => i * step);
   const [scrubbing, setScrubbing] = useState(false);
   return (

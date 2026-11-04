@@ -199,7 +199,7 @@ function DialogBody({ draft, onClose }: { draft: Draft; onClose: () => void }) {
           </span>
           <span>
             <span className="block text-[15px] font-semibold">Drop clips here, or browse</span>
-            <span className="block text-[13px] text-muted">MP4, MOV or WebM footage, up to 5 minutes in total. MP3 or WAV for music, PNG, JPG or GIF pictures. You can add more later.</span>
+            <span className="block text-[13px] text-muted">MP4, MOV or WebM footage, up to 10 minutes in total. MP3 or WAV for music, PNG, JPG or GIF pictures. You can add more later.</span>
           </span>
         </button>
         <input

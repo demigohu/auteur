@@ -84,6 +84,7 @@ export type ProjectView = {
   clip_previews: Record<string, string | null>;
   /** Largest export the server makes (short side), or null for no limit. */
   max_export_height: number | null;
+  max_footage_seconds: number;
   speech: [number, number][];
   spent: number;
   last_render_url: string | null;

@@ -23,7 +23,7 @@ from auteur.transcript import transcribe
 from auteur.agent.loop import run_agent, run_tool
 from auteur.config import settings
 from auteur.events import bus
-from auteur.media import MAX_TOTAL_SECONDS, MediaError, ingest, make_waveform, media_dir
+from auteur.media import MediaError, ingest, make_waveform, media_dir
 from auteur.render import RenderError, render
 from auteur.auth import ClerkAuth
 from auteur.store import NotFound, Store
@@ -207,6 +207,7 @@ class ProjectView(BaseModel):
     storyboard: Storyboard | None
     export: exporter.ExportView | None
     max_export_height: int | None = Field(description="Largest export this server makes (short side); None = no limit")
+    max_footage_seconds: float = Field(description="Footage allowed per project, all videos together")
     speech: list[tuple[float, float]]
     spent: float
     last_render_url: str | None
@@ -259,6 +260,7 @@ class ProjectView(BaseModel):
             clip_previews=clip_previews(p),
             export=_exports[p.id].view() if p.id in _exports else None,
             max_export_height=settings.max_export_height or None,
+            max_footage_seconds=settings.max_footage_seconds,
             last_render_url=f"/files/{p.id}/{p.last_render}" if p.last_render else None,
             can_undo=bool(p.history),
             can_redo=bool(p.redo_stack),
@@ -438,16 +440,16 @@ async def add_media(p: Project, upload: Path, name: str) -> ProjectView:
             400, f"This video is {media.duration:.0f}s; the public demo takes up to {settings.max_file_seconds:.0f}s per file"
         )
 
-    # The 5-minute budget is for footage, which drives SAM and transcription cost; music, pictures and
+    # The footage budget (MAX_FOOTAGE_SECONDS) drives SAM and transcription cost; music, pictures and
     # scenes made in code are free to add.
     def counts(m: Media) -> bool:
         return m.kind == "video" and not m.scene_id and not m.image
 
     footage = sum(m.duration for m in p.media.values() if counts(m))
     total = footage + (media.duration if counts(media) else 0)
-    if total > MAX_TOTAL_SECONDS:
+    if total > settings.max_footage_seconds:
         shutil.rmtree(store.project_dir(p.id) / "media" / media_id, ignore_errors=True)
-        raise HTTPException(400, f"Project footage would be {total:.0f}s; the limit is {MAX_TOTAL_SECONDS}s")
+        raise HTTPException(400, f"Project footage would be {total:.0f}s; the limit is {settings.max_footage_seconds:.0f}s")
     p.media[media.id] = media
     store.save(p)
     bus.publish(p.id, {"type": "project"}, replay=False)

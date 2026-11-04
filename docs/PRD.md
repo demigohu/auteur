@@ -92,7 +92,7 @@ Tidak dikejar: Best Build on Meta Open Weight Models (syaratnya Muse Glimmer ata
 
 | Area | Yang ada |
 | --- | --- |
-| Media | Upload video, audio, gambar (PNG, JPG, WebP), GIF; import dari link (dijaga dari SSRF); upload dari HP lewat QR; maks 5 menit footage per project |
+| Media | Upload video, audio, gambar (PNG, JPG, WebP), GIF; import dari link (dijaga dari SSRF); upload dari HP lewat QR; maks 10 menit footage per project (`MAX_FOOTAGE_SECONDS`) |
 | Timeline | Split, trim, geser, hapus, duplikat; linkage (teks dan B-roll ikut klip); baris tambahan otomatis untuk item yang tumpang tindih; frame step dengan keyboard |
 | Kanvas | Geser, skala, rotasi, flip langsung di preview; crop bebas; fit dengan latar blur atau warna; keyframe posisi, skala, rotasi, opacity; animasi masuk dan keluar |
 | Transisi | Crossfade, dip hitam/putih, slide, wipe, circle, zoom |

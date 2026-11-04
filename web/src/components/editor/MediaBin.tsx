@@ -28,7 +28,7 @@ export function MediaBin() {
   if (!project) return null;
 
   const uploading = pending?.startsWith("Uploading") ? pending : null;
-  // The 300s budget is for footage; pictures and scenes made in code don't count (same rule as the API).
+  // The footage budget (from the server) counts videos only; pictures and scenes made in code don't (same rule as the API).
   const total = project.media.filter((m) => groupOf(m) === "footage").reduce((s, m) => s + m.duration, 0);
   // Scenes show in storyboard order, latest render only (older renders stay in the project for undo).
   const sceneIndex = new Map((project.storyboard?.scenes ?? []).map((s, i) => [s.media_id, i]));
@@ -58,7 +58,7 @@ export function MediaBin() {
     >
       <div className="flex h-12 shrink-0 items-center justify-between border-b-2 border-edge px-3">
         <span className="display text-[20px] text-text">Media</span>
-        <span className="font-mono text-[11px] text-faint">{Math.round(total)}s / 300s</span>
+        <span className="font-mono text-[11px] text-faint">{Math.round(total)}s / {Math.round(project.max_footage_seconds)}s</span>
       </div>
 
       {present.size > 1 && (
@@ -102,7 +102,7 @@ export function MediaBin() {
             <UploadSimple size={16} weight="bold" />
           </span>
           <span className="text-xs font-semibold text-text">Upload footage, music or pictures</span>
-          <span className="text-[11px] text-faint">MP4, MOV, WebM, MP3, WAV, PNG, JPG, GIF. Up to 5 minutes of footage</span>
+          <span className="text-[11px] text-faint">MP4, MOV, WebM, MP3, WAV, PNG, JPG, GIF. Up to {Math.round(project.max_footage_seconds / 60)} minutes of footage</span>
         </button>
         <MoreSources projectId={project.id} disabled={Boolean(pending)} />
         <input

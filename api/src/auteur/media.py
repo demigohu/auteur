@@ -23,7 +23,6 @@ from PIL import Image, ImageOps
 
 from auteur.timeline import Media
 
-MAX_TOTAL_SECONDS = 5 * 60
 STILL_SECONDS = 60
 GIF_MIN_SECONDS = 5
 STILL_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}

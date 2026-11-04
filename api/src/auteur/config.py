@@ -22,6 +22,9 @@ class Settings:
     clerk_jwks_url: str = os.getenv("CLERK_JWKS_URL", "")
     # Largest export (short side in pixels); 0 = no limit. 4K renders are slow on a small server.
     max_export_height: int = int(os.getenv("MAX_EXPORT_HEIGHT", "0"))
+    # Footage per project (all uploaded videos together; music, pictures and scenes made in code don't
+    # count). It also caps any single file under Voice Transcribe's 10-minute limit per request.
+    max_footage_seconds: float = float(os.getenv("MAX_FOOTAGE_SECONDS", "600"))
     # Meta API spend allowed per account, in USD (0 = no cap).
     user_spend_cap_usd: float = float(os.getenv("USER_SPEND_CAP_USD", "0"))
     cors_origins: list[str] = field(

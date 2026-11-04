@@ -18,6 +18,8 @@ services:
       RUNS_PER_VISITOR_PER_DAY: ${RUNS_PER_VISITOR_PER_DAY:-0}
       # Largest export (short side). 4K renders take a long time on a small server.
       MAX_EXPORT_HEIGHT: ${MAX_EXPORT_HEIGHT:-1080}
+      # Footage per project, all videos together (seconds).
+      MAX_FOOTAGE_SECONDS: ${MAX_FOOTAGE_SECONDS:-600}
     volumes:
       - auteur-data:/data
     restart: unless-stopped

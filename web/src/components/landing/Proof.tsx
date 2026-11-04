@@ -242,7 +242,7 @@ export function Toolkit() {
 }
 
 const STEPS = [
-  { n: "01", title: "Drop", sub: "Upload", body: "Clips straight off the phone or camera, LOG or not, plus a song if you have one.", chips: ["MP4 · MOV", "Up to 5 min", "MP3 · WAV"], color: "#ff4f1f", art: "files" },
+  { n: "01", title: "Drop", sub: "Upload", body: "Clips straight off the phone or camera, LOG or not, plus a song if you have one.", chips: ["MP4 · MOV", "Up to 10 min", "MP3 · WAV"], color: "#ff4f1f", art: "files" },
   { n: "02", title: "Brief", sub: "Say what you want", body: "One or two sentences, like you'd tell an editor. The agent writes a plan you can read before it touches anything.", chips: ["Plain words", "Any language", "Recipes"], color: "#2e3bff", art: "notes" },
   { n: "03", title: "Watch", sub: "Look & listen", body: "Muse Spark watches sampled frames, Voice transcribes every word, SAM 3.1 tracks who matters.", chips: ["Muse Spark", "Voice", "SAM 3.1"], color: "#ff8fcf", art: "wave" },
   { n: "04", title: "Cut", sub: "Build the timeline", body: "Clips ordered, trimmed, synced to the beat, graded and captioned, all as ordinary edits on a timeline.", chips: ["Beat cuts", "Grade", "Captions"], color: "#ffc22e", art: "timeline" },

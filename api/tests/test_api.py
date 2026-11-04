@@ -691,3 +691,18 @@ def test_remove_background_masks_once_and_bills_sam(client: TestClient, project:
     reversed_ = client.post(f"/projects/{pid}/ops", json={"label": "Reverse", "ops": [{"op": "set_reverse", "clip_id": cid, "reverse": True}]})
     assert reversed_.status_code == 400
     assert client.post(f"/projects/{pid}/clips/nope/remove-background", json=body).status_code == 404
+
+
+def test_footage_budget_counts_all_videos_in_a_project(client: TestClient, sample_video: Path, monkeypatch) -> None:
+    from dataclasses import replace
+
+    import auteur.main as m
+
+    monkeypatch.setattr(m, "settings", replace(m.settings, max_footage_seconds=6))  # the sample is 4s
+    pid = client.post("/projects", json={"name": "Budget"}).json()["id"]
+    upload = lambda: client.post(f"/projects/{pid}/media", files={"file": ("clip.mp4", sample_video.open("rb"), "video/mp4")})  # noqa: E731
+    first = upload()
+    assert first.status_code == 200 and first.json()["max_footage_seconds"] == 6
+    second = upload()  # 4 + 4 > 6
+    assert second.status_code == 400 and "limit is 6s" in second.json()["detail"]
+    assert len(client.get(f"/projects/{pid}").json()["media"]) == 1  # the rejected file is not kept

@@ -57,7 +57,7 @@ export function AgentNote() {
 
 const FAQ = [
   ["Do I need to know how to edit?", "No. Describe the video you want. If you do know how, every cut is on a normal timeline you can change by hand."],
-  ["What footage works best?", "Phone or camera clips up to five minutes in total. 16:9 gives the reframe room to move; LOG footage is graded properly."],
+  ["What footage works best?", "Phone or camera clips up to ten minutes in total. 16:9 gives the reframe room to move; LOG footage is graded properly."],
   ["Does it really watch the video?", "Yes. Muse Spark looks at sampled frames, Voice Transcribe hears every word, and SAM 3.1 tracks people and objects frame by frame."],
   ["Can it make a video without footage?", "Yes. Describe it, and Muse Wonder writes the video as Remotion code, scene by scene, up to three minutes. You can reorder, trim and grade the scenes like any clip."],
   ["Which languages does it speak?", "Write your brief in any language. Subtitles translate into the language you name, and dubbed voices cover 15 languages written in the Latin alphabet, including English, Indonesian, Spanish and French."],
@@ -131,7 +131,7 @@ export function SayHi() {
           ]}
         />
         <p className="mx-auto mt-6 max-w-[48ch] text-[17px] leading-relaxed text-paper/75">
-          Make an account and your first project opens with the recipe you pick. Up to five minutes of footage per project.
+          Make an account and your first project opens with the recipe you pick. Up to ten minutes of footage per project.
         </p>
       </div>
 

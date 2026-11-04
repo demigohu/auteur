@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from openai import AsyncOpenAI
+from openai import APITimeoutError, AsyncOpenAI
 
 from auteur import costs
 from auteur.config import settings
@@ -152,8 +152,22 @@ If the scene is good, reply with exactly: OK
 Otherwise reply with the complete corrected file in a single ```tsx code block."""
 
 
-def _client() -> AsyncOpenAI:
-    return AsyncOpenAI(api_key=settings.meta_api_key, base_url=settings.meta_base_url)
+# A request Muse Wonder never answers would otherwise wait the SDK's 10 minutes, then twice more on retry,
+# with nothing on screen. These are generous for a reasoning model; a timeout becomes a SceneError the
+# agent sees and can retry.
+STORYBOARD_TIMEOUT = 240
+SCENE_TIMEOUT = 300
+
+
+def _client(timeout: float = SCENE_TIMEOUT) -> AsyncOpenAI:
+    return AsyncOpenAI(api_key=settings.meta_api_key, base_url=settings.meta_base_url, timeout=timeout, max_retries=1)
+
+
+async def _ask_wonder(timeout: float, what: str, **kwargs: Any) -> Any:
+    try:
+        return await _client(timeout).responses.create(model=WONDER, **kwargs)
+    except APITimeoutError:
+        raise SceneError(f"Muse Wonder didn't answer the {what} within {timeout // 60:.0f} minutes; ask again") from None
 
 
 def image_data_url(path: Path, longest: int | None = None) -> str:
@@ -211,8 +225,8 @@ async def write_storyboard(
             content.append({"type": "input_text", "text": f"{im.id} ({im.name}, {w}x{h}):"})
             content.append({"type": "input_image", "image_url": image_data_url(im.path, 768)})
 
-    r = await _client().responses.create(
-        model=WONDER, instructions=STORYBOARD_SYSTEM, input=[{"role": "user", "content": content}],
+    r = await _ask_wonder(
+        STORYBOARD_TIMEOUT, "storyboard", instructions=STORYBOARD_SYSTEM, input=[{"role": "user", "content": content}],
         reasoning={"effort": "medium"},
         text={"format": {"type": "json_schema", "name": "storyboard", "schema": STORYBOARD_SCHEMA, "strict": True}},
     )
@@ -348,9 +362,7 @@ async def build_scene(
 
     async def ask(effort: str) -> str:
         async with _writes:
-            r = await _client().responses.create(
-                model=WONDER, instructions=SCENE_SYSTEM, input=items, reasoning={"effort": effort},
-            )
+            r = await _ask_wonder(SCENE_TIMEOUT, "scene", instructions=SCENE_SYSTEM, input=items, reasoning={"effort": effort})
         add_cost(costs.wonder(r.usage))
         items.extend(o.model_dump(exclude_none=True) for o in r.output if o.type == "message")
         return r.output_text

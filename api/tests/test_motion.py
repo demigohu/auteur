@@ -205,3 +205,23 @@ def test_build_scenes_refuses_a_build_the_budget_cannot_cover(tmp_path: Path, mo
     with pytest.raises(ToolError, match=r"at most 4 scenes"):
         asyncio.run(build_scenes(ctx, BuildScenesArgs()))
     assert {s.status for s in board.scenes} == {"draft"}  # nothing was marked as building
+
+
+async def test_a_wonder_request_that_never_answers_becomes_a_scene_error(monkeypatch) -> None:
+    """The agent sees a timeout as a tool error it can retry, instead of waiting out the SDK's 10 minutes."""
+    import httpx
+    from openai import APITimeoutError
+
+    from auteur import motion
+
+    class Never:
+        class responses:  # noqa: N801
+            @staticmethod
+            async def create(**kwargs):
+                raise APITimeoutError(request=httpx.Request("POST", "https://api.meta.ai/v1/responses"))
+
+    seen = {}
+    monkeypatch.setattr(motion, "_client", lambda timeout: seen.setdefault("timeout", timeout) and Never)
+    with pytest.raises(motion.SceneError, match="didn't answer the storyboard within 4 minutes"):
+        await motion._ask_wonder(motion.STORYBOARD_TIMEOUT, "storyboard", input="x")
+    assert seen["timeout"] == 240

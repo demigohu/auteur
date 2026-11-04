@@ -163,7 +163,8 @@ async def _run(
         else:
             items.append({"role": "user", "content": text})
 
-        client = AsyncOpenAI(api_key=settings.meta_api_key, base_url=settings.meta_base_url)
+        # A Spark turn takes seconds; without a bound a request that's never answered waits 10 minutes, twice.
+        client = AsyncOpenAI(api_key=settings.meta_api_key, base_url=settings.meta_base_url, timeout=180, max_retries=1)
         status, reply = "done", ""
         try:
             for _ in range(MAX_TURNS):

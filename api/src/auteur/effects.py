@@ -7,6 +7,7 @@ little, so a mask that flickers for a frame does not leak the face it should hid
 """
 
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 
 import cv2
@@ -54,12 +55,17 @@ def _highlight(frame: np.ndarray, boxes: list[tuple[int, int, int, int]], dim: f
     frame[:] = np.clip(frame.astype(np.float32) * factor, 0, 255).astype(np.uint8)
 
 
-def apply_effects(clip: Clip, m: Media, tracks: dict[str, Track], out: Path) -> Path:
+def apply_effects(
+    clip: Clip, m: Media, tracks: dict[str, Track], out: Path, on_frame: Callable[[float], bool] | None = None,
+) -> Path | None:
     """Write clip's source range, with its effects, to `out` (video only, constant frame rate).
 
     Frames come from ffmpeg at a constant rate, so frame n is at src_in + n / fps exactly. Phone footage is
     often variable-rate: counting frames from OpenCV's average fps drifted seconds away from the track's
-    times (blurs on the wrong spot) and from the sound."""
+    times (blurs on the wrong spot) and from the sound.
+
+    `on_frame` gets the fraction done after each frame; returning False stops the pass (None is returned).
+    """
     fps = max(1, round(m.fps or 30))
     w, h = m.width, m.height  # after rotation; ffmpeg applies the phone's rotation like the proxy SAM saw
     proc = subprocess.Popen(
@@ -71,6 +77,7 @@ def apply_effects(clip: Clip, m: Media, tracks: dict[str, Track], out: Path) -> 
     assert proc.stdout is not None
     writer = cv2.VideoWriter(str(out), cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
     size, n = w * h * 3, 0
+    total = max(1, round((clip.src_out - clip.src_in) * fps))
     try:
         while len(raw := proc.stdout.read(size)) == size:
             frame = np.frombuffer(raw, np.uint8).reshape(h, w, 3).copy()
@@ -85,6 +92,9 @@ def apply_effects(clip: Clip, m: Media, tracks: dict[str, Track], out: Path) -> 
                     _highlight(frame, _boxes(track, effect.object_ids or list(track.objects), t, w, h), effect.dim_background)
             writer.write(frame)
             n += 1
+            if on_frame and not on_frame(min(n / total, 1.0)):
+                proc.kill()
+                return None
     finally:
         writer.release()
         proc.stdout.close()

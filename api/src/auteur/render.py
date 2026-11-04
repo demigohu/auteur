@@ -448,11 +448,26 @@ def render(
     """
     out.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as workdir:
-        overrides = {} if encode.audio_only else {
-            c.id: apply_effects(c, media[c.media_id], tracks or {}, Path(workdir) / f"fx_{c.id}.mp4")
-            for c in tl.clips
-            if c.effects
-        }
+        # Clips with tracked effects get a frame-by-frame OpenCV pass first. It is the slow part, so it
+        # reports the first half of the progress (by seconds of footage) and can be cancelled mid-way.
+        fx_clips = [] if encode.audio_only else [c for c in tl.clips if c.effects]
+        fx_total = sum(c.src_out - c.src_in for c in fx_clips)
+        fx_share = 0.5 if fx_clips else 0.0
+        overrides: dict[str, Path] = {}
+        done = 0.0
+        for c in fx_clips:
+            seconds = c.src_out - c.src_in
+
+            def on_frame(f: float, before: float = done, seconds: float = seconds) -> bool:
+                if on_progress:
+                    on_progress(fx_share * (before + f * seconds) / max(fx_total, 1e-3))
+                return not (cancel and cancel.is_set())
+
+            fx = apply_effects(c, media[c.media_id], tracks or {}, Path(workdir) / f"fx_{c.id}.mp4", on_frame)
+            if fx is None:
+                raise RenderCancelled("Cancelled")
+            overrides[c.id] = fx
+            done += seconds
         if cancel and cancel.is_set():
             raise RenderCancelled("Cancelled")
         cmd = build_command(tl, media, out, Path(workdir), scale, overrides, encode)
@@ -467,7 +482,7 @@ def render(
                 proc.kill()
                 break
             if on_progress and (m := re.match(r"out_time_us=(\d+)", line)):
-                on_progress(min(int(m.group(1)) / 1e6 / max(tl.duration, 1e-3), 1.0))
+                on_progress(fx_share + (1 - fx_share) * min(int(m.group(1)) / 1e6 / max(tl.duration, 1e-3), 1.0))
         code = proc.wait()
         drain.join(timeout=5)
         if cancel and cancel.is_set():

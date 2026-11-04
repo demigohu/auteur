@@ -98,3 +98,44 @@ def test_phone_footage_stays_on_time_through_preview_proxy_and_export(tmp_path: 
     out = render(tl, {"m1": m}, tmp_path / "out.mp4", scale=1 / 6)
     for t in (0.5, 1.4, 2.5, 3.8):
         assert abs(shown(out, t) - (1.5 + t)) < 0.1, ("export", t)
+
+
+def _blurred_clip_timeline(sample_video: Path):
+    from auteur.timeline import Timeline
+
+    m = Media(id="m", name="m", path=str(sample_video), **{k: v for k, v in probe(sample_video).items() if k != "recorded_at"})
+    track = Track(id="t", media_id="m", prompt="face", fps=15, width=m.width, height=m.height, total_frames=60,
+                  objects={"0": {k: (100, 100, 300, 300) for k in range(60)}})
+    clip = Clip(id="c", media_id="m", src_in=0, src_out=4, effects=[Blur(track_id="t")])
+    return Timeline(clips=[clip]), {"m": m}, {"t": track}
+
+
+def test_export_progress_moves_during_the_blur_pass(sample_video: Path, tmp_path: Path) -> None:
+    from auteur.render import render
+
+    tl, media, tracks = _blurred_clip_timeline(sample_video)
+    seen: list[float] = []
+    render(tl, media, tmp_path / "out.mp4", scale=1 / 4, on_progress=seen.append, tracks=tracks)
+    during_fx = [v for v in seen if v < 0.5]
+    assert len(during_fx) > 10 and during_fx == sorted(during_fx)  # the first half moves frame by frame
+    assert seen[-1] > 0.9
+
+
+def test_cancel_stops_the_blur_pass(sample_video: Path, tmp_path: Path) -> None:
+    import threading
+
+    from auteur.render import RenderCancelled, render
+
+    tl, media, tracks = _blurred_clip_timeline(sample_video)
+    cancel = threading.Event()
+    seen: list[float] = []
+
+    def progress(v: float) -> None:
+        seen.append(v)
+        if v > 0.1:
+            cancel.set()
+
+    with pytest.raises(RenderCancelled):
+        render(tl, media, tmp_path / "out.mp4", scale=1 / 4, on_progress=progress, tracks=tracks, cancel=cancel)
+    assert max(seen) < 0.5  # stopped inside the blur pass, before ffmpeg
+    assert not (tmp_path / "out.mp4").exists()

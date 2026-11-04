@@ -659,6 +659,10 @@ export interface AudioItem {
    * Lower the music while someone speaks
    */
   duck: boolean;
+  /**
+   * Noise reduction and voice treatment, as on clips
+   */
+  audio_clean: AudioClean | null;
 }
 /**
  * Whole-video finishing touches.
@@ -1196,6 +1200,7 @@ export interface UpdateAudio {
   fade_in: number | null;
   fade_out: number | null;
   duck: boolean | null;
+  audio_clean: AudioClean | null;
 }
 /**
  * This interface was referenced by `Schema`'s JSON-Schema

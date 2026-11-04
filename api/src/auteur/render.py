@@ -240,12 +240,12 @@ def build_command(
         pre = [f"trim=start={start}:end={end}", f"setpts=(PTS-STARTPTS)/{c.speed}", f"fps={fps}", *tone, *([edges] if edges else [])]
         src_label = f"[{vsrc}:v]"
         if c.bg_remove:
-            # SAM mask as alpha at source size, over a backdrop; everything after (edges, crop, fit, pose) as usual.
+            # SAM mask as alpha at source size, over a backdrop; everything after (tone, edges, crop, fit, pose) as usual.
             mask = Path(m.path).parent / masks.mask_name(c.bg_remove.prompt, c.bg_remove.keep)
             if not mask.exists():
                 raise RenderError(f"Clip {c.id!r} has no background mask yet; run remove_background")
             mi = media_input(mask)
-            chains.append(f"[{vsrc}:v]{','.join(pre[:3 + len(tone)])},split[rk{i}][rb{i}]")
+            chains.append(f"[{vsrc}:v]{','.join(pre[:3])},split[rk{i}][rb{i}]")
             chains.append(
                 f"[{mi}:v]trim=start={c.src_in}:end={c.src_out},setpts=(PTS-STARTPTS)/{c.speed},fps={fps},"
                 f"scale={m.width}:{m.height},format=gray,gblur=sigma={max(1.0, m.height / 360):.2f}[mk{i}]"
@@ -255,7 +255,9 @@ def build_command(
             chains.append(f"[rb{i}]{f'gblur=sigma={bd.blur * m.height:.2f}' if bd.kind == 'blur' else f'drawbox=c={bd.color}:t=fill'}[bgk{i}]")
             chains.append(f"[bgk{i}][fgk{i}]overlay=format=auto,format=yuv420p[cut{i}]")
             src_label = f"[cut{i}]"
-            pre = [edges] if edges else ["null"]
+            # The LUT and grade go on after, over the backdrop too, as in the editor (which grades the variant).
+            # fps again: overlay's timebase is 1/1000000, and xfade needs every clip at 1/fps.
+            pre = [f"fps={fps}", *tone, *([edges] if edges else [])]
         after = [*pose_filters(c, out_w, out_h), "setsar=1"]
         if c.fit == "fit":
             # The whole picture over a backdrop: the clip itself filled and blurred, or a flat color.
@@ -314,7 +316,8 @@ def build_command(
             )
             chains.append(f"[{aacc}][a{i}]acrossfade=d={tr.duration:.3f}[aj{i}]")
         else:
-            chains.append(f"[{vacc}][v{i}]concat=n=2:v=1:a=0[vj{i}]")
+            # concat's output timebase is 1/1000000; fps puts it back to 1/fps, which a later xfade needs.
+            chains.append(f"[{vacc}][v{i}]concat=n=2:v=1:a=0,fps={fps}[vj{i}]")
             chains.append(f"[{aacc}][a{i}]concat=n=2:v=0:a=1[aj{i}]")
         vacc, aacc = f"vj{i}", f"aj{i}"
 
@@ -387,6 +390,7 @@ def build_command(
         chains.append(
             f"[{mi}:a]atrim=start={a.src_in}:end={a.src_in + length:.3f},asetpts=PTS-STARTPTS,"
             f"aresample=48000,aformat=channel_layouts=stereo,volume={a.volume:.3f},"
+            + "".join(f"{f}," for f in derived.audio_clean_filters(a.audio_clean)) +
             f"afade=t=in:d={min(a.fade_in, length / 2):.3f},"
             f"afade=t=out:st={max(length - a.fade_out, 0):.3f}:d={min(a.fade_out, length):.3f},"
             f"adelay={delay}|{delay}[m{k}]"

@@ -566,7 +566,8 @@ def _prepared(p: Project, media_id: str, name: str, make) -> str | None:
 
 
 def clip_previews(p: Project) -> dict[str, str | None]:
-    """Prepared previews for reversed, LUT and cleaned-sound clips, and keyed B-roll (by item id)."""
+    """Prepared previews for reversed, LUT, cleaned-sound and background-removed clips, keyed B-roll and
+    cleaned music-track items (by item id)."""
     out: dict[str, str | None] = {}
     luts = store.project_dir(p.id) / "luts"
     for c in p.timeline.clips:
@@ -579,6 +580,12 @@ def clip_previews(p: Project) -> dict[str, str | None]:
         if name and o.media_id in p.media:
             d = store.project_dir(p.id) / "media" / o.media_id
             out[o.id] = _prepared(p, o.media_id, name, lambda d=d, o=o: derived.make_overlay_variant(d, o))
+    for a in p.timeline.audio:
+        name = derived.audio_variant_name(a)
+        if name and a.media_id in p.media:
+            d = store.project_dir(p.id) / "media" / a.media_id
+            preview = d / ("preview.m4a" if p.media[a.media_id].kind == "audio" else "preview.mp4")
+            out[a.id] = _prepared(p, a.media_id, name, lambda d=d, preview=preview, a=a: derived.make_audio_variant(d, preview, a))
     return out
 
 

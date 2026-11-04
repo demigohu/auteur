@@ -293,6 +293,7 @@ class UpdateAudio(Model):
     fade_in: float | None = Field(None, ge=0, le=10)
     fade_out: float | None = Field(None, ge=0, le=10)
     duck: bool | None = None
+    audio_clean: AudioClean | None = None
 
 
 class DeleteAudio(Model):
@@ -628,7 +629,7 @@ def apply(tl: Timeline, op: Op, media: dict[str, Media]) -> Timeline:
             tl.audio.append(AudioItem(
                 id=op.id or new_id("audio"), media_id=m.id, src_in=clip.src_in, src_out=clip.src_out,
                 start=tl.clip_starts()[i], volume=clip.volume, fade_in=clip.audio_fade_in, fade_out=clip.audio_fade_out,
-                duck=False,
+                duck=False, audio_clean=clip.audio_clean,
             ))
             tl.clips[i] = clip.model_copy(update={"muted": True})
 

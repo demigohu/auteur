@@ -180,6 +180,20 @@ def test_xfade_transitions_quarter_way(kind: str, samples: dict[int, str], halve
     assert {x: named(f[90, x]) for x in samples} == samples
 
 
+
+def test_crossfade_after_plain_cuts(halves: Media, greens: Media, tmp_path: Path) -> None:
+    """Cuts join with concat (timebase 1/1000000); a crossfade after them still needs xfade's 1/fps."""
+    from auteur.media import probe
+    from auteur.timeline.models import Transition
+
+    tl = Timeline(clips=[
+        Clip(id="a", media_id="m", src_in=0, src_out=1),
+        Clip(id="b", media_id="g", src_in=0, src_out=1),
+        Clip(id="c", media_id="m", src_in=0, src_out=1, transition=Transition(kind="crossfade", duration=0.4)),
+    ])
+    out = render(tl, {"m": halves, "g": greens}, tmp_path / "out.mp4", scale=1 / 6)
+    assert probe(out)["duration"] == pytest.approx(2.6, abs=0.1)
+
 def test_fit_shows_the_whole_picture_over_a_backdrop(halves: Media, tmp_path: Path) -> None:
     from auteur.timeline.models import Backdrop
 
@@ -208,14 +222,16 @@ def test_fit_with_a_blurred_backdrop_and_zoom_renders(halves: Media, tmp_path: P
 
 def test_detached_sound_still_plays_in_the_export(tmp_path: Path, sample_video: Path) -> None:
     from auteur.media import probe
-    from auteur.timeline.ops import AddClip, DetachAudio, SetAudioFade, apply
+    from auteur.timeline.models import AudioClean
+    from auteur.timeline.ops import AddClip, DetachAudio, SetAudioClean, SetAudioFade, apply
 
     m = Media(id="v", name="v", path=str(sample_video), **{k: v for k, v in probe(sample_video).items() if k != "recorded_at"})
     media = {"v": m}
     tl = Timeline()
     for op in (AddClip(id="c", media_id="v", src_in=0, src_out=3), SetAudioFade(clip_id="c", fade_in=0.5, fade_out=0.5),
-               DetachAudio(clip_id="c")):
+               SetAudioClean(clip_id="c", audio_clean=AudioClean(denoise=0.3, voice=True)), DetachAudio(clip_id="c")):
         tl = apply(tl, op, media)
+    assert tl.audio[0].audio_clean.voice  # cleaned on the music track too
     out = render(tl, media, tmp_path / "out.mp4", scale=1 / 6)
     stats = subprocess.run(["ffmpeg", "-i", str(out), "-af", "volumedetect", "-f", "null", "-"], capture_output=True, text=True).stderr
     peak = float(stats.split("max_volume:")[1].split("dB")[0])

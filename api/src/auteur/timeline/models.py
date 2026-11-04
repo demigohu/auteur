@@ -348,6 +348,7 @@ class AudioItem(Model):
     fade_in: float = Field(0.5, ge=0, le=10)
     fade_out: float = Field(1.5, ge=0, le=10)
     duck: bool = Field(True, description="Lower the music while someone speaks")
+    audio_clean: AudioClean | None = Field(None, description="Noise reduction and voice treatment, as on clips")
 
     @property
     def duration(self) -> float:

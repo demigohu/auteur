@@ -2,7 +2,7 @@
 
 The frame is taken from the source at full resolution and becomes a still picture media (like an
 uploaded PNG); the clip is split there and the still goes in between, with the clip's look (grade,
-crop, framing, position) copied so the hold doesn't jump.
+LUT, crop, framing, position) copied and a removed background baked in, so the hold doesn't jump.
 """
 
 import subprocess
@@ -11,10 +11,11 @@ from pathlib import Path
 
 import numpy as np
 
-from auteur.media import MediaError, ingest
+from auteur.masks import mask_name
+from auteur.media import MediaError, ingest, media_dir
 from auteur.timeline import Project
 from auteur.timeline.models import CropKey
-from auteur.timeline.ops import MIN_CLIP, AddClip, Op, SetCrop, SetCropRect, SetFit, SetGrade, SetTransform, Split, new_id
+from auteur.timeline.ops import MIN_CLIP, AddClip, Op, SetCrop, SetCropRect, SetFit, SetGrade, SetLut, SetTransform, Split, new_id
 
 
 class FreezeError(ValueError):
@@ -40,10 +41,19 @@ def freeze(p: Project, project_dir: Path, clip_id: str, at: float, duration: flo
     media_id = new_id("media")
     with tempfile.TemporaryDirectory() as tmp:
         png = Path(tmp) / "frame.png"
-        proc = subprocess.run(
-            ["ffmpeg", "-y", "-loglevel", "error", "-ss", f"{source_t:.3f}", "-i", str(m.path), "-frames:v", "1", str(png)],
-            capture_output=True, text=True,
-        )
+        cmd = ["ffmpeg", "-y", "-loglevel", "error", "-ss", f"{source_t:.3f}", "-i", str(m.path)]
+        if clip.bg_remove:
+            # The still has no mask of its own: bake the background removal in, as render.py draws it.
+            # (Both inputs restart at 0 after -ss, or alphamerge pairs the frame with no mask.)
+            mask = media_dir(project_dir, m.id) / mask_name(clip.bg_remove.prompt, clip.bg_remove.keep)
+            if not mask.exists():
+                raise FreezeError("This clip's background mask is missing; remove the background again")
+            bd = clip.bg_remove.backdrop
+            back = f"gblur=sigma={bd.blur * m.height:.2f}" if bd.kind == "blur" else f"drawbox=c={bd.color}:t=fill"
+            cmd += ["-ss", f"{source_t:.3f}", "-i", str(mask), "-filter_complex",
+                    f"[0:v]setpts=PTS-STARTPTS,split[k][b];[1:v]setpts=PTS-STARTPTS,scale={m.width}:{m.height},format=gray,gblur=sigma={max(1.0, m.height / 360):.2f}[mk];"
+                    f"[k][mk]alphamerge[fg];[b]{back}[bg];[bg][fg]overlay=format=auto[v]", "-map", "[v]"]
+        proc = subprocess.run([*cmd, "-frames:v", "1", str(png)], capture_output=True, text=True)
         if proc.returncode != 0 or not png.exists():
             raise FreezeError("Couldn't read that frame")
         try:
@@ -62,6 +72,8 @@ def freeze(p: Project, project_dir: Path, clip_id: str, at: float, duration: flo
     ops.append(AddClip(id=freeze_id, media_id=still.id, src_in=0, src_out=round(duration, 3), index=index))
     # The same look as the clip, so the picture doesn't jump when it stops moving.
     ops.append(SetGrade(clip_ids=[freeze_id], grade=clip.grade))
+    if clip.lut:
+        ops.append(SetLut(clip_id=freeze_id, lut=clip.lut))
     if clip.transform:
         ops.append(SetTransform(clip_id=freeze_id, transform=clip.transform))
     if clip.crop_rect:

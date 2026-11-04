@@ -265,12 +265,13 @@ function OverlayLayer({ item, media, keyed }: { item: Overlay; media: MediaView;
   );
 }
 
-function MusicLayer({ item, media, speech }: { item: AudioItem; media: MediaView; speech: [number, number][] }) {
+function MusicLayer({ item, media, speech, cleaned }: { item: AudioItem; media: MediaView; speech: [number, number][]; cleaned?: string | null }) {
   const { fps } = useVideoConfig();
   const length = item.src_out - item.src_in;
   return (
     <Audio
-      src={fileUrl(media.preview_url)}
+      // The cleaned-sound variant once it's ready (the plain preview until then).
+      src={fileUrl(cleaned ?? media.preview_url)}
       trimBefore={Math.round(item.src_in * fps)}
       volume={(f) => {
         const t = f / fps;
@@ -420,7 +421,7 @@ export function TimelineComposition({ timeline, media, tracks, showTracks, raw, 
       {timeline.audio.map((a) =>
         media[a.media_id] && a.start < total ? (
           <Sequence key={a.id} name={a.id} from={Math.round(a.start * fps)} durationInFrames={toFrames(Math.min(a.src_out - a.src_in, total - a.start), fps)}>
-            <MusicLayer item={a} media={media[a.media_id]} speech={speech} />
+            <MusicLayer item={a} media={media[a.media_id]} speech={speech} cleaned={clipPreviews[a.id]} />
           </Sequence>
         ) : null,
       )}

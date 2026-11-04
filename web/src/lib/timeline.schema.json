@@ -474,6 +474,18 @@
           "default": true,
           "description": "Lower the music while someone speaks",
           "type": "boolean"
+        },
+        "audio_clean": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AudioClean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Noise reduction and voice treatment, as on clips"
         }
       },
       "required": [
@@ -485,7 +497,8 @@
         "volume",
         "fade_in",
         "fade_out",
-        "duck"
+        "duck",
+        "audio_clean"
       ],
       "title": "AudioItem",
       "type": "object"
@@ -3676,6 +3689,17 @@
             }
           ],
           "default": null
+        },
+        "audio_clean": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AudioClean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
@@ -3687,7 +3711,8 @@
         "volume",
         "fade_in",
         "fade_out",
-        "duck"
+        "duck",
+        "audio_clean"
       ],
       "title": "UpdateAudio",
       "type": "object"

@@ -433,6 +433,7 @@ def test_clip_sound_fades_detaches_and_has_a_waveform(client: TestClient, projec
     view = client.post(f"/projects/{pid}/ops", json={"label": "Add", "ops": [
         {"op": "add_clip", "id": "c1", "media_id": mid, "src_in": 0.5, "src_out": 3.5},
         {"op": "set_audio_fade", "clip_id": "c1", "fade_in": 0.5, "fade_out": 1},
+        {"op": "set_audio_clean", "clip_id": "c1", "audio_clean": {"denoise": 0.5, "voice": True}},
     ]}).json()
     assert (view["timeline"]["clips"][0]["audio_fade_in"], view["timeline"]["clips"][0]["audio_fade_out"]) == (0.5, 1)
     view = client.post(f"/projects/{pid}/ops", json={"label": "Detach", "ops": [{"op": "detach_audio", "clip_id": "c1"}]}).json()
@@ -440,6 +441,8 @@ def test_clip_sound_fades_detaches_and_has_a_waveform(client: TestClient, projec
     assert view["timeline"]["clips"][0]["muted"] is True
     assert (sound["media_id"], sound["src_in"], sound["src_out"], sound["start"], sound["duck"]) == (mid, 0.5, 3.5, 0, False)
     assert (sound["fade_in"], sound["fade_out"]) == (0.5, 1)
+    assert sound["audio_clean"] == {"denoise": 0.5, "voice": True}  # the cleaned sound goes with it
+    assert sound["id"] in view["clip_previews"]  # and the editor gets a cleaned preview of it
     again = client.post(f"/projects/{pid}/ops", json={"label": "Detach", "ops": [{"op": "detach_audio", "clip_id": "c1"}]})
     assert again.status_code == 400  # already muted: nothing left to detach
 
@@ -484,6 +487,38 @@ def test_freeze_frame_holds_the_moment(client: TestClient, project: dict) -> Non
     assert (still["image"], held["src_out"], held["transform"]["scale"]) == ("still", 2, 0.8)
     assert view["history"][-1]["label"] == "Freeze frame 2s"
     assert client.post(f"/projects/{pid}/clips/c1/freeze", json={"at": 9, "duration": 2}).status_code == 400
+
+
+def test_freeze_keeps_the_lut_and_the_removed_background(client: TestClient, project: dict, tmp_path: Path) -> None:
+    import subprocess
+
+    import numpy as np
+    from PIL import Image
+
+    import auteur.main as am
+    from auteur import derived, masks
+
+    pid, m = project["id"], project["media"][0]
+    cube = derived.write_cube(2, derived.identity(2), tmp_path / "Plain.cube")
+    with cube.open("rb") as f:
+        lut = client.post(f"/projects/{pid}/luts", files={"file": ("Plain.cube", f, "text/plain")}).json()["luts"][0]
+    # A mask that keeps nothing: the frozen frame is all backdrop.
+    mask = masks.mask_path(am.store.project_dir(pid), m["id"], "person", "main")
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", f"color=black:s=64x36:r=15:d=4",
+                    "-pix_fmt", "yuv420p", str(mask)], check=True)
+    r = client.post(f"/projects/{pid}/ops", json={"label": "Add", "ops": [
+        {"op": "add_clip", "id": "c1", "media_id": m["id"], "src_in": 0, "src_out": 4},
+        {"op": "set_lut", "clip_id": "c1", "lut": {"lut_id": lut["id"], "intensity": 0.7}},
+        {"op": "set_bg_remove", "clip_id": "c1", "bg_remove": {"prompt": "person", "keep": "main",
+                                                             "backdrop": {"kind": "color", "color": "#FF0000"}}},
+    ]})
+    assert r.status_code == 200, r.text
+    view = client.post(f"/projects/{pid}/clips/c1/freeze", json={"at": 1.5, "duration": 1}).json()
+    held = view["timeline"]["clips"][1]
+    assert held["lut"] == {"lut_id": lut["id"], "intensity": 0.7} and held["bg_remove"] is None
+    thumb = am.store.project_dir(pid) / "media" / held["media_id"] / "thumb.jpg"
+    r, g, b = np.asarray(Image.open(thumb).convert("RGB"), float).reshape(-1, 3).mean(0)
+    assert r > 200 and g < 50 and b < 50  # the backdrop is baked into the still
 
 
 def test_edit_by_transcript(client: TestClient, project: dict) -> None:

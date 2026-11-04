@@ -148,3 +148,19 @@ def test_background_removal_keeps_the_masked_subject(tmp_path: Path) -> None:
                           "-pix_fmt", "rgb24", "-"], capture_output=True, check=True).stdout
     p = np.frombuffer(raw, np.uint8).reshape(180, 320, 3).astype(int)
     assert p[90, 160][0] > 150 and p[90, 20][2] > 150
+    # Next to other clips, with a crossfade into it (xfade needs both at the same timebase).
+    from auteur.timeline.models import Transition
+
+    plain = Clip(id="a", media_id="m", src_in=0, src_out=1)
+    faded = clip.model_copy(update={"transition": Transition(kind="crossfade", duration=0.4)})
+    out = render(Timeline(clips=[plain, faded]), {"m": m}, tmp_path / "mixed.mp4", scale=1 / 6)
+    assert out.exists()
+    # A grade colors the backdrop too, as in the editor (it grades the background-removed variant).
+    from auteur.timeline.models import Grade
+
+    graded = clip.model_copy(update={"grade": Grade(exposure=-1)})
+    out = render(Timeline(clips=[graded]), {"m": m}, tmp_path / "graded.mp4", scale=1 / 6)
+    raw = subprocess.run(["ffmpeg", "-loglevel", "error", "-ss", "0.5", "-i", str(out), "-frames:v", "1", "-f", "rawvideo",
+                          "-pix_fmt", "rgb24", "-"], capture_output=True, check=True).stdout
+    g = np.frombuffer(raw, np.uint8).reshape(180, 320, 3).astype(int)
+    assert g[90, 20][2] < f[90, 20][2] - 40  # the blue backdrop is darker

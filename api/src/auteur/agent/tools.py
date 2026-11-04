@@ -1271,7 +1271,9 @@ TOOLS = [
         "Use for revisions and anything the other tools don't cover: set_transform (move/scale/rotate/flip/opacity), "
         "set_transform_keys (animate those), set_clip_anim (entrance/exit: fade, zoom, slide, spin), set_crop_rect (cut "
         "edges), set_fit (whole picture over a blurred or colored backdrop, e.g. landscape footage in 9:16), set_reverse, "
-        "set_lut (a project LUT), set_audio_fade, detach_audio, update_overlay (box, opacity, blend), and text style "
+        "set_lut (a project LUT), set_audio_fade, set_audio_clean (denoise 0-1, voice: clearer speech), detach_audio, "
+        "set_bg_remove (only to change the backdrop or turn it off; remove_background makes the mask), update_overlay "
+        "(box, opacity, blend, chroma: key out a green/blue screen), update_audio (audio_clean too), and text style "
         "(font, text_color, size, outline, shadow, background, anim_in/anim_out). With linkage on, text and B-roll follow "
         "the clip they sit on when clips are cut, trimmed or moved. Times: `split.at` is timeline time; "
         "`src_in`/`src_out` are source seconds; grade values are -1..1 (exposure -2..2), subtle is ±0.1-0.3.",

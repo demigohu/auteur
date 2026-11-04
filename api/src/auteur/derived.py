@@ -16,7 +16,7 @@ from pathlib import Path
 
 import numpy as np
 
-from auteur.timeline.models import Clip, Media
+from auteur.timeline.models import AudioItem, Clip, Media
 
 CHUNK_SECONDS = 2.0
 MAX_LUT_SIZE = 65
@@ -214,6 +214,23 @@ def make_variant(media_dir: Path, m: Media, c: Clip, lut_dir: Path) -> Path:
             "-pix_fmt", "yuv420p", *(["-af", ",".join(clean), "-c:a", "aac", "-b:a", "128k"] if clean else ["-c:a", "copy"]),
             "-movflags", "+faststart", str(partial),
         ])
+        partial.replace(out)
+    return out
+
+
+def audio_variant_name(a: AudioItem) -> str | None:
+    """The cleaned-sound preview of a music-track item, or None when preview.m4a will do."""
+    clean = audio_clean_filters(a.audio_clean)
+    return f"clean-{hashlib.sha1(','.join(clean).encode()).hexdigest()[:12]}.m4a" if clean else None
+
+
+def make_audio_variant(media_dir: Path, preview: Path, a: AudioItem) -> Path:
+    """The item's media preview (whole file, so trims still line up) with its sound cleaned."""
+    out = media_dir / audio_variant_name(a)
+    if not out.exists():
+        partial = out.with_suffix(".partial.m4a")
+        _run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(preview), "-vn", "-af", ",".join(audio_clean_filters(a.audio_clean)),
+              "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(partial)])
         partial.replace(out)
     return out
 

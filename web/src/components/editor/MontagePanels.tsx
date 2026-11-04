@@ -5,7 +5,7 @@ import { useRef, useState } from "react";
 import { useEditor } from "@/lib/store";
 import { cropAt, upsertKey, volumeAt } from "@/lib/keys";
 import { clipDuration, clipStarts } from "@/lib/time";
-import type { AudioItem, Clip, CropKey, Overlay, Transform, Transition, VolumeKey } from "@/lib/timeline";
+import type { AudioClean, AudioItem, Clip, CropKey, Overlay, Transform, Transition, VolumeKey } from "@/lib/timeline";
 import { cropWindow } from "@/lib/crop";
 import { poseAt } from "@/lib/animate";
 import { IDENTITY } from "@/lib/transform";
@@ -652,6 +652,7 @@ export function MusicInspector({ item, locked }: { item: AudioItem; locked: bool
         <input type="checkbox" checked={item.duck} onChange={(e) => update({ duck: e.target.checked }, "Music ducking")} />
         Lower the music when someone speaks
       </label>
+      <SoundCleanup id={item.id} value={item.audio_clean} onChange={(audio_clean, label) => update({ audio_clean }, label)} />
       <button
         type="button"
         onClick={() => {
@@ -691,17 +692,27 @@ function ClipSound({ clip }: { clip: Clip }) {
       >
         Detach audio to the music track
       </button>
-      <div className="space-y-2 rounded-[10px] border-2 border-line p-2.5">
-        <p className="text-xs text-text">Clean up sound</p>
-        <Slider id="denoise" label="Noise reduction" value={clip.audio_clean?.denoise ?? 0} min={0} max={1} step={0.1}
-          format={(v) => (v ? `${Math.round(v * 100)}%` : "off")}
-          onCommit={(v) => applyOps("Noise reduction", [{ op: "set_audio_clean", clip_id: clip.id, audio_clean: { denoise: v, voice: clip.audio_clean?.voice ?? false } }])} />
-        <label className="flex items-center gap-2 text-xs text-text">
-          <input type="checkbox" checked={clip.audio_clean?.voice ?? false}
-            onChange={(e) => applyOps(e.target.checked ? "Clearer voice" : "Plain voice", [{ op: "set_audio_clean", clip_id: clip.id, audio_clean: { denoise: clip.audio_clean?.denoise ?? 0, voice: e.target.checked } }])} />
-          Clearer voice (cut rumble, lift presence, even the level)
-        </label>
-      </div>
+      <SoundCleanup id={clip.id} value={clip.audio_clean}
+        onChange={(audio_clean, label) => applyOps(label, [{ op: "set_audio_clean", clip_id: clip.id, audio_clean }])} />
+    </div>
+  );
+}
+
+/** Noise reduction and the voice treatment, for a clip's own sound or a music-track item. */
+function SoundCleanup({ id, value, onChange }: { id: string; value: AudioClean | null; onChange: (v: AudioClean, label: string) => void }) {
+  const denoise = value?.denoise ?? 0;
+  const voice = value?.voice ?? false;
+  return (
+    <div className="space-y-2 rounded-[10px] border-2 border-line p-2.5">
+      <p className="text-xs text-text">Clean up sound</p>
+      <Slider id={`denoise-${id}`} label="Noise reduction" value={denoise} min={0} max={1} step={0.1}
+        format={(v) => (v ? `${Math.round(v * 100)}%` : "off")}
+        onCommit={(v) => onChange({ denoise: v, voice }, "Noise reduction")} />
+      <label className="flex items-center gap-2 text-xs text-text">
+        <input type="checkbox" checked={voice}
+          onChange={(e) => onChange({ denoise, voice: e.target.checked }, e.target.checked ? "Clearer voice" : "Plain voice")} />
+        Clearer voice (cut rumble, lift presence, even the level)
+      </label>
     </div>
   );
 }

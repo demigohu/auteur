@@ -6,6 +6,7 @@ by frame into a temporary video-only file; the renderer then uses it in place of
 little, so a mask that flickers for a frame does not leak the face it should hide.
 """
 
+import subprocess
 from pathlib import Path
 
 import cv2
@@ -54,30 +55,40 @@ def _highlight(frame: np.ndarray, boxes: list[tuple[int, int, int, int]], dim: f
 
 
 def apply_effects(clip: Clip, m: Media, tracks: dict[str, Track], out: Path) -> Path:
-    """Write clip's source range, with its effects, to `out` (video only, source fps)."""
-    cap = cv2.VideoCapture(str(Path(m.path).resolve()))
-    fps = cap.get(cv2.CAP_PROP_FPS) or m.fps
-    cap.set(cv2.CAP_PROP_POS_MSEC, clip.src_in * 1000)
-    ok, frame = cap.read()
-    if not ok:
-        raise RuntimeError(f"Could not read {m.name} at {clip.src_in}s")
-    h, w = frame.shape[:2]
+    """Write clip's source range, with its effects, to `out` (video only, constant frame rate).
+
+    Frames come from ffmpeg at a constant rate, so frame n is at src_in + n / fps exactly. Phone footage is
+    often variable-rate: counting frames from OpenCV's average fps drifted seconds away from the track's
+    times (blurs on the wrong spot) and from the sound."""
+    fps = max(1, round(m.fps or 30))
+    w, h = m.width, m.height  # after rotation; ffmpeg applies the phone's rotation like the proxy SAM saw
+    proc = subprocess.Popen(
+        ["ffmpeg", "-loglevel", "error", "-ss", f"{clip.src_in:.3f}", "-i", str(Path(m.path).resolve()),
+         "-t", f"{clip.src_out - clip.src_in:.3f}", "-vf", f"fps={fps},scale={w}:{h}", "-an",
+         "-f", "rawvideo", "-pix_fmt", "bgr24", "-"],
+        stdout=subprocess.PIPE,
+    )
+    assert proc.stdout is not None
     writer = cv2.VideoWriter(str(out), cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
-    n = 0
-    t = clip.src_in
-    while ok and t < clip.src_out:
-        for effect in clip.effects:
-            track = tracks.get(effect.track_id)
-            if track is None:
-                continue
-            if isinstance(effect, Blur):
-                _blur(frame, _boxes(track, effect.targets(list(track.objects)), t, w, h, effect.hold), effect.strength)
-            elif isinstance(effect, Highlight):
-                _highlight(frame, _boxes(track, effect.object_ids or list(track.objects), t, w, h), effect.dim_background)
-        writer.write(frame)
-        ok, frame = cap.read()
-        n += 1
-        t = clip.src_in + n / fps
-    writer.release()
-    cap.release()
+    size, n = w * h * 3, 0
+    try:
+        while len(raw := proc.stdout.read(size)) == size:
+            frame = np.frombuffer(raw, np.uint8).reshape(h, w, 3).copy()
+            t = clip.src_in + n / fps
+            for effect in clip.effects:
+                track = tracks.get(effect.track_id)
+                if track is None:
+                    continue
+                if isinstance(effect, Blur):
+                    _blur(frame, _boxes(track, effect.targets(list(track.objects)), t, w, h, effect.hold), effect.strength)
+                elif isinstance(effect, Highlight):
+                    _highlight(frame, _boxes(track, effect.object_ids or list(track.objects), t, w, h), effect.dim_background)
+            writer.write(frame)
+            n += 1
+    finally:
+        writer.release()
+        proc.stdout.close()
+        proc.wait()
+    if n == 0:
+        raise RuntimeError(f"Could not read {m.name} at {clip.src_in}s")
     return out

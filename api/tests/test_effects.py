@@ -63,3 +63,38 @@ def test_constant_frame_rate_footage_stays_on_time(rate: str, tmp_path: Path) ->
         expected = 50 * (0.5 + local) * 255 / 219
         assert abs(lum - expected) < 6, (rate, local, lum, expected)
 
+
+
+def test_phone_footage_stays_on_time_through_preview_proxy_and_export(tmp_path: Path) -> None:
+    """Variable frame rate plus a rotation flag, like phone video: every derived file shows the right moment."""
+    from auteur.media import ingest, sam_proxy
+    from auteur.render import render
+    from auteur.timeline import Timeline
+
+    raw, phone = tmp_path / "raw.mp4", tmp_path / "phone.mp4"
+    subprocess.run([
+        "ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=black:s=96x64:r=40:d=6",
+        "-f", "lavfi", "-i", "sine=f=440:d=6", "-vf", "geq=lum='16+T*30':cb=128:cr=128,select='if(lt(t,3),not(mod(n,4)),1)'",
+        "-fps_mode", "vfr", "-c:v", "libx264", "-qp", "0", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(raw),
+    ], check=True)
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-display_rotation", "90", "-i", str(raw), "-c", "copy", str(phone)], check=True)
+    proj = tmp_path / "proj"
+    m = ingest(proj, "m1", "phone.mp4", phone)
+    assert (m.width, m.height) == (64, 96)  # shown upright
+
+    def shown(path: Path, t: float) -> float:
+        info = probe(path)
+        w, h = info["width"], info["height"]
+        raw = subprocess.run(["ffmpeg", "-loglevel", "error", "-ss", f"{t:.3f}", "-i", str(path), "-frames:v", "1",
+                              "-f", "rawvideo", "-pix_fmt", "gray", "-"], capture_output=True, check=True).stdout
+        assert h > w  # portrait everywhere
+        v = np.frombuffer(raw, np.uint8).reshape(h, w)[h // 3: 2 * h // 3, w // 3: 2 * w // 3].mean()
+        return float(v * 219 / 255 / 30)  # luma back to the time it was filmed
+
+    for path in (proj / "media" / "m1" / "preview.mp4", sam_proxy(proj, "m1")):
+        for t in (1.0, 2.6, 4.0, 5.5):  # in the 10 fps part and the 40 fps part
+            assert abs(shown(path, t) - t) < 0.1, (path.name, t)
+    tl = Timeline(aspect="9:16", clips=[Clip(id="c", media_id="m1", src_in=1.5, src_out=5.5)])
+    out = render(tl, {"m1": m}, tmp_path / "out.mp4", scale=1 / 6)
+    for t in (0.5, 1.4, 2.5, 3.8):
+        assert abs(shown(out, t) - (1.5 + t)) < 0.1, ("export", t)

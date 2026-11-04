@@ -16,3 +16,14 @@
 		reverse_proxy web:3000
 	}
 }
+
+# The same API on its own subdomain (needs its own DNS A record), for direct calls and /docs. The editor
+# keeps using {$DOMAIN}/api: same origin, so the session cookie the event stream relies on is always sent.
+api.{$DOMAIN} {
+	request_body {
+		max_size 600MB
+	}
+	reverse_proxy api:8000 {
+		flush_interval -1
+	}
+}

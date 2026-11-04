@@ -61,7 +61,7 @@ make test                      # API, editor and renderer tests
 
 ## Deploy (one VPS)
 
-Docker Compose runs the API, the editor and Caddy (automatic HTTPS) on one domain, with the API under `/api`.
+Docker Compose runs the API, the editor and Caddy (automatic HTTPS) on one domain, with the API under `/api` (and on an `api.` subdomain for direct calls). Step by step, with DNS, Clerk production and operations: [docs/DEPLOY.md](docs/DEPLOY.md).
 
 ```bash
 cp deploy/.env.example .env    # set DOMAIN; point its DNS A record at the server

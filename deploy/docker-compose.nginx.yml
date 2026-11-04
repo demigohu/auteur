@@ -1,0 +1,15 @@
+# For a server that already runs nginx on ports 80/443 (other sites): nginx proxies to Auteur instead of
+# Caddy. Use with docker-compose.yml, e.g. set in the root .env:
+#   COMPOSE_FILE=docker-compose.yml:deploy/docker-compose.nginx.yml
+# then `docker compose up -d --build`. The nginx side is deploy/nginx.conf (see docs/DEPLOY.md).
+services:
+  api:
+    ports:
+      - "127.0.0.1:8100:8000"  # localhost only; nginx is the way in
+
+  web:
+    ports:
+      - "127.0.0.1:3100:3000"
+
+  caddy:
+    profiles: ["caddy"]  # not started unless asked for: nginx owns 80/443

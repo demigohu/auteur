@@ -124,6 +124,39 @@ docker compose ps                 # api, web, caddy: running
 docker compose logs -f caddy      # tunggu "certificate obtained successfully" untuk kedua domain
 ```
 
+### 5b. Kalau VPS sudah menjalankan nginx (situs lain)
+
+Gejalanya: `docker compose up` gagal dengan `failed to bind host port 0.0.0.0:80/tcp: address already in use`, dan `ss -ltnp | grep -E ':80 |:443 '` menunjukkan `nginx`. Jangan matikan nginx itu kalau ia melayani situs lain; jadikan ia pintu depan Auteur juga, tanpa Caddy.
+
+1. Pastikan port 3100 dan 8100 kosong (tidak ada output):
+   ```bash
+   ss -ltn | grep -E ':3100 |:8100 '
+   ```
+2. Hapus kontainer Caddy yang gagal, pakai override nginx, jalankan ulang (image tidak perlu dibuild lagi):
+   ```bash
+   cd /opt/auteur
+   docker rm -f auteur-caddy-1
+   echo 'COMPOSE_FILE=docker-compose.yml:deploy/docker-compose.nginx.yml' >> .env
+   docker compose up -d
+   docker compose ps          # api dan web running; caddy tidak ada
+   curl -s http://127.0.0.1:8100/health
+   ```
+3. Pasang konfigurasi nginx (cek dulu foldernya: `ls /etc/nginx/sites-enabled`; kalau tidak ada, tulis ke `/etc/nginx/conf.d/auteur.conf` saja):
+   ```bash
+   sed 's/auteur.example.com/auteurlabs.xyz/g' deploy/nginx.conf > /etc/nginx/sites-available/auteur
+   ln -s /etc/nginx/sites-available/auteur /etc/nginx/sites-enabled/auteur
+   nginx -t && systemctl reload nginx
+   ```
+4. HTTPS dengan certbot (menambah sertifikat dan redirect HTTP→HTTPS ke blok Auteur saja; situs lain tidak disentuh):
+   ```bash
+   apt install -y certbot python3-certbot-nginx   # kalau belum ada
+   certbot --nginx -d auteurlabs.xyz -d api.auteurlabs.xyz
+   ```
+
+`deploy/nginx.conf` sudah berisi yang wajib untuk Auteur: `/api/` diteruskan ke API dengan prefix dibuang, buffering dimatikan (live stream agen), timeout 1 jam (render panjang), dan upload sampai 600 MB.
+
+Setelah ini, perintah update tetap `git pull && docker compose up -d --build` (baris `COMPOSE_FILE` di `.env` membuat override ikut terpakai).
+
 ## 6. Cek
 
 ```bash
@@ -166,6 +199,7 @@ Update menjalankan ulang kontainer: run agen atau export yang sedang berjalan sa
 
 | Gejala | Penyebab dan solusi |
 | --- | --- |
+| `address already in use` di port 80 | Ada web server lain (biasanya nginx). Lihat 5b. |
 | Caddy gagal ambil sertifikat | DNS belum mengarah ke VPS atau port 80/443 tertutup. Cek `dig`, `ufw status`, lalu `docker compose restart caddy`. |
 | Login error atau redirect berputar | Kunci Clerk masih `pk_test_`/`sk_test_`, atau domain Clerk belum *Verified*. Setelah mengganti kunci, build ulang web: `docker compose up -d --build web` (kunci publishable masuk ke bundle saat build). |
 | Google sign-in gagal di production | Kredensial OAuth Google belum diisi di Clerk, atau redirect URI di Google Console tidak sama persis. |

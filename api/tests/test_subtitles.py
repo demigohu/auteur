@@ -13,6 +13,49 @@ def test_clean_partial_drops_recognizer_restart() -> None:
     assert clean_partial("Kemarin akuKemarin aku nyoba") == "Kemarin aku nyoba"
     assert clean_partial("Halo semuanya") == "Halo semuanya"
     assert clean_partial("pakai iPhone baru") == "pakai iPhone baru"  # inner capital, not a restart
+    # Recognizer control tokens are not words.
+    assert clean_partial("lima satu <|speaker_A|>  nah sekarang") == "lima satu nah sekarang"
+
+
+def test_old_transcripts_are_rebuilt_from_their_events(tmp_path: Path) -> None:
+    """A cache from before the token fix is redone from the saved stream, without calling the API."""
+    import json
+    import subprocess
+
+    from auteur import transcript
+    from auteur.transcript import Transcript, Turn, Word
+
+    d = tmp_path / "media" / "m"
+    d.mkdir(parents=True)
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "sine=f=300:d=3", "-c:a", "aac", str(d / "source.m4a")],
+                   check=True)
+    events = [
+        {"type": "speechStart", "audioProcessedMs": 200},
+        {"type": "transcript", "audioProcessedMs": 900, "transcript": "lima"},
+        {"type": "transcript", "audioProcessedMs": 1500, "transcript": "lima satu <|speaker_A|>"},
+        {"type": "transcript", "audioProcessedMs": 2400, "transcript": "lima satu <|speaker_A|> nah"},
+        {"type": "speechComplete", "audioProcessedMs": 2600, "transcript": "lima satu <|speaker_A|> nah"},
+    ]
+    (d / "transcript.events.json").write_text(json.dumps(events))
+    stale = Transcript(duration=3, silences=[], turns=[Turn(start=0.2, end=2.6, text="lima satu <|speaker_A|> nah", words=[
+        Word(text=w, start=0.2 + i * 0.5, end=0.6 + i * 0.5) for i, w in enumerate(["lima", "satu", "<|speaker_A|>", "nah"])
+    ])])
+    assert stale.version == 1
+    (d / "transcript.json").write_text(stale.model_dump_json())
+
+    t = transcript.load(d / "transcript.json")
+    assert t.version == transcript.TRANSCRIPT_VERSION
+    assert [w.text for w in t.turns[0].words] == ["lima", "satu", "nah"]
+    assert Transcript.model_validate_json((d / "transcript.json").read_text()).version == transcript.TRANSCRIPT_VERSION  # saved
+
+
+def test_word_cuts_reach_into_nearby_silence() -> None:
+    from auteur import transcript_edit
+
+    silences = [(10.75, 12.69)]
+    # The estimated end (10.61) stops short of the word's tail; the silence 0.14s later is where it ends.
+    assert transcript_edit.snap([(10.21, 10.61)], silences) == [(10.21, 10.75)]
+    assert transcript_edit.snap([(3.0, 3.4)], silences) == [(3.0, 3.4)]  # no silence near: unchanged
 
 
 def test_chunks_break_at_sentences_and_fit_two_lines() -> None:

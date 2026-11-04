@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from auteur.media import media_dir
 from auteur.timeline import Project
+from auteur import transcript
 from auteur.transcript import Transcript
 
 
@@ -37,8 +38,7 @@ class TranscriptView(BaseModel):
 
 
 def load(project_dir: Path, media_id: str) -> Transcript | None:
-    cache = media_dir(project_dir, media_id) / "transcript.json"
-    return Transcript.model_validate_json(cache.read_text()) if cache.exists() else None
+    return transcript.load(media_dir(project_dir, media_id) / "transcript.json")
 
 
 def view(p: Project, project_dir: Path) -> TranscriptView:
@@ -66,6 +66,16 @@ def view(p: Project, project_dir: Path) -> TranscriptView:
         clips.append(ClipWords(clip_id=c.id, media_id=c.media_id, start=start, words=words))
     seconds = sum(p.media[mid].duration for mid in missing)
     return TranscriptView(clips=clips, missing=missing, missing_seconds=round(seconds, 1))
+
+
+def snap(ranges: list[tuple[float, float]], silences: list[tuple[float, float]], window: float = 0.3) -> list[tuple[float, float]]:
+    """Move each cut's edges into a nearby silence, so an estimated word time that is a little off doesn't
+    leave the start or the tail of the word in the video."""
+    out = []
+    for a, b in ranges:
+        a2, b2 = transcript.snap_to_silence(a, silences, window), transcript.snap_to_silence(b, silences, window)
+        out.append((a2, b2) if b2 - a2 > 0.05 else (a, b))
+    return out
 
 
 def merge(ranges: list[tuple[float, float]], gap: float = 0.05) -> list[tuple[float, float]]:

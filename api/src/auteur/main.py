@@ -172,14 +172,12 @@ class MediaView(Media):
 def timeline_speech(p: Project) -> list[tuple[float, float]]:
     """Timeline ranges where someone speaks, from cached transcripts; the preview ducks music there
     (the export uses a sidechain compressor, which needs no ranges)."""
-    from auteur.transcript import Transcript
-
     out = []
     for c, start in zip(p.timeline.clips, p.timeline.clip_starts()):
-        cache = store.project_dir(p.id) / "media" / c.media_id / "transcript.json"
-        if not c.has_sound or not cache.exists():
+        t = transcript_edit.load(store.project_dir(p.id), c.media_id) if c.has_sound else None
+        if t is None:
             continue
-        for turn in Transcript.model_validate_json(cache.read_text()).turns:
+        for turn in t.turns:
             a, b = max(turn.start, c.src_in), min(turn.end, c.src_out)
             if b > a:
                 out.append((round(start + c.to_local(a), 2), round(start + c.to_local(b), 2)))
@@ -894,9 +892,12 @@ async def cut_words(project_id: str, body: TranscriptCut) -> ProjectView:
             by_clip.setdefault(c.clip_id, []).append((c.src_start, c.src_end))
         scratch, ops = p.timeline, []
         for clip_id, ranges in by_clip.items():
-            if not any(c.id == clip_id for c in scratch.clips):
+            clip = next((c for c in scratch.clips if c.id == clip_id), None)
+            if clip is None:
                 raise HTTPException(400, f"Clip {clip_id} not found")
-            more, scratch, _ = filler_ops(scratch, clip_id, transcript_edit.merge(ranges), p.media)
+            t = transcript_edit.load(store.project_dir(p.id), clip.media_id)
+            ranges = transcript_edit.snap(transcript_edit.merge(ranges), t.silences if t else [])
+            more, scratch, _ = filler_ops(scratch, clip_id, ranges, p.media)
             ops += more
         if not ops:
             raise HTTPException(400, "Nothing left to cut there")

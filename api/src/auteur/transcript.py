@@ -40,6 +40,7 @@ class Turn(Model):
 
 
 class Transcript(Model):
+    version: int = 1  # caches written before versioning are 1
     duration: float
     turns: list[Turn]
     silences: list[tuple[float, float]]
@@ -78,6 +79,11 @@ def detect_silences(wav: Path, below_mean_db: float = 12, min_len: float = 0.15)
 
 
 GLUE = re.compile(r"(?<=[a-z0-9.,!?])(?=[A-Z])")
+# Recognizer control tokens that sometimes leak into the text, e.g. "<|speaker_A|>". Taken for a word they
+# also took a share of the turn's voiced time, squeezing the real words around them.
+SPECIAL = re.compile(r"<\|[^|>]*\|>")
+# Bumped when word timing changes; older caches are rebuilt from their saved events (no API call).
+TRANSCRIPT_VERSION = 2
 
 
 def clean_partial(text: str) -> str:
@@ -87,6 +93,7 @@ def clean_partial(text: str) -> str:
     and glued the new version onto the old one without a space. When the glued-on part starts the
     same way as the turn, it supersedes everything before it.
     """
+    text = " ".join(SPECIAL.sub(" ", text).split())
     parts = GLUE.split(text)
     if len(parts) > 1:
         first = _norm(parts[0].split()[0]) if parts[0].split() else ""
@@ -140,9 +147,28 @@ def words_from_events(events: list[dict]) -> list[Turn]:
     return turns
 
 
+def load(cache: Path) -> Transcript | None:
+    """A cached transcript, rebuilt from its saved events (no API call) when it predates the current word
+    timing. The media's source file sits next to the cache."""
+    if not cache.exists():
+        return None
+    t = Transcript.model_validate_json(cache.read_text())
+    events = cache.with_suffix(".events.json")
+    source = next(cache.parent.glob("source.*"), None)
+    if t.version < TRANSCRIPT_VERSION and events.exists() and source is not None:
+        wav = cache.with_suffix(".wav")
+        _to_wav(source, wav)
+        try:
+            t = build_transcript(json.loads(events.read_text()), wav)
+        finally:
+            wav.unlink(missing_ok=True)
+        cache.write_text(t.model_dump_json())
+    return t
+
+
 def transcribe(source: Path, cache: Path) -> Transcript:
-    if cache.exists():
-        return Transcript.model_validate_json(cache.read_text())
+    if (cached := load(cache)) is not None:
+        return cached
     wav = cache.with_suffix(".wav")
     _to_wav(source, wav)
     config = {"model": "muse-voice-transcribe-1.0", "audioEncoding": "WAV", "mode": "ENDPOINTING",
@@ -176,7 +202,7 @@ def build_transcript(events: list[dict], wav: Path) -> Transcript:
     turns = words_from_events(events)
     env = envelope(wav)
     turns = [align_turn(t, env) for t in turns]
-    return Transcript(duration=round(duration, 3), turns=turns, silences=detect_silences(wav))
+    return Transcript(version=TRANSCRIPT_VERSION, duration=round(duration, 3), turns=turns, silences=detect_silences(wav))
 
 
 # --- word alignment -------------------------------------------------------------------------------
@@ -247,7 +273,7 @@ def align_turn(turn: Turn, env: np.ndarray) -> Turn:
     return turn.model_copy(update={"words": words})
 
 
-def _snap(t: float, silences: list[tuple[float, float]], window: float = 0.4) -> float:
+def snap_to_silence(t: float, silences: list[tuple[float, float]], window: float = 0.4) -> float:
     """Move a cut point into the nearest silence within `window` seconds, if there is one."""
     best, dist = t, window
     for a, b in silences:
@@ -268,7 +294,7 @@ def cut_ranges(t: Transcript, min_silence: float = 0.8, keep_pause: float = 0.25
     for turn in t.turns:
         for w in turn.words:
             if w.is_filler:
-                cuts.append((_snap(w.start, t.silences), _snap(w.end, t.silences)))
+                cuts.append((snap_to_silence(w.start, t.silences), snap_to_silence(w.end, t.silences)))
     gaps = [(a.end, b.start) for a, b in zip(t.turns, t.turns[1:])]
     if t.turns:
         gaps += [(0.0, t.turns[0].start), (t.turns[-1].end, t.duration)]

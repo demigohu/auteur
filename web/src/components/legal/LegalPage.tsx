@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 /** Contact for privacy and terms questions (also the Google sign-in support address). */
-export const LEGAL_CONTACT = "rosalindgraham494@gmail.com";
+export const LEGAL_CONTACT = "tgraji.k@gmail.com";
 export const LEGAL_UPDATED = "November 4, 2026";
 
 /** Shared frame for the privacy policy and the terms: plain, readable, linked from the footer and Google sign-in. */

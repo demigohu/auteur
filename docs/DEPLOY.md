@@ -1,29 +1,29 @@
-# Deploy Auteur ke VPS
+# Deploying Auteur to a VPS
 
-Panduan untuk satu VPS Ubuntu dengan Docker Compose: **Caddy** (HTTPS otomatis) di depan **web** (Next.js) dan **api** (FastAPI, ffmpeg, renderer Remotion). Contoh di sini memakai `auteurlabs.xyz`.
+One Ubuntu VPS with Docker Compose: **Caddy** (automatic HTTPS) in front of **web** (Next.js) and **api** (FastAPI, ffmpeg, the Remotion renderer). The examples use `auteurlabs.xyz`, where the live demo runs.
 
-| Alamat | Isi |
+| Address | Serves |
 | --- | --- |
-| `https://auteurlabs.xyz` | Landing page dan editor |
-| `https://auteurlabs.xyz/api` | API yang dipakai editor |
-| `https://api.auteurlabs.xyz` | API yang sama, untuk akses langsung dan `/docs` |
+| `https://auteurlabs.xyz` | Landing page and editor |
+| `https://auteurlabs.xyz/api` | The API the editor calls |
+| `https://api.auteurlabs.xyz` | The same API, for direct calls and `/docs` |
 
-**Kenapa editor memakai `/api`, bukan `api.auteurlabs.xyz`:** live stream agen (progres dan klip yang muncul real-time) masuk dengan cookie sesi Clerk. Di origin yang sama cookie itu selalu terkirim; ke subdomain lain belum tentu, tergantung domain cookie yang dipasang Clerk. Subdomain `api.` tetap aktif dan menjalankan API yang sama.
+**Why the editor uses `/api` and not `api.auteurlabs.xyz`:** the agent's live event stream authenticates with Clerk's session cookie. On the same origin that cookie is always sent; to another subdomain it depends on the cookie domain Clerk sets. The `api.` subdomain still serves the same API.
 
-Spek yang dipakai di panduan ini: 6 vCPU, 11 GB RAM, 193 GB disk, tanpa swap. Cukup untuk demo; render dan background removal memakai CPU.
+The server in this guide has 6 vCPU, 11 GB RAM, 193 GB disk and no swap. That is enough for a demo; rendering and background removal run on the CPU.
 
 ---
 
 ## 1. DNS
 
-Di panel domain, buat dua record yang mengarah ke IP VPS:
+At your DNS provider, point two records at the VPS:
 
-| Tipe | Nama | Nilai |
+| Type | Name | Value |
 | --- | --- | --- |
-| A | `@` (auteurlabs.xyz) | IP VPS |
-| A | `api` | IP VPS |
+| A | `@` (auteurlabs.xyz) | VPS IP |
+| A | `api` | VPS IP |
 
-Record Clerk ditambahkan di langkah 2. Cek sebelum lanjut (hasilnya harus IP VPS):
+Clerk's records come in step 2. Check before moving on (both should print the VPS IP):
 
 ```bash
 dig +short auteurlabs.xyz
@@ -32,45 +32,53 @@ dig +short api.auteurlabs.xyz
 
 ## 2. Clerk production
 
-Instance development (`pk_test_…`) hanya untuk localhost. Untuk domain sendiri:
+A development instance (`pk_test_…`) only works on localhost. For your own domain:
 
-1. **dashboard.clerk.com** → aplikasi Auteur → ubah dari *Development* ke *Production* → buat production instance, domain `auteurlabs.xyz`.
-2. **Domains**: Clerk menampilkan beberapa record DNS (biasanya CNAME `clerk`, `accounts`, `clkmail`, `clk._domainkey`, `clk2._domainkey`). Tambahkan semuanya di panel domain persis seperti yang ditampilkan, lalu tunggu sampai statusnya *Verified*.
-3. **Google sign-in**: di production, Clerk memakai kredensial OAuth milikmu sendiri.
-   - Google Cloud Console → APIs & Services → Credentials → *Create OAuth client ID* (Web application).
-   - *Authorized redirect URI*: salin dari Clerk (SSO connections → Google → *Use custom credentials*).
-   - Tempel Client ID dan Client Secret di Clerk.
-4. **API keys**: salin `pk_live_…` dan `sk_live_…`.
+1. **dashboard.clerk.com** → your application → switch from *Development* to *Production* → create the production instance with the application domain `auteurlabs.xyz` (no `api.`; the API only verifies tokens).
+2. **Domains**: Clerk lists five CNAME records: `clerk` and `accounts` (sign-in) and `clkmail`, `clk._domainkey`, `clk2._domainkey` (email codes). Add all five exactly as shown, using Clerk's copy buttons, then **Verify Records**. If your DNS is on Cloudflare, set them to *DNS only*. The sign-in form appears once Clerk has issued SSL certificates for `clerk.` and `accounts.` (minutes to an hour after verification).
+3. **API keys**: copy `pk_live_…` and `sk_live_…`. The secret key is shown once.
 
-Akun di production terpisah dari development: akun tes lokal tidak ada di sana, jadi daftar ulang setelah deploy.
+Production accounts are separate from development ones: sign up again after deploying. Clerk marks the checklist's *Developer* step done when the first production user exists.
 
-## 3. Siapkan VPS
+### Google sign-in
 
-Login sebagai root (atau user dengan sudo):
+In production Clerk needs your own Google OAuth credentials.
+
+1. **Google Cloud Console** → new project → **Google Auth Platform**:
+   - **Branding**: app name, support email, home page `https://auteurlabs.xyz`, privacy policy `https://auteurlabs.xyz/privacy`, terms `https://auteurlabs.xyz/terms`, authorized domain `auteurlabs.xyz`. Leave the logo out: a logo requires brand verification, which takes days.
+   - **Audience**: External → **Publish app**. While it is *Testing*, only listed test users can sign in.
+   - **Clients** → Create client → *Web application*. JavaScript origin `https://auteurlabs.xyz`; redirect URI copied from Clerk (`https://clerk.auteurlabs.xyz/v1/oauth_callback`).
+2. Paste the Client ID and Client secret into Clerk → **SSO connections** → Google → *Use custom credentials*, and save.
+
+## 3. Prepare the VPS
+
+As root (or a user with sudo):
 
 ```bash
 apt update && apt upgrade -y
 apt install -y git curl ufw
 
-# Swap 4 GB: build image dan render besar bisa melewati RAM sesaat; tanpa swap prosesnya dibunuh.
+# 4 GB swap: image builds and large renders can briefly exceed RAM; without swap they get killed.
 fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
 echo '/swapfile none swap sw 0 0' >> /etc/fstab
 
-# Firewall: SSH, HTTP, HTTPS (dan HTTP/3).
+# Firewall: SSH, HTTP, HTTPS (and HTTP/3).
 ufw allow OpenSSH
 ufw allow 80/tcp
 ufw allow 443/tcp
 ufw allow 443/udp
 ufw --force enable
 
-# Docker (skrip resmi; memasang Docker Engine dan plugin Compose).
+# Docker (official script: Docker Engine and the Compose plugin).
 curl -fsSL https://get.docker.com | sh
 docker compose version
 ```
 
-Hanya Caddy yang membuka port ke internet (80 dan 443). API (8000) dan web (3000) hanya bisa dijangkau dari dalam jaringan Docker.
+If the server already runs other services, check what listens publicly before enabling the firewall (`ss -ltnp`), and allow the ports they need. Ports published by Docker containers are not filtered by ufw.
 
-## 4. Ambil kode dan isi konfigurasi
+Only the proxy listens on the internet (80 and 443). The API (8000) and the editor (3000) are reachable from inside the Docker network only.
+
+## 4. Get the code and configure it
 
 ```bash
 git clone https://github.com/demigohu/auteur.git /opt/auteur
@@ -79,7 +87,7 @@ cp deploy/.env.example .env
 cp api/.env.example api/.env
 ```
 
-**`.env` (root)**, dibaca Docker Compose:
+**`.env` (repository root)**, read by Docker Compose:
 
 ```env
 DOMAIN=auteurlabs.xyz
@@ -94,119 +102,122 @@ MAX_EXPORT_HEIGHT=1080
 MAX_FOOTAGE_SECONDS=600
 ```
 
-**`api/.env`**, rahasia API:
+**`api/.env`**, the API's secret:
 
 ```env
 META_API_KEY=...
 META_BASE_URL=https://api.meta.ai/v1
 ```
 
-Nilai lain di `api/.env` (CORS, folder data, Clerk, batas belanja) sudah diatur `docker-compose.yml` dari `.env` root; yang di sana menang.
+Everything else in `api/.env` (CORS, data folder, Clerk key, spend caps) is set by `docker-compose.yml` from the root `.env`, which takes precedence. `MAX_FILE_SECONDS` is the one exception; leave it at `0` (the footage budget already caps each file).
 
-Catatan batas:
-- `SPEND_CAP_USD` hanya menghitung pemakaian lewat server ini. Pemakaian lokal memakai kredit yang sama tapi tidak ikut terhitung; sisakan cadangan dan pasang *Spend Limit notification* di halaman Billing Meta.
-- `MAX_EXPORT_HEIGHT=1080`: 4K di 6 vCPU lama. Naikkan ke `2160` kalau perlu.
-- `RUNS_PER_VISITOR_PER_DAY` (opsional, di `.env` root): batas run agen per pengunjung per hari; `0` = tanpa batas.
+Limits worth knowing:
+- `SPEND_CAP_USD` counts only what this server spends. Local development uses the same Meta credits without counting here; keep a margin and set a spend notification on Meta's Billing page.
+- `MAX_EXPORT_HEIGHT=1080`: 4K exports are slow on 6 vCPU. Raise to `2160` if needed.
+- `RUNS_PER_VISITOR_PER_DAY` (optional, root `.env`): agent runs per visitor per day; `0` means unlimited.
 
-Jangan commit `.env` dan `api/.env` (sudah di `.gitignore`).
+Never commit `.env` or `api/.env` (both are in `.gitignore`).
 
-## 5. Build dan jalankan
+## 5. Build and start
 
 ```bash
 cd /opt/auteur
 docker compose up -d --build
 ```
 
-Build pertama makan waktu (PyTorch CPU, Chrome headless untuk Remotion, build Next.js), kira-kira 10–20 menit. Begitu kontainer jalan, Caddy mengambil sertifikat HTTPS untuk kedua domain dalam beberapa detik.
+The first build takes 10–20 minutes (PyTorch for CPU, headless Chrome for Remotion, the Next.js build). Once the containers run, Caddy obtains certificates for both domains within seconds.
 
 ```bash
 docker compose ps                 # api, web, caddy: running
-docker compose logs -f caddy      # tunggu "certificate obtained successfully" untuk kedua domain
+docker compose logs -f caddy      # wait for "certificate obtained successfully" for both domains
 ```
 
-### 5b. Kalau VPS sudah menjalankan nginx (situs lain)
+### 5b. When the VPS already runs nginx
 
-Gejalanya: `docker compose up` gagal dengan `failed to bind host port 0.0.0.0:80/tcp: address already in use`, dan `ss -ltnp | grep -E ':80 |:443 '` menunjukkan `nginx`. Jangan matikan nginx itu kalau ia melayani situs lain; jadikan ia pintu depan Auteur juga, tanpa Caddy.
+Symptom: `docker compose up` fails with `failed to bind host port 0.0.0.0:80/tcp: address already in use`, and `ss -ltnp | grep -E ':80 |:443 '` shows `nginx`. If that nginx serves other sites, keep it and make it Auteur's front door too, without Caddy.
 
-1. Pastikan port 3100 dan 8100 kosong (tidak ada output):
+1. Make sure ports 3100 and 8100 are free (no output):
    ```bash
    ss -ltn | grep -E ':3100 |:8100 '
    ```
-2. Hapus kontainer Caddy yang gagal, pakai override nginx, jalankan ulang (image tidak perlu dibuild lagi):
+2. Remove the failed Caddy container, switch to the nginx override and start again (no rebuild needed):
    ```bash
    cd /opt/auteur
    docker rm -f auteur-caddy-1
    echo 'COMPOSE_FILE=docker-compose.yml:deploy/docker-compose.nginx.yml' >> .env
    docker compose up -d
-   docker compose ps          # api dan web running; caddy tidak ada
+   docker compose ps          # api and web running; no caddy
    curl -s http://127.0.0.1:8100/health
    ```
-3. Pasang konfigurasi nginx (cek dulu foldernya: `ls /etc/nginx/sites-enabled`; kalau tidak ada, tulis ke `/etc/nginx/conf.d/auteur.conf` saja):
+3. Install the nginx site (check `ls /etc/nginx/sites-enabled` first; without it, write to `/etc/nginx/conf.d/auteur.conf`):
    ```bash
    sed 's/auteur.example.com/auteurlabs.xyz/g' deploy/nginx.conf > /etc/nginx/sites-available/auteur
    ln -s /etc/nginx/sites-available/auteur /etc/nginx/sites-enabled/auteur
    nginx -t && systemctl reload nginx
    ```
-4. HTTPS dengan certbot (menambah sertifikat dan redirect HTTP→HTTPS ke blok Auteur saja; situs lain tidak disentuh):
+4. HTTPS with certbot (it adds certificates and the HTTP→HTTPS redirect to Auteur's blocks only; other sites are untouched):
    ```bash
-   apt install -y certbot python3-certbot-nginx   # kalau belum ada
+   apt install -y certbot python3-certbot-nginx   # if not installed
    certbot --nginx -d auteurlabs.xyz -d api.auteurlabs.xyz
    ```
 
-`deploy/nginx.conf` sudah berisi yang wajib untuk Auteur: `/api/` diteruskan ke API dengan prefix dibuang, buffering dimatikan (live stream agen), timeout 1 jam (render panjang), dan upload sampai 600 MB.
+`deploy/nginx.conf` carries what Auteur needs: `/api/` proxied to the API with the prefix stripped, buffering off (the agent's event stream), one-hour timeouts (long renders) and uploads up to 600 MB.
 
-Setelah ini, perintah update tetap `git pull && docker compose up -d --build` (baris `COMPOSE_FILE` di `.env` membuat override ikut terpakai).
+Certbot edits `/etc/nginx/sites-available/auteur` in place. If `deploy/nginx.conf` changes later, edit that file by hand rather than running the `sed` again, or the certificate lines are lost. Updates stay `git pull && docker compose up -d --build`: the `COMPOSE_FILE` line in `.env` keeps the override in use.
 
-## 6. Cek
+## 6. Check
 
 ```bash
 curl -s https://auteurlabs.xyz/api/health    # {"status":"ok"}
 curl -s https://api.auteurlabs.xyz/health    # {"status":"ok"}
-curl -sI https://auteurlabs.xyz | head -1     # HTTP/2 200
+curl -sI https://auteurlabs.xyz | head -1     # 200
 ```
 
-Lalu di browser:
+Then in a browser:
 
-1. Buka `https://auteurlabs.xyz`, daftar dengan Google atau email.
-2. Buat project, upload satu klip pendek.
-3. Kirim arahan ke agen. Langkah-langkahnya harus muncul satu per satu tanpa refresh: itu tanda live stream dan cookie sesi berjalan.
-4. Export, lalu **Download the last export**: file harus tersimpan, bukan terbuka di tab.
-5. Voice-over atau Dub pertama mengunduh model suara (~145 MB per bahasa) ke volume data; sekitar 30 detik sekali saja.
-6. Satu video dari kode (Muse Wonder), untuk memastikan renderer Remotion di dalam kontainer jalan.
-7. Buka `https://api.auteurlabs.xyz/docs` untuk dokumentasi API.
+1. Open `https://auteurlabs.xyz` and sign up with Google or email.
+2. Create a project and upload a short clip.
+3. Send the agent an instruction. Its steps should appear one by one without reloading: that confirms the event stream and the session cookie.
+4. Export, then **Download the last export**: the file should be saved, not opened in a tab.
+5. The first voice-over or dub downloads a voice model (~145 MB per language) into the data volume, about 30 seconds once.
+6. Make one video in code (Muse Wonder) to confirm the Remotion renderer runs in the container.
+7. Generate a picture (Muse Image).
+8. Open `https://api.auteurlabs.xyz/docs` for the API reference.
 
-## 7. Operasional
+## 7. Operations
 
-| Kebutuhan | Perintah |
+| Task | Command |
 | --- | --- |
-| Log | `docker compose logs -f api` (atau `web`, `caddy`) |
-| Update setelah `git push` | `cd /opt/auteur && git pull && docker compose up -d --build` |
-| Update hanya editor | `docker compose up -d --build web` |
-| Restart API | `docker compose restart api` |
-| Pemakaian disk Docker | `docker system df` |
-| Buang image lama | `docker image prune -f` |
+| Logs | `docker compose logs -f api` (or `web`, `caddy`) |
+| Update after `git push` | `cd /opt/auteur && git pull && docker compose up -d --build` |
+| Update the editor only | `docker compose up -d --build web` |
+| Update the API only | `docker compose up -d --build api` |
+| Restart the API | `docker compose restart api` |
+| Docker disk usage | `docker system df` |
+| Remove old images | `docker image prune -f` |
 
-Data (project, media, render, model suara) ada di volume `auteur-data`. Nama lengkapnya diawali nama folder project, cek dengan `docker volume ls` (biasanya `auteur_auteur-data`). Backup:
+Projects, media, renders and voice models live in the `auteur-data` volume. Its full name starts with the project folder's name; check with `docker volume ls` (usually `auteur_auteur-data`). Backup:
 
 ```bash
 docker run --rm -v auteur_auteur-data:/data -v /root:/backup alpine \
   tar czf /backup/auteur-data-$(date +%F).tgz -C /data .
 ```
 
-Update menjalankan ulang kontainer: run agen atau export yang sedang berjalan saat itu berhenti. Update di luar jam demo.
+An update restarts the containers, which stops any agent run or export in progress at that moment. Update outside demo hours.
 
-## 8. Masalah yang mungkin muncul
+## 8. Troubleshooting
 
-| Gejala | Penyebab dan solusi |
+| Symptom | Cause and fix |
 | --- | --- |
-| `address already in use` di port 80 | Ada web server lain (biasanya nginx). Lihat 5b. |
-| Caddy gagal ambil sertifikat | DNS belum mengarah ke VPS atau port 80/443 tertutup. Cek `dig`, `ufw status`, lalu `docker compose restart caddy`. |
-| Login error atau redirect berputar | Kunci Clerk masih `pk_test_`/`sk_test_`, atau domain Clerk belum *Verified*. Setelah mengganti kunci, build ulang web: `docker compose up -d --build web` (kunci publishable masuk ke bundle saat build). |
-| Google sign-in gagal di production | Kredensial OAuth Google belum diisi di Clerk, atau redirect URI di Google Console tidak sama persis. |
-| Langkah agen tidak muncul real-time (harus refresh) | Live stream tertahan. Pastikan editor memakai `https://auteurlabs.xyz/api` (default build), bukan subdomain. |
-| Upload gagal untuk file besar (413) | Batas Caddy 600 MB per file (`deploy/Caddyfile`, `request_body`). Video 4K panjang dari HP bisa melewatinya: kecilkan atau potong dulu. |
-| "Project footage would be …s" | Batas footage per project (`MAX_FOOTAGE_SECONDS`). |
-| "Today's demo budget is used up" | `SPEND_CAP_USD` tercapai. Naikkan di `.env` root, lalu `docker compose up -d`. |
-| Kontainer api mati saat render besar | Kehabisan memori. Pastikan swap aktif (`free -h`), turunkan `MAX_EXPORT_HEIGHT`. |
-| Video dari kode gagal render | `docker compose logs api` mencari error Chrome/Remotion; build ulang api: `docker compose up -d --build api`. |
-| Halaman lama setelah update | Build ulang yang berubah (`--build web` atau `--build api`), lalu hard refresh browser. |
+| `address already in use` on port 80 | Another web server (usually nginx). See 5b. |
+| Caddy can't get a certificate | DNS doesn't point at the VPS yet, or ports 80/443 are closed. Check `dig` and `ufw status`, then `docker compose restart caddy`. |
+| Sign-in page shows no form | Clerk's domain isn't *Verified* or its SSL certificates aren't issued yet (Clerk → Domains). |
+| Sign-in errors or redirect loops | Keys are still `pk_test_`/`sk_test_`. After changing keys, rebuild the editor: `docker compose up -d --build web` (the publishable key is baked into the bundle at build time). |
+| Google sign-in fails | OAuth credentials missing in Clerk, the redirect URI in Google doesn't match exactly, or the Google app is still *Testing*. |
+| Agent steps don't appear live (reload needed) | The event stream is being buffered. Make sure the editor uses `https://auteurlabs.xyz/api` (the default build), not the subdomain, and that the proxy doesn't buffer it. |
+| Large uploads fail (413) | The proxy's 600 MB per-file limit (`deploy/Caddyfile` or `deploy/nginx.conf`). Long 4K phone videos can exceed it: compress or trim first. |
+| "Project footage would be …s" | The per-project footage budget (`MAX_FOOTAGE_SECONDS`). |
+| "Today's demo budget is used up" | `SPEND_CAP_USD` reached. Raise it in the root `.env`, then `docker compose up -d`. |
+| API container dies during a large render | Out of memory. Check swap is on (`free -h`) and lower `MAX_EXPORT_HEIGHT`. |
+| Videos in code fail to render | Look for Chrome/Remotion errors in `docker compose logs api`; rebuild with `docker compose up -d --build api`. |
+| Old pages after an update | Rebuild what changed (`--build web` or `--build api`), then hard-refresh the browser. |

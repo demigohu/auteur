@@ -1,36 +1,59 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Auteur web
 
-## Getting Started
+The editor and the landing page: Next.js 16 (App Router), React, TypeScript, Tailwind, Zustand for state, Remotion Player for the preview, Clerk for accounts. It talks to the API in `../api` over REST and Server-Sent Events.
 
-First, run the development server:
+## Run
+
+From the repository root, `make dev` starts this app on `:3000` with the API on `:8000`. On its own:
 
 ```bash
+cp .env.example .env.local
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+| Variable | |
+| --- | --- |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk publishable key (`pk_test_…` locally) |
+| `CLERK_SECRET_KEY` | Clerk secret key, server side only |
+| `NEXT_PUBLIC_API_URL` | The API, if not `http://localhost:8000` (in production `https://<domain>/api`, baked in at build time) |
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Script | |
+| --- | --- |
+| `npm run dev` | Development server |
+| `npm run build` / `npm start` | Production build and server (standalone output, used by the Dockerfile) |
+| `npm test` | Vitest |
+| `npm run lint` | ESLint |
+| `npm run types` | Regenerate `src/lib/timeline.ts` from `timeline.schema.json` (`make types` at the root does both steps) |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Layout
 
-## Learn More
+```
+src/
+├── app/              routes: / (landing), /login, /signup, /studio, /p/[id] (editor),
+│                     /p/[id]/upload (phone upload), /privacy, /terms
+├── proxy.ts          Clerk middleware: /studio and /p/* need an account
+├── components/
+│   ├── editor/       the editor: TopBar, MediaBin, Preview, CanvasTransform, TimelinePanel,
+│   │                 SidePanel tabs (Agent, Story, Words, Inspector, History), ExportMenu
+│   ├── landing/      the landing page sections
+│   ├── studio/       project list and the new-project dialog
+│   ├── auth/         sign-in and sign-up screens
+│   └── legal/        privacy and terms
+├── remotion/         TimelineComposition: draws the timeline JSON for Remotion Player
+└── lib/
+    ├── store.ts      Zustand store: project, selection, playhead, agent run, actions
+    ├── api.ts        typed API client
+    ├── timeline.ts   types generated from the API's Pydantic models (don't edit by hand)
+    └── *.ts          the preview's halves of rules the export also implements
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Preview and export match
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+The preview is Remotion Player drawing the timeline JSON in the browser; the export is ffmpeg on the server. Rules that exist in both are written twice and tested against each other: crop windows (`lib/crop.ts`), transforms (`transform.ts`), keyframes and animations (`keys.ts`, `animate.ts`), transitions (`transitions.ts`), color (`grade.ts`), overlays (`overlay.ts`) and text (`remotion/TextLayer.tsx`). When you change one side, change its counterpart in `api/src/auteur/` and its parity test.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Heavy previews (reversed clips, LUTs, cleaned sound, removed backgrounds, chroma key) are prepared by the API in the background; until they are ready the preview shows the plain clip with a "Preparing … preview" label.
 
-## Deploy on Vercel
+## Editing the timeline
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Every change goes through `applyOps` in the store, which sends validated operations to the API (`POST /projects/{id}/ops`). The agent uses the same operations, so history and undo cover both. While an agent run is active the timeline is locked; its events arrive over `GET /projects/{id}/events` and update the store live.

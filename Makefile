@@ -5,7 +5,7 @@ install:
 	cd api && uv sync
 	cd motion && npm install
 
-# Jalankan web (port 3000) dan api (port 8000) bersamaan; Ctrl+C menghentikan keduanya
+# Run the editor (port 3000) and the API (port 8000) together; Ctrl+C stops both
 dev:
 	@trap 'kill 0' INT TERM; \
 	$(MAKE) api & \

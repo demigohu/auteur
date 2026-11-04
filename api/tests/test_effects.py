@@ -139,3 +139,29 @@ def test_cancel_stops_the_blur_pass(sample_video: Path, tmp_path: Path) -> None:
         render(tl, media, tmp_path / "out.mp4", scale=1 / 4, on_progress=progress, tracks=tracks, cancel=cancel)
     assert max(seen) < 0.5  # stopped inside the blur pass, before ffmpeg
     assert not (tmp_path / "out.mp4").exists()
+
+
+def test_ingest_moves_files_across_filesystems(tmp_path: Path, monkeypatch) -> None:
+    """In Docker the data directory is its own volume: a picture made in /tmp can't be renamed into it."""
+    import errno
+    import os
+
+    from PIL import Image
+
+    from auteur.media import ingest
+
+    png = tmp_path / "made-elsewhere" / "generated.png"
+    png.parent.mkdir()
+    Image.new("RGB", (64, 112), (240, 120, 40)).save(png)
+    def no_cross_device(real):
+        def move(src, dst, *args, **kwargs):
+            if "made-elsewhere" in str(src):
+                raise OSError(errno.EXDEV, "Invalid cross-device link")
+            return real(src, dst, *args, **kwargs)
+        return move
+
+    monkeypatch.setattr(os, "rename", no_cross_device(os.rename))
+    monkeypatch.setattr(os, "replace", no_cross_device(os.replace))
+    m = ingest(tmp_path / "proj", "m1", "Generated", png)
+    assert m.image == "still" and (tmp_path / "proj" / "media" / "m1" / "original.png").exists()
+    assert not png.exists()  # moved, not left behind

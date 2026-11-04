@@ -15,6 +15,7 @@ upload is kept as original.<ext>.
 
 import json
 import math
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -122,6 +123,12 @@ def _gif_to_video(original: Path, out: Path) -> None:
     ])
 
 
+def _move(src: Path, dst: Path) -> None:
+    """Rename when possible, copy then delete across filesystems: in Docker the data directory is its own
+    volume, so a file made in /tmp (a generated picture, a freeze frame) can't simply be renamed into it."""
+    shutil.move(src, dst)
+
+
 def ingest(project_dir: Path, media_id: str, name: str, upload: Path) -> Media:
     """Move an uploaded file into place, then build its preview and thumbnail."""
     d = media_dir(project_dir, media_id)
@@ -130,7 +137,7 @@ def ingest(project_dir: Path, media_id: str, name: str, upload: Path) -> Media:
     image: str | None = None
     if suffix in STILL_SUFFIXES or suffix == ".gif":
         original = d / f"original{suffix}"
-        upload.replace(original)
+        _move(upload, original)
         source = d / "source.mp4"
         try:
             if suffix == ".gif":
@@ -143,7 +150,7 @@ def ingest(project_dir: Path, media_id: str, name: str, upload: Path) -> Media:
             raise MediaError(f"Could not read the picture: {e}") from None
     else:
         source = d / f"source{suffix}"
-        upload.replace(source)
+        _move(upload, source)
     info = probe(source)
     if info["kind"] == "audio":
         return _ingest_audio(d, media_id, name, source, info)

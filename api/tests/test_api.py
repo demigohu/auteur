@@ -706,3 +706,12 @@ def test_footage_budget_counts_all_videos_in_a_project(client: TestClient, sampl
     second = upload()  # 4 + 4 > 6
     assert second.status_code == 400 and "limit is 6s" in second.json()["detail"]
     assert len(client.get(f"/projects/{pid}").json()["media"]) == 1  # the rejected file is not kept
+
+
+def test_files_download_as_attachments_when_asked(client: TestClient, project: dict) -> None:
+    url = project["media"][0]["preview_url"]
+    plain = client.get(url)
+    assert plain.status_code == 200 and "content-disposition" not in plain.headers  # plays in the browser
+    saved = client.get(url + "?download=My trip / 1080p")
+    assert saved.headers["content-disposition"] == "attachment; filename*=UTF-8''My%20trip%20_%201080p.mp4"
+    assert saved.content == plain.content

@@ -3,7 +3,7 @@
 import { CircleNotch, Coins, DownloadSimple } from "@phosphor-icons/react";
 import { Logo } from "@/components/ui/Logo";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
-import { fileUrl } from "@/lib/api";
+import { downloadUrl } from "@/lib/api";
 import { useEditor } from "@/lib/store";
 import type { Timeline } from "@/lib/timeline";
 import { ExportMenu } from "./ExportMenu";
@@ -77,9 +77,7 @@ export function TopBar() {
         <ThemeToggle />
         {project.last_render_url && (
           <a
-            href={fileUrl(project.last_render_url)}
-            target="_blank"
-            rel="noreferrer"
+            href={downloadUrl(project.last_render_url, `${project.name} latest render`)}
             className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-muted transition hover:bg-raised hover:text-text"
           >
             <DownloadSimple size={14} /> Latest render

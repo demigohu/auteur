@@ -7,6 +7,7 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
+from urllib.parse import parse_qs, quote
 
 from fastapi import FastAPI, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -96,7 +97,22 @@ app.add_middleware(
 )
 
 (settings.data_dir / "projects").mkdir(parents=True, exist_ok=True)
-app.mount("/files", StaticFiles(directory=settings.data_dir / "projects"), name="files")
+class ProjectFiles(StaticFiles):
+    """Project media and renders. `?download=<name>` sends a file as an attachment under that name, so the
+    editor's download buttons save it instead of opening the video (works across origins, unlike <a download>)."""
+
+    def file_response(self, full_path, stat_result, scope, status_code=200):  # type: ignore[no-untyped-def]
+        response = super().file_response(full_path, stat_result, scope, status_code)
+        name = parse_qs(scope.get("query_string", b"").decode()).get("download", [""])[0]
+        if name:
+            # Letters, digits, spaces and a little punctuation; anything else (slashes, quotes, control
+            # characters) becomes "_". The suffix comes from the real file.
+            safe = re.sub(r"[^\w .()-]+", "_", name).strip(" .")[:120] or "auteur"
+            response.headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(safe + Path(full_path).suffix)}"
+        return response
+
+
+app.mount("/files", ProjectFiles(directory=settings.data_dir / "projects"), name="files")
 
 # One lock per project serializes edits; an agent run holds it for the whole run.
 _locks: dict[str, asyncio.Lock] = {}

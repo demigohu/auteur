@@ -150,6 +150,8 @@ const json = (body: unknown, method = "POST"): RequestInit => ({
 });
 
 export const fileUrl = (path: string) => `${API_URL}${path}`;
+/** A project file saved as `name` (the API sends it as an attachment) instead of opened in the browser. */
+export const downloadUrl = (path: string, name: string) => `${fileUrl(path)}?download=${encodeURIComponent(name)}`;
 
 export const api = {
   listProjects: () => request<ProjectSummary[]>("/projects"),

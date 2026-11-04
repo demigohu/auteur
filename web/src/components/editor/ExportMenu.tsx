@@ -3,7 +3,7 @@
 import { CircleNotch, DownloadSimple, Export, X } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
-import { type ExportFormat, type ExportQuality, fileUrl } from "@/lib/api";
+import { downloadUrl, type ExportFormat, type ExportQuality } from "@/lib/api";
 import { useEditor } from "@/lib/store";
 import { timelineDuration } from "@/lib/time";
 
@@ -214,7 +214,10 @@ export function ExportMenu() {
                 {job && job.status !== "running" && (
                   <div className={`mt-4 rounded-[10px] border-2 px-3 py-2 text-[12px] ${job.status === "done" ? "border-ink bg-lime text-ink" : "border-tomato bg-tomato/10 text-text"}`}>
                     {job.status === "done" && job.url ? (
-                      <a href={fileUrl(job.url)} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 font-semibold">
+                      <a
+                        href={downloadUrl(job.url, `${project?.name ?? "Auteur"} ${job.format === "mp3" ? "audio" : job.format === "gif" ? "GIF" : resolutionLabel(job.resolution)}`)}
+                        className="flex items-center gap-1.5 font-semibold"
+                      >
                         <DownloadSimple size={14} weight="bold" /> Download the last export ({job.format === "mp3" ? "MP3" : job.format === "gif" ? "GIF" : resolutionLabel(job.resolution)})
                       </a>
                     ) : job.status === "cancelled" ? (

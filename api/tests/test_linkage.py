@@ -57,6 +57,22 @@ def test_cutting_out_speech_removes_its_subtitle_but_keeps_the_title(p: Project)
     assert [t.id for t in p.timeline.texts] == ["title"]
 
 
+
+def test_cutting_words_inside_a_subtitle_shortens_it(p: Project) -> None:
+    from auteur.timeline.models import TextWord
+    from auteur.timeline.ops import DeleteText
+
+    # "Hello um there" at 8-9.5; "um" (8.4-8.7) is cut out, as the Words tab does: split, split, delete.
+    words = [TextWord(text="Hello", start=8, end=8.4), TextWord(text="um", start=8.4, end=8.7), TextWord(text="there", start=8.7, end=9.5)]
+    p.commit("user", "words", [DeleteText(text_id="sub"), AddText(id="sub", text="Hello um there", start=8, end=9.5, words=words)])
+    p.commit("user", "cut", [Split(clip_id="b", at=8.4, new_clip_id="b2"), Split(clip_id="b2", at=8.7, new_clip_id="b3"),
+                             Delete(clip_id="b2")])
+    sub = next(t for t in p.timeline.texts if t.id == "sub")
+    assert (sub.start, sub.end) == (8, 9.2)  # 0.3s shorter: it no longer runs over the next line
+    assert [(w.start, w.end) for w in sub.words] == [(8, 8.4), (8.4, 8.4), (8.4, 9.2)]
+    title = next(t for t in p.timeline.texts if t.id == "title")
+    assert (title.start, title.end) == (6, 7)  # before the cut: untouched
+
 def test_speed_change_scales_positions_inside_the_clip(p: Project) -> None:
     p.commit("user", "speed", [SetSpeed(clip_id="b", speed=2)])  # b: 4-7s now; 2s in becomes 1s in
     assert at(p)["title"] == 5

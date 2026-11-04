@@ -794,6 +794,11 @@ def relink(old: Timeline, new: Timeline) -> Timeline:
     """Move text and B-roll with the main-track moment they start on (CapCut's linkage). Subtitles
     whose speech was cut out go with it; other items cut out land where the cut closed."""
     locate, removed_at = _locator(old, new)
+
+    def moved(x: float) -> float:
+        at = locate(x)
+        return max(removed_at(x) if at is None else at, 0.0)
+
     texts = []
     for t in new.texts:
         at = locate(t.start)
@@ -801,12 +806,23 @@ def relink(old: Timeline, new: Timeline) -> Timeline:
             if t.style == "subtitle":
                 continue
             at = removed_at(t.start)
-        d = round(max(at, 0.0) - t.start, 3)
-        if d:
-            t = t.model_copy(update={
-                "start": round(t.start + d, 3), "end": round(t.end + d, 3),
-                "words": [w.model_copy(update={"start": round(w.start + d, 3), "end": round(w.end + d, 3)}) for w in t.words],
-            })
+        start = round(max(at, 0.0), 3)
+        d = start - t.start
+        # The end follows its own moment when a cut inside the text shortens it (deleted words); anything
+        # else (a reorder) keeps the length.
+        end = moved(t.end)
+        end = round(end if start + 0.1 <= end < t.end + d - 1e-3 else t.end + d, 3)
+        if start != t.start or end != t.end:
+            if end < round(t.end + d, 3):
+                # Each word follows its own moment; a cut-out word shrinks to nothing (words pair with the
+                # text's words by position, so none is dropped).
+                def place(x: float) -> float:
+                    return round(min(max(moved(x), start), end), 3)
+
+                words = [w.model_copy(update={"start": place(w.start), "end": max(place(w.start), place(w.end))}) for w in t.words]
+            else:
+                words = [w.model_copy(update={"start": round(w.start + d, 3), "end": round(w.end + d, 3)}) for w in t.words]
+            t = t.model_copy(update={"start": start, "end": end, "words": words})
         texts.append(t)
     overlays = []
     for o in new.overlays:

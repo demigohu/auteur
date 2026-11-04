@@ -162,6 +162,17 @@ class CropRect(Model):
         return x, y, cw - cw % 2, ch - ch % 2
 
 
+class AudioClean(Model):
+    """Cleaning up a clip's sound: noise reduction, and a voice treatment (rumble cut, presence, leveling)."""
+
+    denoise: float = Field(0, ge=0, le=1, description="Background noise reduction strength")
+    voice: bool = Field(False, description="Make speech clearer: cut rumble, lift presence, even out the level")
+
+    @property
+    def active(self) -> bool:
+        return self.denoise > 0 or self.voice
+
+
 class ClipLut(Model):
     """A LUT uploaded to the project (.cube), applied before the grade."""
 
@@ -175,6 +186,14 @@ class Backdrop(Model):
     kind: Literal["blur", "color"] = "blur"
     color: str = Field("#000000", pattern=r"^#[0-9a-fA-F]{6}$")
     blur: float = Field(0.04, ge=0.005, le=0.2, description="Gaussian blur sigma as a fraction of the frame height")
+
+
+class BgRemove(Model):
+    """Keep what SAM 3.1 finds for `prompt` and replace everything else with a backdrop."""
+
+    prompt: str = Field("person", min_length=1, max_length=60)
+    keep: Literal["main", "all"] = Field("main", description="main: the biggest match (the subject); all: every match")
+    backdrop: Backdrop = Field(default_factory=Backdrop)
 
 
 class Transform(Model):
@@ -242,6 +261,8 @@ class Clip(Model):
     volume: float = Field(1.0, ge=0, le=2)
     volume_keys: list[VolumeKey] = Field(default_factory=list, description="Volume over time, multiplied with `volume`")
     reverse: bool = Field(False, description="Play the clip backwards (sound too)")
+    audio_clean: AudioClean | None = None
+    bg_remove: BgRemove | None = Field(None, description="Background replaced using a SAM 3.1 mask (made by remove_background)")
     lut: ClipLut | None = None
     audio_fade_in: float = Field(0, ge=0, le=10, description="Seconds the clip's sound fades in")
     audio_fade_out: float = Field(0, ge=0, le=10, description="Seconds the clip's sound fades out")
@@ -274,6 +295,14 @@ OverlayLayout = Literal["full", "kanan_atas", "kiri_atas", "kanan_bawah", "kiri_
 BlendMode = Literal["normal", "screen", "multiply", "overlay", "lighten", "darken", "add"]
 
 
+class ChromaKey(Model):
+    """Make a color (a green or blue screen) transparent."""
+
+    color: str = Field("#00FF00", pattern=r"^#[0-9a-fA-F]{6}$")
+    similarity: float = Field(0.3, ge=0.01, le=1, description="How far from the color still counts as screen")
+    blend: float = Field(0.08, ge=0, le=1, description="Soft edge")
+
+
 class OverlayBox(Model):
     """A B-roll picture placed freely: its center, and its size as a fraction of the frame (same shape)."""
 
@@ -293,6 +322,7 @@ class Overlay(Model):
     layout: OverlayLayout = Field("full", description="full covers the frame; the corners are picture-in-picture")
     box: OverlayBox | None = Field(None, description="Free position and size; overrides `layout` when set")
     opacity: float = Field(1, ge=0, le=1)
+    chroma: ChromaKey | None = Field(None, description="Key out a green/blue screen (with the normal blend)")
     blend: BlendMode = Field("normal", description="How the B-roll mixes with the picture under it")
     grade: Grade = Field(default_factory=Grade)
     muted: bool = True

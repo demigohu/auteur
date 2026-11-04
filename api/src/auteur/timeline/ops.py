@@ -11,7 +11,7 @@ from uuid import uuid4
 from pydantic import Field, TypeAdapter
 
 from auteur.timeline.models import (
-    Aspect, AudioItem, Backdrop, BlendMode, Clip, ClipAnim, ClipLut, CropKey, CropRect, Effect, Follow, Grade, Media,
+    Aspect, AudioClean, AudioItem, Backdrop, BgRemove, BlendMode, ChromaKey, Clip, ClipAnim, ClipLut, CropKey, CropRect, Effect, Follow, Grade, Media,
     Model, Overlay, OverlayBox, OverlayLayout, TextAnim, TextFont, TextItem, TextLook, TextWord, Timeline, Transform,
     TransformKey, Transition, VolumeKey, Zoom,
 )
@@ -183,6 +183,18 @@ class SetClipAnim(Model):
     anim_out: ClipAnim | None = Field(description="Exit, or null for none")
 
 
+class SetBgRemove(Model):
+    op: Literal["set_bg_remove"] = "set_bg_remove"
+    clip_id: str
+    bg_remove: BgRemove | None = Field(description="null shows the original background again")
+
+
+class SetAudioClean(Model):
+    op: Literal["set_audio_clean"] = "set_audio_clean"
+    clip_id: str
+    audio_clean: AudioClean | None = Field(description="null turns cleaning off")
+
+
 class SetReverse(Model):
     op: Literal["set_reverse"] = "set_reverse"
     clip_id: str
@@ -249,6 +261,7 @@ class UpdateOverlay(Model):
     box: OverlayBox | None = Field(None, description="Free position and size (drag on the canvas)")
     opacity: float | None = Field(None, ge=0, le=1)
     blend: BlendMode | None = None
+    chroma: ChromaKey | None = Field(None, description="null (sent explicitly) turns keying off")
     grade: Grade | None = None
 
 
@@ -336,7 +349,7 @@ class SetLinkage(Model):
 Op = Annotated[
     AddClip | Split | Trim | Move | Delete | AddText | UpdateText | DeleteText
     | SetGrade | SetCrop | SetEffects | SetMuted | SetAspect
-    | SetSpeed | SetTransition | SetZoom | SetTransform | SetCropRect | SetFit | SetReverse | SetLut | SetTransformKeys | SetClipAnim | SetVolume | SetAudioFade | DetachAudio
+    | SetSpeed | SetTransition | SetZoom | SetTransform | SetCropRect | SetFit | SetReverse | SetAudioClean | SetBgRemove | SetLut | SetTransformKeys | SetClipAnim | SetVolume | SetAudioFade | DetachAudio
     | AddOverlay | UpdateOverlay | DeleteOverlay | AddAudio | UpdateAudio | DeleteAudio | SetFinish
     | SetFps | DuplicateClip | SetVolumeKeys | SpeedRamp | PasteClips | SetLinkage,
     Field(discriminator="op"),
@@ -557,8 +570,21 @@ def apply(tl: Timeline, op: Op, media: dict[str, Media]) -> Timeline:
             i = _clip_index(tl, op.clip_id)
             tl.clips[i] = tl.clips[i].model_copy(update={"anim_in": op.anim_in, "anim_out": op.anim_out})
 
+        case SetBgRemove():
+            i = _clip_index(tl, op.clip_id)
+            if op.bg_remove and tl.clips[i].reverse:
+                raise OpError("A reversed clip can't have its background removed; turn reverse off first")
+            tl.clips[i] = tl.clips[i].model_copy(update={"bg_remove": op.bg_remove})
+
+        case SetAudioClean():
+            i = _clip_index(tl, op.clip_id)
+            c = op.audio_clean
+            tl.clips[i] = tl.clips[i].model_copy(update={"audio_clean": c if c and c.active else None})
+
         case SetReverse():
             i = _clip_index(tl, op.clip_id)
+            if op.reverse and tl.clips[i].bg_remove:
+                raise OpError("A clip with its background removed can't play backwards; turn that off first")
             if op.reverse and tl.clips[i].effects:
                 raise OpError("Tracked effects (blur, highlight) can't play backwards; remove them first")
             tl.clips[i] = tl.clips[i].model_copy(update={"reverse": op.reverse})
@@ -615,7 +641,9 @@ def apply(tl: Timeline, op: Op, media: dict[str, Media]) -> Timeline:
 
         case UpdateOverlay():
             i = _index(tl.overlays, op.overlay_id, "B-roll")
-            update = {k: getattr(op, k) for k in op.model_fields_set - {"op", "overlay_id"} if getattr(op, k) is not None}
+            update = {
+                k: getattr(op, k) for k in op.model_fields_set - {"op", "overlay_id"} if getattr(op, k) is not None or k == "chroma"
+            }
             if op.layout is not None and op.box is None:
                 update["box"] = None  # picking a preset place replaces a dragged one
             item = tl.overlays[i].model_copy(update=update)

@@ -484,3 +484,175 @@ def test_freeze_frame_holds_the_moment(client: TestClient, project: dict) -> Non
     assert (still["image"], held["src_out"], held["transform"]["scale"]) == ("still", 2, 0.8)
     assert view["history"][-1]["label"] == "Freeze frame 2s"
     assert client.post(f"/projects/{pid}/clips/c1/freeze", json={"at": 9, "duration": 2}).status_code == 400
+
+
+def test_edit_by_transcript(client: TestClient, project: dict) -> None:
+    import auteur.main as m
+    from auteur.transcript import Transcript, Turn, Word
+
+    pid, mid = project["id"], project["media"][0]["id"]
+    client.post(f"/projects/{pid}/ops", json={"label": "Add", "ops": [{"op": "add_clip", "id": "c1", "media_id": mid, "src_in": 0, "src_out": 4}]})
+    assert client.get(f"/projects/{pid}/transcript").json()["missing"] == [mid]
+
+    words = [("So", 0.2, 0.4), ("um", 0.5, 0.8), ("this", 1.0, 1.3), ("is", 1.4, 1.6), ("great", 1.7, 2.2), ("okay", 2.8, 3.2)]
+    t = Transcript(duration=4, silences=[], turns=[Turn(start=0.2, end=3.2, text="So um this is great okay",
+                                                        words=[Word(text=w, start=a, end=b) for w, a, b in words])])
+    (m.store.project_dir(pid) / "media" / mid / "transcript.json").write_text(t.model_dump_json())
+    view = client.get(f"/projects/{pid}/transcript").json()
+    [clip] = view["clips"]
+    assert [w["text"] for w in clip["words"]] == [w for w, *_ in words] and clip["words"][1]["filler"] is True
+
+    # Delete "um" and "this is" (two runs): the clip loses 0.3 + 0.6 seconds and the words go too.
+    r = client.post(f"/projects/{pid}/transcript/cut", json={"cuts": [
+        {"clip_id": "c1", "src_start": 0.5, "src_end": 0.8},
+        {"clip_id": "c1", "src_start": 1.0, "src_end": 1.3}, {"clip_id": "c1", "src_start": 1.3, "src_end": 1.6},
+    ]})
+    assert r.status_code == 200, r.text
+    tl = r.json()["timeline"]
+    assert sum(c["src_out"] - c["src_in"] for c in tl["clips"]) == pytest.approx(4 - 0.3 - 0.6, abs=0.01)
+    left = [w["text"] for c in client.get(f"/projects/{pid}/transcript").json()["clips"] for w in c["words"]]
+    assert left == ["So", "great", "okay"]
+
+
+def test_generate_image_adds_a_still(client: TestClient, monkeypatch, tmp_path: Path) -> None:
+    import base64
+    import io
+    from types import SimpleNamespace
+
+    from PIL import Image
+
+    import auteur.imagegen as ig
+
+    buf = io.BytesIO()
+    Image.new("RGB", (1792, 1024), (240, 120, 40)).save(buf, "PNG")
+    seen = {}
+
+    class FakeImages:
+        def generate(self, **kw):
+            seen.update(kw)
+            return SimpleNamespace(data=[SimpleNamespace(b64_json=base64.b64encode(buf.getvalue()).decode())])
+
+    monkeypatch.setattr(ig, "OpenAI", lambda **kw: SimpleNamespace(images=FakeImages()))
+    pid = client.post("/projects", json={"name": "Gen"}).json()["id"]
+    client.post(f"/projects/{pid}/ops", json={"label": "9:16", "ops": [{"op": "set_aspect", "aspect": "9:16"}]})
+    view = client.post(f"/projects/{pid}/media/generate", json={"prompt": "a clapperboard on orange"}).json()
+    [m] = view["media"]
+    assert (m["image"], m["name"]) == ("still", "Generated: a clapperboard on orange")
+    assert (seen["model"], seen["size"]) == ("muse-image-1.0", "1024x1792")  # the project's aspect
+    assert view["spent"] == pytest.approx(0.01)
+
+
+def test_translate_subtitles_rewraps_and_respreads_words(client: TestClient, monkeypatch) -> None:
+    import auteur.translate as tr
+
+    async def fake(lines, language):
+        return [f"[{language}] {ln}" for ln in lines], 0.002
+
+    monkeypatch.setattr(tr, "translate_lines", fake)
+    pid = client.post("/projects", json={"name": "Translate"}).json()["id"]
+    client.post(f"/projects/{pid}/ops", json={"label": "Subs", "ops": [
+        {"op": "add_text", "id": "s1", "text": "Hello\nworld", "start": 0, "end": 2,
+         "words": [{"text": "Hello", "start": 0, "end": 1}, {"text": "world", "start": 1, "end": 2}]},
+        {"op": "add_text", "id": "t1", "text": "Title", "start": 0, "end": 2, "style": "title"},
+    ]})
+    view = client.post(f"/projects/{pid}/texts/translate", json={"language": "Indonesian"}).json()
+    sub = next(t for t in view["timeline"]["texts"] if t["id"] == "s1")
+    title = next(t for t in view["timeline"]["texts"] if t["id"] == "t1")
+    assert sub["text"].replace("\n", " ") == "[Indonesian] Hello world"  # one line from the joined original
+    assert [w["text"] for w in sub["words"]] == ["[Indonesian]", "Hello", "world"]
+    assert sub["words"][-1]["end"] == pytest.approx(2)
+    assert title["text"] == "Title"  # subtitles only
+    assert view["history"][-1]["label"] == "Translate to Indonesian" and view["spent"] == pytest.approx(0.002)
+
+
+def _fake_speech(monkeypatch, seconds_per_word: float = 0.4) -> None:
+    import numpy as np
+
+    import auteur.tts as tts
+
+    def speak(text, language):
+        n = int(len(text.split()) * seconds_per_word * tts.SAMPLE_RATE)
+        return (0.3 * np.sin(np.arange(n) * 2 * np.pi * 220 / tts.SAMPLE_RATE)).astype(np.float32)
+
+    monkeypatch.setattr(tts, "speak", speak)
+
+
+def test_voiceover_goes_on_the_music_track(client: TestClient, project: dict, monkeypatch) -> None:
+    _fake_speech(monkeypatch)
+    pid = project["id"]
+    view = client.post(f"/projects/{pid}/voiceover", json={"text": "one two three four five", "language": "English", "at": 1.5}).json()
+    voice = next(m for m in view["media"] if m["name"].startswith("Voice:"))
+    [item] = view["timeline"]["audio"]
+    assert voice["kind"] == "audio" and voice["duration"] == pytest.approx(2.0, abs=0.05)
+    assert (item["media_id"], item["start"], item["duck"]) == (voice["id"], 1.5, False)
+    bad = client.post(f"/projects/{pid}/voiceover", json={"text": "hola", "language": "Klingon"})
+    assert bad.status_code == 400 and "No voice" in bad.json()["detail"]
+
+
+def test_dub_speaks_translated_subtitles_over_quieter_sound(client: TestClient, project: dict, monkeypatch) -> None:
+    import auteur.translate as tr
+
+    _fake_speech(monkeypatch, 0.3)
+
+    async def fake_translate(lines, language):
+        return [f"halo {ln}" for ln in lines], 0.001
+
+    monkeypatch.setattr(tr, "translate_lines", fake_translate)
+    pid, mid = project["id"], project["media"][0]["id"]
+    assert client.post(f"/projects/{pid}/dub", json={"language": "Indonesian"}).status_code == 400  # no subtitles yet
+    client.post(f"/projects/{pid}/ops", json={"label": "x", "ops": [
+        {"op": "add_clip", "id": "c1", "media_id": mid, "src_in": 0, "src_out": 4},
+        {"op": "add_text", "id": "s1", "text": "hello there", "start": 0.5, "end": 1.8},
+        {"op": "add_text", "id": "s2", "text": "how are you", "start": 2.0, "end": 3.5},
+    ]})
+    view = client.post(f"/projects/{pid}/dub", json={"language": "Indonesian"}).json()
+    [dub] = view["timeline"]["audio"]
+    assert next(m for m in view["media"] if m["id"] == dub["media_id"])["duration"] == pytest.approx(4, abs=0.05)
+    assert view["timeline"]["clips"][0]["volume"] == pytest.approx(0.15)
+    assert [t["text"] for t in view["timeline"]["texts"]] == ["halo hello there", "halo how are you"]
+    assert view["history"][-1]["label"] == "Dub into Indonesian"
+
+
+def test_dub_track_fits_lines_into_their_slots(tmp_path: Path, monkeypatch) -> None:
+    import wave
+
+    import numpy as np
+
+    import auteur.tts as tts
+
+    _fake_speech(monkeypatch, 0.5)
+    # 4 words = 2s of speech in a 1.5s slot: sped up 1.33x so it ends before the next line.
+    out = tts.dub_track([(0.5, 1.5, "a b c d"), (2.0, 2.5, "e")], "English", "natural", 3.0, tmp_path / "dub.wav")
+    with wave.open(str(out)) as w:
+        samples = np.frombuffer(w.readframes(w.getnframes()), np.int16).astype(float)
+    sr = tts.SAMPLE_RATE
+    loud = lambda a, b: np.abs(samples[int(a * sr): int(b * sr)]).max() > 1000  # noqa: E731
+    assert not loud(0, 0.45) and loud(0.55, 0.65)
+    assert not loud(1.93, 1.99)  # the first line finished (with a breath) before the second
+    assert loud(2.05, 2.15)
+
+
+def test_remove_background_masks_once_and_bills_sam(client: TestClient, project: dict, monkeypatch) -> None:
+    import auteur.masks as mk
+
+    calls = []
+
+    async def fake_mask(project_dir, media_id, prompt, keep, on_progress=None):
+        calls.append((media_id, prompt, keep))
+        return mk.mask_path(project_dir, media_id, prompt, keep), 0 if len(calls) > 1 else 150
+
+    monkeypatch.setattr(mk, "make_mask", fake_mask)
+    pid, mid = project["id"], project["media"][0]["id"]
+    added = client.post(f"/projects/{pid}/ops", json={"label": "Add", "ops": [{"op": "add_clip", "media_id": mid, "src_in": 0, "src_out": 3}]})
+    cid = added.json()["timeline"]["clips"][0]["id"]
+    body = {"prompt": "dog", "keep": "all", "backdrop": {"kind": "color", "color": "#112233"}}
+    view = client.post(f"/projects/{pid}/clips/{cid}/remove-background", json=body).json()
+    bg = view["timeline"]["clips"][0]["bg_remove"]
+    assert (bg["prompt"], bg["keep"], bg["backdrop"]["color"]) == ("dog", "all", "#112233")
+    assert view["spent"] == pytest.approx(150 * 0.2 / 1000)
+    assert view["history"][-1]["label"] == "Remove background"
+    again = client.post(f"/projects/{pid}/clips/{cid}/remove-background", json=body).json()
+    assert again["spent"] == pytest.approx(view["spent"])  # a cached mask costs nothing
+    reversed_ = client.post(f"/projects/{pid}/ops", json={"label": "Reverse", "ops": [{"op": "set_reverse", "clip_id": cid, "reverse": True}]})
+    assert reversed_.status_code == 400
+    assert client.post(f"/projects/{pid}/clips/nope/remove-background", json=body).status_code == 404

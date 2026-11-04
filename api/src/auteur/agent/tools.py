@@ -1084,6 +1084,109 @@ async def build_scenes(ctx: ToolContext, a: BuildScenesArgs) -> str:
     return f"Built scenes:\n{summary}{tail}\n\n" + describe_timeline(p)
 
 
+# --- generate_image -------------------------------------------------------------------------------
+
+class GenerateImageArgs(ToolArgs):
+    prompt: str = Field(description="What the picture shows, its style and mood; in English works best")
+    add_at: float | None = Field(None, ge=0, description="Timeline time to put it on the video track (as a still clip); omit to only add it to the media bin")
+    seconds: float = Field(3, ge=0.5, le=30, description="How long the still stays on screen when added")
+
+
+async def generate_image(ctx: ToolContext, a: GenerateImageArgs) -> str:
+    from auteur import imagegen  # noqa: PLC0415
+
+    media_id = new_id("media")
+    try:
+        m = await asyncio.to_thread(imagegen.generate, ctx.project_dir, media_id, a.prompt, ctx.project.timeline.aspect)
+    except imagegen.ImageGenError as e:
+        raise ToolError(str(e)) from None
+    ctx.project.media[m.id] = m
+    ctx.add_cost(imagegen.PRICE)
+    if a.add_at is None:
+        ctx.save()
+        ctx.emit({"type": "timeline", "label": "Generated picture"})
+        return f"Generated {m.id} ({m.width}x{m.height}) into the media bin."
+    tl = ctx.project.timeline
+    index = sum(1 for c, s in zip(tl.clips, tl.clip_starts()) if s + c.duration / 2 <= a.add_at)
+    ctx.commit("Generated picture", [AddClip(media_id=m.id, src_in=0, src_out=a.seconds, index=index)])
+    return f"Generated {m.id} and put it on the video track for {a.seconds:g}s.\n" + describe_timeline(ctx.project)
+
+
+# --- translate_texts --------------------------------------------------------------------------------
+
+class TranslateArgs(ToolArgs):
+    language: str = Field(description="Target language, e.g. 'English', 'Indonesian', 'Spanish'")
+    subtitles_only: bool = Field(True, description="False also translates titles and captions")
+
+
+async def translate_texts(ctx: ToolContext, a: TranslateArgs) -> str:
+    from auteur import translate  # noqa: PLC0415
+
+    try:
+        ops, usd = await translate.translate_ops(ctx.project, a.language, a.subtitles_only)
+    except translate.TranslateError as e:
+        raise ToolError(str(e)) from None
+    ctx.add_cost(usd)
+    if not ops:
+        return f"Everything is already in {a.language}."
+    ctx.commit(f"Translate to {a.language}", ops)
+    return f"Translated {len(ops)} texts into {a.language}."
+
+
+# --- voiceover, dub ----------------------------------------------------------------------------------
+
+class VoiceoverArgs(ToolArgs):
+    text: str = Field(description="What to say")
+    language: str = Field("English", description="English, Indonesian, Spanish, French, German, Portuguese, Dutch, Tagalog, "
+                          "Vietnamese, Malay, Javanese, Sundanese, Swahili, Turkish or Polish")
+    at: float = Field(0, ge=0, description="Timeline time it starts")
+    voice: Literal["natural", "deeper", "brighter"] = "natural"
+    speed: float = Field(1, ge=0.5, le=2)
+
+
+async def voiceover(ctx: ToolContext, a: VoiceoverArgs) -> str:
+    import tempfile  # noqa: PLC0415
+
+    from auteur import tts  # noqa: PLC0415
+
+    with tempfile.TemporaryDirectory() as tmp:
+        try:
+            wav = await asyncio.to_thread(tts.voiceover, a.text, a.language, a.voice, a.speed, Path(tmp) / "voice.wav")
+        except tts.TTSError as e:
+            raise ToolError(str(e)) from None
+        m = await asyncio.to_thread(ingest, ctx.project_dir, new_id("media"), f"Voice: {' '.join(a.text.split())[:40]}", wav)
+    ctx.project.media[m.id] = m
+    ctx.commit("Voice-over", [AddAudio(media_id=m.id, start=a.at, volume=1, fade_in=0.05, fade_out=0.2, duck=False)])
+    return f"Voice-over of {m.duration:.1f}s at {a.at:.2f}s (Meta MMS-TTS, {a.language}). Music under it is not ducked automatically; lower it if needed."
+
+
+# --- remove_background --------------------------------------------------------------------------------
+
+class RemoveBackgroundArgs(ToolArgs):
+    clip_ids: list[str] = Field(min_length=1)
+    prompt: str = Field("person", description="What to keep, as a short noun phrase for SAM: 'person', 'dog', 'car'")
+    keep: Literal["main", "all"] = Field("main", description="main: only the subject (biggest match); all: every match")
+    backdrop: Literal["blur", "color"] = "blur"
+    color: str = Field("#000000", pattern=r"^#[0-9a-fA-F]{6}$", description="Backdrop color when backdrop is color")
+
+
+async def remove_background(ctx: ToolContext, a: RemoveBackgroundArgs) -> str:
+    from auteur import masks  # noqa: PLC0415
+    from auteur.timeline.models import Backdrop, BgRemove  # noqa: PLC0415
+    from auteur.timeline.ops import SetBgRemove  # noqa: PLC0415
+
+    clips = ctx.clips(a.clip_ids)
+    for mid in dict.fromkeys(c.media_id for c in clips):
+        try:
+            _, frames = await masks.make_mask(ctx.project_dir, mid, a.prompt, a.keep)
+        except masks.MaskError as e:
+            raise ToolError(str(e)) from None
+        ctx.add_cost(costs.sam(frames))
+    spec = BgRemove(prompt=a.prompt, keep=a.keep, backdrop=Backdrop(kind=a.backdrop, color=a.color))
+    ctx.commit("Remove background", [SetBgRemove(clip_id=c.id, bg_remove=spec) for c in clips])
+    return f"Background replaced ({a.backdrop}) behind the {a.prompt} in {len(clips)} clips, using SAM 3.1 masks."
+
+
 # --- freeze_frame ----------------------------------------------------------------------------------
 
 class FreezeArgs(ToolArgs):
@@ -1143,6 +1246,14 @@ TOOLS = [
          "ramp_mulai. Sped/slowed clips are muted.",
          KecepatanArgs, kecepatan),
     Tool("zoom", "Slow push-in (or pull-out) over clips, Ken Burns style.", ZoomArgs, zoom),
+    Tool("generate_image", "Make a picture from a prompt with Muse Image (title backgrounds, illustrations, "
+         "establishing shots, thumbnails); optionally put it on the video track.", GenerateImageArgs, generate_image),
+    Tool("translate_texts", "Translate the subtitles (or all on-screen text) into another language; word timing "
+         "is kept per line. Make subtitles first.", TranslateArgs, translate_texts),
+    Tool("voiceover", "Speak a text (Meta MMS-TTS, one voice per language, pitch variants) and put it on the music "
+         "track at a time: narration, intros, calls to action.", VoiceoverArgs, voiceover),
+    Tool("remove_background", "Cut the subject out with SAM 3.1 pixel masks and replace the background with a blur or "
+         "a color (no green screen needed). 15-60 s per minute of footage.", RemoveBackgroundArgs, remove_background),
     Tool("freeze_frame", "Hold the picture at a moment of a clip for a few seconds (a still of that frame goes in), "
          "e.g. to land a beat or put a title over a stopped shot.", FreezeArgs, freeze_frame),
     Tool("cinematic_finish", "Cinema finishing for the whole video: letterbox bars and film grain.", SinematikArgs, sinematik),

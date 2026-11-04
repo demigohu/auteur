@@ -17,11 +17,13 @@ from starlette.concurrency import run_in_threadpool
 from starlette.types import ASGIApp, Receive, Scope, Send
 from sse_starlette.sse import EventSourceResponse
 
-from auteur import colorist, derived, exporter, fetch, freeze, motion, reference
+from auteur import colorist, costs, derived, exporter, fetch, freeze, imagegen, masks, motion, reference, transcript_edit, translate, tts
+from auteur.agent.tools import filler_ops
+from auteur.transcript import transcribe
 from auteur.agent.loop import run_agent, run_tool
 from auteur.config import settings
 from auteur.events import bus
-from auteur.media import MAX_TOTAL_SECONDS, MediaError, ingest, make_waveform
+from auteur.media import MAX_TOTAL_SECONDS, MediaError, ingest, make_waveform, media_dir
 from auteur.render import RenderError, render
 from auteur.auth import ClerkAuth
 from auteur.store import NotFound, Store
@@ -29,11 +31,13 @@ from auteur.timeline import Media, Op, OpError, Project, Timeline
 from auteur.timeline.history import ChatMessage, CheckResult, LutInfo, ReferenceImage, Storyboard
 from auteur.tracking import load_track
 from auteur.timeline.models import Aspect
-from auteur.timeline.ops import SetGrade, new_id
+from auteur.subtitles import wrap
+from auteur.timeline.models import Backdrop, BgRemove
+from auteur.timeline.ops import AddAudio, SetBgRemove, SetGrade, SetVolume, UpdateText, new_id
 
 # Everything else needs a signed-in account. Media files stay public: their project ids are unguessable
 # and <video> elements cannot attach credentials cross-origin anyway.
-PUBLIC_PATHS = ("/health", "/files/", "/looks", "/docs", "/openapi.json")
+PUBLIC_PATHS = ("/health", "/files/", "/looks", "/voices", "/docs", "/openapi.json")
 
 app = FastAPI(title="Auteur Labs API")
 store = Store(settings.data_dir)
@@ -460,6 +464,31 @@ async def upload_media(project_id: str, file: UploadFile) -> ProjectView:
         return await add_media(p, Path(tmp.name), file.filename or "upload")
 
 
+class GenerateImage(BaseModel):
+    prompt: str = Field(min_length=3, max_length=2000)
+
+
+@app.post("/projects/{project_id}/media/generate")
+async def generate_image(project_id: str, body: GenerateImage, request: Request) -> ProjectView:
+    """A picture from a prompt with Muse Image, in the project's aspect ratio, into the media bin."""
+    check_run_quota(request)
+    load(project_id)
+    media_id = new_id("media")
+    # Generated before taking the project lock (it takes ~10s); the media is added under the lock.
+    try:
+        p = load(project_id)
+        media = await asyncio.to_thread(imagegen.generate, store.project_dir(project_id), media_id, body.prompt, p.timeline.aspect)
+    except imagegen.ImageGenError as e:
+        shutil.rmtree(store.project_dir(project_id) / "media" / media_id, ignore_errors=True)
+        raise HTTPException(400, str(e)) from None
+    async with ensure_idle(project_id):
+        p = load(project_id)
+        p.media[media.id] = media
+        p.spent += imagegen.PRICE
+        store.save(p)
+        bus.publish(p.id, {"type": "project"}, replay=False)
+        return ProjectView.of(p, busy=False)
+
 class ImportLink(BaseModel):
     url: str = Field(min_length=8, max_length=2000)
 
@@ -506,46 +535,50 @@ async def upload_reference(project_id: str, file: UploadFile) -> ProjectView:
 _variants_pending: set[tuple[str, str]] = set()
 
 
+def _prepared(p: Project, media_id: str, name: str, make) -> str | None:
+    """The url of a derived preview file, or None while it is made in the background (announced with a
+    "project" event when ready). `make` builds it, blocking."""
+    path = store.project_dir(p.id) / "media" / media_id / name
+    if path.exists():
+        return f"/files/{p.id}/media/{media_id}/{name}"
+    key = (media_id, name)
+    if key in _variants_pending:
+        return None
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return None
+    _variants_pending.add(key)
+
+    async def run() -> None:
+        try:
+            await asyncio.to_thread(make)
+        except (derived.DerivedError, OSError):
+            pass  # the editor keeps the plain preview; the export reports real problems
+        finally:
+            _variants_pending.discard(key)
+        bus.publish(p.id, {"type": "project"}, replay=False)
+
+    task = loop.create_task(run())
+    _background.add(task)
+    task.add_done_callback(_background.discard)
+    return None
+
+
 def clip_previews(p: Project) -> dict[str, str | None]:
-    """The prepared preview of every reversed or LUT clip; missing ones are made in the background and
-    announced with a "project" event when ready."""
+    """Prepared previews for reversed, LUT and cleaned-sound clips, and keyed B-roll (by item id)."""
     out: dict[str, str | None] = {}
-    todo = []
+    luts = store.project_dir(p.id) / "luts"
     for c in p.timeline.clips:
         name = derived.preview_name(c)
-        if name is None or c.media_id not in p.media:
-            continue
-        path = store.project_dir(p.id) / "media" / c.media_id / name
-        if path.exists():
-            out[c.id] = f"/files/{p.id}/media/{c.media_id}/{name}"
-            continue
-        out[c.id] = None
-        if (c.media_id, name) not in _variants_pending:
-            _variants_pending.add((c.media_id, name))
-            todo.append(c)
-    if todo:
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            _variants_pending.difference_update((c.media_id, derived.preview_name(c)) for c in todo)
-            return out
-
-        async def run() -> None:
-            for c in todo:
-                key = (c.media_id, derived.preview_name(c))
-                try:
-                    m = p.media[c.media_id]
-                    d = store.project_dir(p.id) / "media" / m.id
-                    await asyncio.to_thread(derived.make_variant, d, m, c, store.project_dir(p.id) / "luts")
-                except (derived.DerivedError, OSError):
-                    pass  # the editor keeps the plain preview; the export reports real problems
-                finally:
-                    _variants_pending.discard(key)
-                bus.publish(p.id, {"type": "project"}, replay=False)
-
-        task = loop.create_task(run())
-        _background.add(task)
-        task.add_done_callback(_background.discard)
+        if name and c.media_id in p.media:
+            m, d = p.media[c.media_id], store.project_dir(p.id) / "media" / c.media_id
+            out[c.id] = _prepared(p, c.media_id, name, lambda m=m, d=d, c=c: derived.make_variant(d, m, c, luts))
+    for o in p.timeline.overlays:
+        name = derived.overlay_variant_name(o)
+        if name and o.media_id in p.media:
+            d = store.project_dir(p.id) / "media" / o.media_id
+            out[o.id] = _prepared(p, o.media_id, name, lambda d=d, o=o: derived.make_overlay_variant(d, o))
     return out
 
 
@@ -786,6 +819,198 @@ async def freeze_frame(project_id: str, clip_id: str, body: FreezeRequest) -> Pr
             ops = await asyncio.to_thread(freeze.freeze, p, store.project_dir(p.id), clip_id, body.at, body.duration)
             p.commit("user", f"Freeze frame {body.duration:g}s", ops)
         except (freeze.FreezeError, OpError) as e:
+            raise HTTPException(400, str(e)) from None
+        store.save(p)
+        return ProjectView.of(p, busy=False)
+
+@app.get("/projects/{project_id}/transcript")
+def get_transcript(project_id: str) -> transcript_edit.TranscriptView:
+    p = load(project_id)
+    return transcript_edit.view(p, store.project_dir(p.id))
+
+
+@app.post("/projects/{project_id}/transcript/run")
+async def run_transcription(project_id: str, request: Request) -> transcript_edit.TranscriptView:
+    """Transcribe the timeline's footage with Voice Transcribe (once per media; cached for the agent too)."""
+    check_run_quota(request)
+    async with ensure_idle(project_id):
+        p = load(project_id)
+        todo = transcript_edit.view(p, store.project_dir(p.id)).missing
+        for mid in todo:
+            m = p.media[mid]
+            cache = media_dir(store.project_dir(p.id), mid) / "transcript.json"
+            try:
+                await asyncio.to_thread(transcribe, Path(m.path), cache)
+            except Exception as e:  # the API or ffmpeg; nothing half-written is kept
+                raise HTTPException(502, f"Transcription failed for {m.name}: {e}") from None
+            p.spent += costs.transcribe(m.duration)
+        store.save(p)
+        return transcript_edit.view(p, store.project_dir(p.id))
+
+
+class WordCut(BaseModel):
+    clip_id: str
+    src_start: float = Field(ge=0)
+    src_end: float = Field(gt=0)
+
+
+class TranscriptCut(BaseModel):
+    cuts: list[WordCut] = Field(min_length=1, max_length=2000)
+    label: str = Field("Cut words", max_length=80)
+
+
+@app.post("/projects/{project_id}/transcript/cut")
+async def cut_words(project_id: str, body: TranscriptCut) -> ProjectView:
+    """Delete words from the transcript: each run of deleted words is cut out of its clip."""
+    async with ensure_idle(project_id):
+        p = load(project_id)
+        by_clip: dict[str, list[tuple[float, float]]] = {}
+        for c in body.cuts:
+            by_clip.setdefault(c.clip_id, []).append((c.src_start, c.src_end))
+        scratch, ops = p.timeline, []
+        for clip_id, ranges in by_clip.items():
+            if not any(c.id == clip_id for c in scratch.clips):
+                raise HTTPException(400, f"Clip {clip_id} not found")
+            more, scratch, _ = filler_ops(scratch, clip_id, transcript_edit.merge(ranges), p.media)
+            ops += more
+        if not ops:
+            raise HTTPException(400, "Nothing left to cut there")
+        try:
+            p.commit("user", body.label, ops)
+        except OpError as e:
+            raise HTTPException(400, str(e)) from None
+        store.save(p)
+        return ProjectView.of(p, busy=False)
+
+class TranslateRequest(BaseModel):
+    language: str = Field(min_length=2, max_length=40, description="e.g. English, Indonesian, Spanish")
+    subtitles_only: bool = True
+
+
+@app.post("/projects/{project_id}/texts/translate")
+async def translate_texts(project_id: str, body: TranslateRequest, request: Request) -> ProjectView:
+    """Translate subtitles (or every text) with Muse Spark; one undoable edit."""
+    check_run_quota(request)
+    async with ensure_idle(project_id):
+        p = load(project_id)
+        try:
+            ops, usd = await translate.translate_ops(p, body.language.strip(), body.subtitles_only)
+        except translate.TranslateError as e:
+            raise HTTPException(400, str(e)) from None
+        p.spent += usd
+        if ops:
+            p.commit("user", f"Translate to {body.language.strip()}", ops)
+        store.save(p)
+        return ProjectView.of(p, busy=False)
+
+class VoiceoverRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=2000)
+    language: str = "English"
+    voice: Literal["natural", "deeper", "brighter"] = "natural"
+    speed: float = Field(1.0, ge=0.5, le=2)
+    at: float | None = Field(None, ge=0, description="Put it on the music track at this time; None = media bin only")
+
+
+@app.post("/projects/{project_id}/voiceover")
+async def make_voiceover(project_id: str, body: VoiceoverRequest) -> ProjectView:
+    """Spoken text with Meta MMS-TTS, as audio media (and on the timeline at `at`)."""
+    load(project_id)
+    with tempfile.TemporaryDirectory(dir=settings.data_dir) as tmp:
+        try:
+            wav = await asyncio.to_thread(tts.voiceover, body.text, body.language, body.voice, body.speed, Path(tmp) / "voice.wav")
+        except tts.TTSError as e:
+            raise HTTPException(400, str(e)) from None
+        async with ensure_idle(project_id):
+            p = load(project_id)
+            media_id = new_id("media")
+            try:
+                media = await asyncio.to_thread(
+                    ingest, store.project_dir(p.id), media_id, f"Voice: {' '.join(body.text.split())[:40]}", wav
+                )
+            except MediaError as e:
+                raise HTTPException(400, str(e)) from None
+            p.media[media.id] = media
+            if body.at is not None:
+                p.commit("user", "Voice-over", [AddAudio(media_id=media.id, start=body.at, volume=1, fade_in=0.05, fade_out=0.2, duck=False)])
+            store.save(p)
+            return ProjectView.of(p, busy=False)
+
+
+class DubRequest(BaseModel):
+    language: str
+    voice: Literal["natural", "deeper", "brighter"] = "natural"
+    original_volume: float = Field(0.15, ge=0, le=1, description="The original sound under the dub")
+
+
+@app.post("/projects/{project_id}/dub")
+async def dub(project_id: str, body: DubRequest, request: Request) -> ProjectView:
+    """Translate the subtitles (Muse Spark), speak them (MMS-TTS) on one track, turn the original down."""
+    check_run_quota(request)
+    async with ensure_idle(project_id):
+        p = load(project_id)
+        subs = sorted((t for t in p.timeline.texts if t.style == "subtitle"), key=lambda t: t.start)
+        if not subs:
+            raise HTTPException(400, "Dubbing speaks the subtitles; add subtitles first")
+        if body.language not in tts.LANGUAGES:
+            raise HTTPException(400, f"No voice for {body.language}; available: {', '.join(tts.LANGUAGES)}")
+        try:
+            lines, usd = await translate.translate_lines([" ".join(t.text.split()) for t in subs], body.language)
+        except translate.TranslateError as e:
+            raise HTTPException(400, str(e)) from None
+        p.spent += usd
+        with tempfile.TemporaryDirectory(dir=settings.data_dir) as tmp:
+            try:
+                wav = await asyncio.to_thread(
+                    tts.dub_track, [(t.start, t.end, line) for t, line in zip(subs, lines)], body.language, body.voice,
+                    p.timeline.duration, Path(tmp) / "dub.wav",
+                )
+            except tts.TTSError as e:
+                raise HTTPException(400, str(e)) from None
+            media_id = new_id("media")
+            try:
+                media = await asyncio.to_thread(ingest, store.project_dir(p.id), media_id, f"Dub ({body.language}).wav", wav)
+            except MediaError as e:
+                raise HTTPException(400, str(e)) from None
+        p.media[media.id] = media
+        out_w, out_h = p.timeline.size
+        ops: list = [AddAudio(media_id=media.id, start=0, volume=1, fade_in=0, fade_out=0.3, duck=False)]
+        ops += [SetVolume(clip_id=c.id, volume=round(c.volume * body.original_volume, 3)) for c in p.timeline.clips if c.has_sound]
+        for t, line in zip(subs, lines):
+            ops.append(UpdateText(text_id=t.id, text="\n".join(" ".join(ln) for ln in wrap(line.split(), t.look, out_w, out_h))))
+        p.commit("user", f"Dub into {body.language}", ops)
+        store.save(p)
+        return ProjectView.of(p, busy=False)
+
+
+@app.get("/voices")
+def voices() -> dict[str, list[str]]:
+    return {"languages": list(tts.LANGUAGES), "voices": list(tts.VOICES)}
+
+class RemoveBackground(BaseModel):
+    prompt: str = Field("person", min_length=1, max_length=60)
+    keep: Literal["main", "all"] = "main"
+    backdrop: Backdrop = Field(default_factory=Backdrop)
+
+
+@app.post("/projects/{project_id}/clips/{clip_id}/remove-background")
+async def remove_background(project_id: str, clip_id: str, body: RemoveBackground, request: Request) -> ProjectView:
+    """Mask the subject with SAM 3.1 (once per media and prompt) and replace the rest with a backdrop."""
+    check_run_quota(request)
+    async with ensure_idle(project_id):
+        p = load(project_id)
+        clip = next((c for c in p.timeline.clips if c.id == clip_id), None)
+        if clip is None:
+            raise HTTPException(404, f"Clip {clip_id} not found")
+        try:
+            _, frames = await masks.make_mask(store.project_dir(p.id), clip.media_id, body.prompt, body.keep)
+        except masks.MaskError as e:
+            raise HTTPException(400, str(e)) from None
+        except Exception as e:  # the SAM API
+            raise HTTPException(502, f"SAM 3.1 failed: {e}") from None
+        p.spent += costs.sam(frames)
+        try:
+            p.commit("user", "Remove background", [SetBgRemove(clip_id=clip_id, bg_remove=BgRemove(**body.model_dump()))])
+        except OpError as e:
             raise HTTPException(400, str(e)) from None
         store.save(p)
         return ProjectView.of(p, busy=False)

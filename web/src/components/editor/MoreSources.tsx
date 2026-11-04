@@ -1,6 +1,7 @@
 "use client";
 
-import { DeviceMobile, LinkSimple, X } from "@phosphor-icons/react";
+import { DeviceMobile, LinkSimple, Microphone, Sparkle, X } from "@phosphor-icons/react";
+import { VOICE_LANGUAGES, VOICES } from "@/lib/media";
 import { AnimatePresence, motion } from "motion/react";
 import QRCode from "qrcode";
 import { useEffect, useRef, useState } from "react";
@@ -8,9 +9,15 @@ import { useEditor } from "@/lib/store";
 
 /** Under the media bin's upload button: import from a direct link, or upload from a phone via QR. */
 export function MoreSources({ projectId, disabled }: { projectId: string; disabled: boolean }) {
-  const [open, setOpen] = useState<"link" | "phone" | null>(null);
+  const [open, setOpen] = useState<"link" | "phone" | "generate" | "voice" | null>(null);
   return (
     <div className="space-y-2">
+      <SourceButton label="Generate a picture with Muse Image" active={open === "generate"} disabled={disabled} onClick={() => setOpen(open === "generate" ? null : "generate")}>
+        <Sparkle size={13} weight="bold" /> Generate a picture
+      </SourceButton>
+      <SourceButton label="Speak a text with Meta MMS-TTS" active={open === "voice"} disabled={disabled} onClick={() => setOpen(open === "voice" ? null : "voice")}>
+        <Microphone size={13} weight="bold" /> Voice-over from text
+      </SourceButton>
       <div className="grid grid-cols-2 gap-2">
         <SourceButton label="Import from a link" active={open === "link"} disabled={disabled} onClick={() => setOpen(open === "link" ? null : "link")}>
           <LinkSimple size={13} weight="bold" /> Link
@@ -21,6 +28,8 @@ export function MoreSources({ projectId, disabled }: { projectId: string; disabl
       </div>
       <AnimatePresence initial={false}>
         {open === "link" && <LinkForm key="link" onDone={() => setOpen(null)} />}
+        {open === "generate" && <GenerateForm key="generate" onDone={() => setOpen(null)} />}
+        {open === "voice" && <VoiceForm key="voice" onDone={() => setOpen(null)} />}
         {open === "phone" && <PhoneCode key="phone" projectId={projectId} onClose={() => setOpen(null)} />}
       </AnimatePresence>
     </div>
@@ -96,6 +105,94 @@ function LinkForm({ onDone }: { onDone: () => void }) {
           className="mt-2 w-full rounded-full border-2 border-ink bg-lime py-1 text-[12px] font-semibold text-ink disabled:opacity-40"
         >
           {busy ? "Importing..." : "Import"}
+        </button>
+      </form>
+    </Panel>
+  );
+}
+
+function GenerateForm({ onDone }: { onDone: () => void }) {
+  const generateImage = useEditor((s) => s.generateImage);
+  const pending = useEditor((s) => s.pending);
+  const aspect = useEditor((s) => s.project?.timeline.aspect);
+  const [prompt, setPrompt] = useState("");
+  const busy = pending === "Generating with Muse Image";
+  return (
+    <Panel>
+      <form
+        onSubmit={async (e) => {
+          e.preventDefault();
+          if (prompt.trim() && (await generateImage(prompt.trim()))) {
+            setPrompt("");
+            onDone();
+          }
+        }}
+      >
+        <textarea
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          autoFocus
+          rows={3}
+          maxLength={2000}
+          placeholder="A misty pine forest at dawn, cinematic, wide shot"
+          aria-label="Describe the picture"
+          className="w-full resize-none rounded-[8px] border-2 border-line bg-transparent px-2 py-1.5 text-[12px] placeholder:text-faint focus:border-text focus:outline-none"
+        />
+        <p className="mt-1 text-[10.5px] text-faint">Muse Image, {aspect} like the project, $0.01. It lands in the bin as a picture.</p>
+        <button
+          type="submit"
+          disabled={busy || prompt.trim().length < 3}
+          className="mt-2 w-full rounded-full border-2 border-ink bg-lime py-1 text-[12px] font-semibold text-ink disabled:opacity-40"
+        >
+          {busy ? "Generating (about 10 s)..." : "Generate"}
+        </button>
+      </form>
+    </Panel>
+  );
+}
+
+function VoiceForm({ onDone }: { onDone: () => void }) {
+  const voiceover = useEditor((s) => s.voiceover);
+  const pending = useEditor((s) => s.pending);
+  const [text, setText] = useState("");
+  const [language, setLanguage] = useState("English");
+  const [voice, setVoice] = useState<string>("natural");
+  const [speed, setSpeed] = useState(1);
+  const [atPlayhead, setAtPlayhead] = useState(true);
+  const busy = pending === "Speaking with MMS-TTS";
+  const select = "min-w-0 rounded-[8px] border-2 border-line bg-transparent px-1.5 py-1 text-[11px] focus:border-text focus:outline-none";
+  return (
+    <Panel>
+      <form
+        onSubmit={async (e) => {
+          e.preventDefault();
+          if (text.trim() && (await voiceover({ text: text.trim(), language, voice, speed, atPlayhead }))) {
+            setText("");
+            onDone();
+          }
+        }}
+      >
+        <textarea value={text} onChange={(e) => setText(e.target.value)} autoFocus rows={3} maxLength={2000}
+          placeholder="Welcome back. Today we're heading to the coast." aria-label="Text to speak"
+          className="w-full resize-none rounded-[8px] border-2 border-line bg-transparent px-2 py-1.5 text-[12px] placeholder:text-faint focus:border-text focus:outline-none" />
+        <div className="mt-1.5 grid grid-cols-3 gap-1.5">
+          <select value={language} onChange={(e) => setLanguage(e.target.value)} aria-label="Language" className={select}>
+            {VOICE_LANGUAGES.map((l) => <option key={l}>{l}</option>)}
+          </select>
+          <select value={voice} onChange={(e) => setVoice(e.target.value)} aria-label="Voice" className={select}>
+            {VOICES.map((v) => <option key={v} value={v}>{v[0].toUpperCase() + v.slice(1)}</option>)}
+          </select>
+          <select value={speed} onChange={(e) => setSpeed(Number(e.target.value))} aria-label="Speed" className={select}>
+            {[0.8, 0.9, 1, 1.1, 1.25].map((v) => <option key={v} value={v}>{v}x</option>)}
+          </select>
+        </div>
+        <label className="mt-1.5 flex items-center gap-1.5 text-[11px] text-muted">
+          <input type="checkbox" checked={atPlayhead} onChange={(e) => setAtPlayhead(e.target.checked)} /> Put it on the timeline at the playhead
+        </label>
+        <p className="mt-1 text-[10.5px] text-faint">Meta MMS-TTS on this server. The first use of a language downloads its voice (~30 s).</p>
+        <button type="submit" disabled={busy || !text.trim()}
+          className="mt-2 w-full rounded-full border-2 border-ink bg-lime py-1 text-[12px] font-semibold text-ink disabled:opacity-40">
+          {busy ? "Speaking..." : "Make voice-over"}
         </button>
       </form>
     </Panel>

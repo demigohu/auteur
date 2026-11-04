@@ -19,6 +19,8 @@ dependencies = [
     "python-dotenv>=1.2.4",
     "python-multipart>=0.0.33",
     "sse-starlette>=3.6.0",
+    "torch>=2.6",
+    "transformers>=4.50",
     "uvicorn[standard]>=0.54.0",
 ]
 
@@ -38,3 +40,12 @@ dev = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+
+# PyTorch from its CPU-only index (Meta MMS-TTS runs on CPU; the default wheels bundle CUDA).
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }

@@ -3,7 +3,7 @@
 import { create } from "zustand";
 import { api, API_URL, type ExportRequest, type ExportView, fileUrl, type OpInput, type ProjectView, type StoryboardEdit } from "./api";
 import { clipDuration, clipStarts } from "./time";
-import type { Clip, Grade, Overlay, Transform } from "./timeline";
+import type { Backdrop, Clip, Grade, Overlay, Transform } from "./timeline";
 import type { TrackData } from "./tracks";
 
 export type StepStatus = "pending" | "running" | "done" | "failed";
@@ -36,7 +36,7 @@ export type RunState = {
 
 type AgentEvent = { type: string; run_id: string; [key: string]: unknown };
 
-export type SideTab = "agent" | "story" | "inspector" | "history";
+export type SideTab = "agent" | "story" | "words" | "inspector" | "history";
 
 type EditorState = {
   project: ProjectView | null;
@@ -66,8 +66,15 @@ type EditorState = {
   redo: () => Promise<void>;
   upload: (files: File[]) => Promise<void>;
   importLink: (url: string) => Promise<boolean>;
+  voiceover: (body: { text: string; language: string; voice: string; speed: number; atPlayhead: boolean }) => Promise<boolean>;
+  dub: (language: string, voice: string) => Promise<boolean>;
+  translateTexts: (language: string, subtitlesOnly: boolean) => Promise<boolean>;
+  generateImage: (prompt: string) => Promise<boolean>;
+  cutWords: (cuts: { clip_id: string; src_start: number; src_end: number }[], label: string) => Promise<boolean>;
   /** Hold the frame under the playhead for `duration` seconds. */
   freezeFrame: (duration?: number) => Promise<boolean>;
+  /** Cut the subject out with SAM 3.1 and put a backdrop behind it. */
+  removeBackground: (clipId: string, body: { prompt: string; keep: "main" | "all"; backdrop: Backdrop }) => Promise<boolean>;
   uploadLut: (file: File) => Promise<boolean>;
   deleteLut: (lutId: string) => Promise<boolean>;
   startRun: (instruction: string, referenceIds?: string[]) => Promise<void>;
@@ -322,6 +329,31 @@ export const useEditor = create<EditorState>((set, get) => {
       const i = clips.findIndex((c, k) => time >= starts[k] && time < starts[k] + clipDuration(c));
       if (i < 0) return Promise.resolve(false);
       return act("Freezing the frame", () => api.freezeFrame(project.id, clips[i].id, Number(time.toFixed(3)), duration));
+    },
+    removeBackground: (clipId, body) => {
+      const id = get().project?.id;
+      return id ? act("Removing the background", () => api.removeBackground(id, clipId, body)) : Promise.resolve(false);
+    },
+    cutWords: (cuts, label) => {
+      const id = get().project?.id;
+      return id ? act(label, () => api.cutWords(id, cuts, label)) : Promise.resolve(false);
+    },
+    generateImage: (prompt) => {
+      const id = get().project?.id;
+      return id ? act("Generating with Muse Image", () => api.generateImage(id, prompt)) : Promise.resolve(false);
+    },
+    translateTexts: (language, subtitlesOnly) => {
+      const id = get().project?.id;
+      return id ? act(`Translating to ${language}`, () => api.translateTexts(id, language, subtitlesOnly)) : Promise.resolve(false);
+    },
+    voiceover: ({ atPlayhead, ...body }) => {
+      const { project, time } = get();
+      if (!project) return Promise.resolve(false);
+      return act("Speaking with MMS-TTS", () => api.voiceover(project.id, { ...body, at: atPlayhead ? Number(time.toFixed(3)) : null }));
+    },
+    dub: (language, voice) => {
+      const id = get().project?.id;
+      return id ? act(`Dubbing into ${language}`, () => api.dub(id, language, voice)) : Promise.resolve(false);
     },
     importLink: (url) => {
       const id = get().project?.id;

@@ -2,12 +2,13 @@
 
 import { Crosshair, SpeakerSimpleHigh, SpeakerSimpleSlash, X } from "@phosphor-icons/react";
 import { useState } from "react";
+import { VOICE_LANGUAGES } from "@/lib/media";
 import { useEditor } from "@/lib/store";
 import { FONT_FAMILY, specOf } from "@/remotion/TextLayer";
 import { clipDuration } from "@/lib/time";
 import type { Clip, TextItem } from "@/lib/timeline";
 import { ColorPanel } from "./ColorPanel";
-import { ClipCrop, ClipFit, ClipKeyframes, ClipLutPanel, ClipMotion, ClipTransform, FinishPanel, FramePosition, MusicInspector, OverlayInspector } from "./MontagePanels";
+import { ClipBgRemove, ClipCrop, ClipFit, ClipKeyframes, ClipLutPanel, ClipMotion, ClipTransform, FinishPanel, FramePosition, MusicInspector, OverlayInspector } from "./MontagePanels";
 
 
 export function InspectorTab() {
@@ -106,6 +107,7 @@ function ClipInspector({ clip, locked }: { clip: Clip; locked: boolean }) {
       )}
 
       <ClipLutPanel clip={clip} locked={locked} />
+      <ClipBgRemove clip={clip} locked={locked} />
 
       <ColorPanel clip={clip} locked={locked} />
     </div>
@@ -237,6 +239,7 @@ function TextInspector({ item, locked }: { item: TextItem; locked: boolean }) {
             <input type="checkbox" checked={everywhere} onChange={(e) => setEverywhere(e.target.checked)} />
             Apply to all subtitles ({subtitles.length})
           </label>
+          <TranslateRow />
         </div>
       )}
       <TextStyle item={item} onChange={(patch, label) => (item.style === "subtitle" ? restyle(patch, label) : update(patch, label))} />
@@ -479,5 +482,49 @@ function RangeRow(props: {
         className="w-full"
       />
     </div>
+  );
+}
+
+const LANGUAGES = ["English", "Indonesian", "Spanish", "Portuguese", "French", "German", "Japanese", "Korean", "Chinese", "Arabic", "Hindi"];
+
+/** Every subtitle into another language with Muse Spark (one undoable edit). */
+function TranslateRow() {
+  const translateTexts = useEditor((s) => s.translateTexts);
+  const dub = useEditor((s) => s.dub);
+  const pending = useEditor((s) => s.pending);
+  const [language, setLanguage] = useState("English");
+  const busy = Boolean(pending?.startsWith("Translating") || pending?.startsWith("Dubbing"));
+  const canDub = VOICE_LANGUAGES.includes(language.trim());
+  return (
+    <form
+      className="flex items-center gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (language.trim()) translateTexts(language.trim(), true);
+      }}
+    >
+      <span className="text-xs text-text">Translate all to</span>
+      <input
+        list="subtitle-languages"
+        value={language}
+        onChange={(e) => setLanguage(e.target.value)}
+        aria-label="Language to translate the subtitles into"
+        className="w-28 min-w-0 rounded-[8px] border-2 border-line bg-transparent px-2 py-0.5 text-[12px] focus:border-text focus:outline-none"
+      />
+      <datalist id="subtitle-languages">
+        {LANGUAGES.map((l) => (
+          <option key={l} value={l} />
+        ))}
+      </datalist>
+      <button type="submit" disabled={busy || !language.trim()}
+        className="rounded-full border-2 border-line px-2.5 py-0.5 text-[11px] text-muted hover:border-line-strong hover:text-text disabled:opacity-40">
+        {busy ? "Working..." : "Translate"}
+      </button>
+      <button type="button" disabled={busy || !canDub} onClick={() => dub(language.trim(), "natural")}
+        title={canDub ? "Translate, speak the lines with Meta MMS-TTS and turn the original sound down" : "No voice for this language"}
+        className="rounded-full border-2 border-line px-2.5 py-0.5 text-[11px] text-muted hover:border-line-strong hover:text-text disabled:opacity-40">
+        Dub
+      </button>
+    </form>
   );
 }

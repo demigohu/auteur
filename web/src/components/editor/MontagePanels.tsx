@@ -1,7 +1,7 @@
 "use client";
 
 import { Trash } from "@phosphor-icons/react";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useEditor } from "@/lib/store";
 import { cropAt, upsertKey, volumeAt } from "@/lib/keys";
 import { clipDuration, clipStarts } from "@/lib/time";
@@ -286,6 +286,65 @@ export function ClipLutPanel({ clip, locked }: { clip: Clip; locked: boolean }) 
 const EMPTY_LUTS: { id: string; name: string; size: number }[] = [];
 
 /** Fill (crop to the frame) or fit (the whole picture over a blurred or colored backdrop). */
+/** Background removal with SAM 3.1 masks: keep the subject, replace everything behind it. */
+export function ClipBgRemove({ clip, locked }: { clip: Clip; locked: boolean }) {
+  const applyOps = useEditor((s) => s.applyOps);
+  const removeBackground = useEditor((s) => s.removeBackground);
+  const working = useEditor((s) => s.pending === "Removing the background");
+  const media = useEditor((s) => s.project?.media.find((m) => m.id === clip.media_id));
+  const bg = clip.bg_remove;
+  const [prompt, setPrompt] = useState(bg?.prompt ?? "person");
+  const [keep, setKeep] = useState<"main" | "all">(bg?.keep ?? "main");
+  if (media?.kind !== "video") return null;
+  const backdrop = (b: Partial<NonNullable<typeof bg>["backdrop"]>) =>
+    bg && applyOps("Background backdrop", [{ op: "set_bg_remove", clip_id: clip.id, bg_remove: { ...bg, backdrop: { ...bg.backdrop, ...b } } }]);
+  return (
+    <fieldset disabled={locked || working} className="space-y-2 rounded-[10px] border-2 border-line p-2.5">
+      <p className="text-xs text-text">Remove background</p>
+      <form
+        className="flex gap-1.5"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (prompt.trim()) void removeBackground(clip.id, { prompt: prompt.trim(), keep, backdrop: bg?.backdrop ?? { kind: "blur", color: "#000000", blur: 0.04 } });
+        }}
+      >
+        <input aria-label="What to keep" value={prompt} onChange={(e) => setPrompt(e.target.value)} maxLength={60}
+          className="min-w-0 flex-1 rounded-[10px] border border-line bg-transparent px-2 py-1 text-xs text-text" />
+        <select aria-label="Which ones" value={keep} onChange={(e) => setKeep(e.target.value as "main" | "all")}
+          className="rounded-[10px] border border-line bg-transparent px-1.5 py-1 text-[11px] text-text">
+          <option value="main">Main one</option>
+          <option value="all">All</option>
+        </select>
+        <button type="submit" disabled={clip.reverse || !prompt.trim()}
+          className="rounded-full border-2 border-line px-2.5 py-1 text-[11px] text-muted transition hover:border-line-strong hover:text-text active:scale-[0.98] disabled:opacity-40">
+          {working ? "Masking..." : bg ? "Redo" : "Remove"}
+        </button>
+      </form>
+      {clip.reverse && <p className="text-[11px] text-faint">Turn reverse off first.</p>}
+      {working && <p className="text-[11px] text-faint">SAM 3.1 is masking every frame: about a minute per minute of footage.</p>}
+      {bg && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {(["blur", "color"] as const).map((k) => (
+            <button key={k} type="button" onClick={() => backdrop({ kind: k })}
+              className={`rounded-[10px] border px-2 py-1 text-[11px] transition ${bg.backdrop.kind === k ? "border-line-strong text-text" : "border-line text-muted hover:text-text"}`}>
+              {k === "blur" ? "Blurred" : "Color"}
+            </button>
+          ))}
+          {bg.backdrop.kind === "color" && (
+            <input type="color" aria-label="Backdrop color" defaultValue={bg.backdrop.color}
+              onBlur={(e) => e.target.value.toUpperCase() !== bg.backdrop.color.toUpperCase() && backdrop({ color: e.target.value.toUpperCase() })}
+              className="size-6 cursor-pointer rounded-full border-0 bg-transparent p-0" />
+          )}
+          <button type="button" onClick={() => applyOps("Show background", [{ op: "set_bg_remove", clip_id: clip.id, bg_remove: null }])}
+            className="ml-auto text-[11px] text-muted transition hover:text-danger">
+            Turn off
+          </button>
+        </div>
+      )}
+    </fieldset>
+  );
+}
+
 export function ClipFit({ clip, locked }: { clip: Clip; locked: boolean }) {
   const applyOps = useEditor((s) => s.applyOps);
   const bd = clip.backdrop;
@@ -519,6 +578,35 @@ export function OverlayInspector({ item, locked }: { item: Overlay; locked: bool
             : "Or drag it on the preview; the corner resizes it."}
         </p>
       </div>
+      <div className="space-y-1.5">
+        <label className="flex items-center gap-2 text-xs text-text">
+          <input type="checkbox" checked={Boolean(item.chroma)}
+            onChange={(e) => applyOps(e.target.checked ? "Key out green screen" : "Keying off", [{
+              op: "update_overlay", overlay_id: item.id, chroma: e.target.checked ? { color: "#00FF00", similarity: 0.3, blend: 0.08 } : null,
+            }])} />
+          Remove green / blue screen
+        </label>
+        {item.chroma && (
+          <>
+            <div className="flex items-center gap-1.5">
+              {["#00FF00", "#00B140", "#0047BB"].map((c) => (
+                <button key={c} type="button" aria-label={`Screen color ${c}`}
+                  onClick={() => applyOps("Screen color", [{ op: "update_overlay", overlay_id: item.id, chroma: { ...item.chroma!, color: c } }])}
+                  className={`size-5 rounded-full border-2 ${item.chroma!.color.toUpperCase() === c ? "border-accent" : "border-line"}`} style={{ background: c }} />
+              ))}
+              <input type="color" aria-label="Screen color: any" defaultValue={item.chroma.color}
+                onBlur={(e) => applyOps("Screen color", [{ op: "update_overlay", overlay_id: item.id, chroma: { ...item.chroma!, color: e.target.value.toUpperCase() } }])}
+                className="size-6 cursor-pointer rounded-full border-0 bg-transparent p-0" />
+            </div>
+            <Slider id="chroma-sim" label="Keying range" value={item.chroma.similarity} min={0.05} max={0.8} step={0.01}
+              format={(v) => `${Math.round(v * 100)}%`}
+              onCommit={(v) => applyOps("Keying range", [{ op: "update_overlay", overlay_id: item.id, chroma: { ...item.chroma!, similarity: v } }])} />
+            <Slider id="chroma-blend" label="Soft edge" value={item.chroma.blend} min={0} max={0.5} step={0.01}
+              format={(v) => `${Math.round(v * 100)}%`}
+              onCommit={(v) => applyOps("Soft edge", [{ op: "update_overlay", overlay_id: item.id, chroma: { ...item.chroma!, blend: v } }])} />
+          </>
+        )}
+      </div>
       <Slider id="broll-opacity" label="Opacity" value={item.opacity} min={0} max={1} step={0.05}
         format={(v) => `${Math.round(v * 100)}%`}
         onCommit={(v) => applyOps("B-roll opacity", [{ op: "update_overlay", overlay_id: item.id, opacity: v }])} />
@@ -603,6 +691,17 @@ function ClipSound({ clip }: { clip: Clip }) {
       >
         Detach audio to the music track
       </button>
+      <div className="space-y-2 rounded-[10px] border-2 border-line p-2.5">
+        <p className="text-xs text-text">Clean up sound</p>
+        <Slider id="denoise" label="Noise reduction" value={clip.audio_clean?.denoise ?? 0} min={0} max={1} step={0.1}
+          format={(v) => (v ? `${Math.round(v * 100)}%` : "off")}
+          onCommit={(v) => applyOps("Noise reduction", [{ op: "set_audio_clean", clip_id: clip.id, audio_clean: { denoise: v, voice: clip.audio_clean?.voice ?? false } }])} />
+        <label className="flex items-center gap-2 text-xs text-text">
+          <input type="checkbox" checked={clip.audio_clean?.voice ?? false}
+            onChange={(e) => applyOps(e.target.checked ? "Clearer voice" : "Plain voice", [{ op: "set_audio_clean", clip_id: clip.id, audio_clean: { denoise: clip.audio_clean?.denoise ?? 0, voice: e.target.checked } }])} />
+          Clearer voice (cut rumble, lift presence, even the level)
+        </label>
+      </div>
     </div>
   );
 }

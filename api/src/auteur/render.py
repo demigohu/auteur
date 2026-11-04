@@ -14,7 +14,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from auteur import animate, derived, grade
+from auteur import animate, derived, grade, masks
 from auteur.effects import apply_effects
 from auteur.textlayer import text_track
 from auteur.tracking import Track
@@ -238,20 +238,38 @@ def build_command(
             tone = [f"lut3d=file='{derived.scaled_lut(lut, c.lut.intensity, workdir / f'lut_{i}.cube')}'", *tone]
         edges, framed, keys = cut_edges(m, c.crop_rect, c.crop) if c.crop_rect else (None, m, c.crop)
         pre = [f"trim=start={start}:end={end}", f"setpts=(PTS-STARTPTS)/{c.speed}", f"fps={fps}", *tone, *([edges] if edges else [])]
+        src_label = f"[{vsrc}:v]"
+        if c.bg_remove:
+            # SAM mask as alpha at source size, over a backdrop; everything after (edges, crop, fit, pose) as usual.
+            mask = Path(m.path).parent / masks.mask_name(c.bg_remove.prompt, c.bg_remove.keep)
+            if not mask.exists():
+                raise RenderError(f"Clip {c.id!r} has no background mask yet; run remove_background")
+            mi = media_input(mask)
+            chains.append(f"[{vsrc}:v]{','.join(pre[:3 + len(tone)])},split[rk{i}][rb{i}]")
+            chains.append(
+                f"[{mi}:v]trim=start={c.src_in}:end={c.src_out},setpts=(PTS-STARTPTS)/{c.speed},fps={fps},"
+                f"scale={m.width}:{m.height},format=gray,gblur=sigma={max(1.0, m.height / 360):.2f}[mk{i}]"
+            )
+            chains.append(f"[rk{i}][mk{i}]alphamerge[fgk{i}]")
+            bd = c.bg_remove.backdrop
+            chains.append(f"[rb{i}]{f'gblur=sigma={bd.blur * m.height:.2f}' if bd.kind == 'blur' else f'drawbox=c={bd.color}:t=fill'}[bgk{i}]")
+            chains.append(f"[bgk{i}][fgk{i}]overlay=format=auto,format=yuv420p[cut{i}]")
+            src_label = f"[cut{i}]"
+            pre = [edges] if edges else ["null"]
         after = [*pose_filters(c, out_w, out_h), "setsar=1"]
         if c.fit == "fit":
             # The whole picture over a backdrop: the clip itself filled and blurred, or a flat color.
             fw, fh = fit_size(framed.width, framed.height, out_w, out_h)
             bd = c.backdrop
             back = f"gblur=sigma={bd.blur * out_h:.2f}" if bd.kind == "blur" else f"drawbox=c={bd.color}:t=fill"
-            chains.append(f"[{vsrc}:v]{','.join(pre)},split[fs{i}][fb{i}]")
+            chains.append(f"{src_label}{','.join(pre)},split[fs{i}][fb{i}]")
             chains.append(f"[fb{i}]{crop_filter(framed, [], out_w, out_h)},{back}[bg{i}]")
             chains.append(f"[fs{i}]scale={fw}:{fh}[fg{i}]")
             chains.append(f"[bg{i}][fg{i}]overlay={(out_w - fw) // 2}:{(out_h - fh) // 2}[base{i}]")
             head = f"[base{i}]"
             v = [*([zoom_filter(c.zoom, out_w, out_h, c.duration)] if c.zoom else []), *after]
         else:
-            head = f"[{vsrc}:v]"
+            head = src_label
             v = [*pre, crop_filter(framed, keys, out_w, out_h, c.zoom, c.duration), *after]
         # A dip fades this clip out to the color and the next one in from it, half the duration each.
         if dip_in:
@@ -278,6 +296,7 @@ def build_command(
                 "aresample=48000", "aformat=channel_layouts=stereo",
                 (f"volume='{c.volume:.3f}*({_lerp_expr([(k.t, k.v) for k in c.volume_keys])})':eval=frame"
                  if c.volume_keys else f"volume={c.volume:.3f}"),
+                *derived.audio_clean_filters(c.audio_clean),
                 f"afade=t=in:d={fade_in:.3f}",
                 f"afade=t=out:st={max(c.duration - fade_out, 0):.3f}:d={fade_out:.3f}",
             ]
@@ -309,8 +328,11 @@ def build_command(
         tone = grade.ffmpeg_filters(o.grade, grade.write_cube(o.grade, workdir / f"broll_{j}.cube"))
         end = min(o.end, tl.duration)
         picture = f"trim=start={o.src_in}:end={o.src_out},setpts=PTS-STARTPTS,fps={fps},{','.join([*tone, crop_filter(m, [], w, h)])},setsar=1"
-        if o.blend == "normal":
-            alpha = f",format=yuva420p,colorchannelmixer=aa={o.opacity:.3f}" if o.opacity < 1 else ",format=yuv420p"
+        if o.blend == "normal" or o.chroma:
+            # Keying (and opacity) work through the alpha channel; a keyed B-roll always blends normally.
+            key = "".join("," + f for f in derived.chroma_filters(o.chroma))
+            fade = f",format=yuva420p,colorchannelmixer=aa={o.opacity:.3f}" if o.opacity < 1 else ""
+            alpha = key + fade if (key or fade) else ",format=yuv420p"
             chains.append(f"[{oi}:v]{picture},setpts=PTS+{o.start:.3f}/TB{alpha}[ov{j}]")
             chains.append(
                 f"[{vacc}][ov{j}]overlay=x={x}:y={y}:enable='between(t,{o.start:.3f},{end:.3f})':eof_action=pass[vo{j}]"

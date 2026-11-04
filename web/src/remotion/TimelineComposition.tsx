@@ -213,7 +213,7 @@ function ClipLayer(props: {
       {preparing && (
         <span style={{ position: "absolute", top: H * 0.03, left: W * 0.03, padding: `${H * 0.006}px ${H * 0.012}px`, borderRadius: H * 0.01,
           background: "rgba(0,0,0,0.6)", color: "#fff", font: `600 ${Math.round(H * 0.022)}px Montserrat, sans-serif` }}>
-          Preparing {clip.reverse ? "reverse" : "LUT"} preview...
+          Preparing {clip.bg_remove ? "background" : clip.reverse ? "reverse" : clip.lut ? "LUT" : "cleaned sound"} preview...
         </span>
       )}
       {/* After zoom and transform, over the whole frame, as the export multiplies it in. */}
@@ -233,7 +233,8 @@ const BLEND_CSS: Record<Overlay["blend"], React.CSSProperties["mixBlendMode"]> =
   normal: "normal", screen: "screen", multiply: "multiply", overlay: "overlay", lighten: "lighten", darken: "darken", add: "plus-lighter",
 };
 
-function OverlayLayer({ item, media }: { item: Overlay; media: MediaView }) {
+/** `keyed`: the green/blue screen keyed out (WebM with alpha), once prepared. */
+function OverlayLayer({ item, media, keyed }: { item: Overlay; media: MediaView; keyed?: string | null }) {
   const { fps, width: W, height: H } = useVideoConfig();
   const [x, y, w, h] = overlayRect(item, W, H);
   // Cover-fit, centered: the same window crop_filter takes without crop keys.
@@ -250,7 +251,7 @@ function OverlayLayer({ item, media }: { item: Overlay; media: MediaView }) {
       }}
     >
       <Video
-        src={fileUrl(media.preview_url)}
+        src={fileUrl(keyed ?? media.preview_url)}
         trimBefore={Math.round(item.src_in * fps)}
         muted
         objectFit="fill"
@@ -412,7 +413,7 @@ export function TimelineComposition({ timeline, media, tracks, showTracks, raw, 
         timeline.overlays.map((o) =>
           media[o.media_id] && o.start < total ? (
             <Sequence key={o.id} name={o.id} from={Math.round(o.start * fps)} durationInFrames={toFrames(o.src_out - o.src_in, fps)} premountFor={fps}>
-              <OverlayLayer item={o} media={media[o.media_id]} />
+              <OverlayLayer item={o} media={media[o.media_id]} keyed={clipPreviews[o.id]} />
             </Sequence>
           ) : null,
         )}

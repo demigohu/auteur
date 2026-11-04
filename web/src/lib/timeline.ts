@@ -31,6 +31,8 @@ export interface Schema {
     | SetCropRect
     | SetFit
     | SetReverse
+    | SetAudioClean
+    | SetBgRemove
     | SetLut
     | SetTransformKeys
     | SetClipAnim
@@ -186,6 +188,11 @@ export interface Clip {
    * Play the clip backwards (sound too)
    */
   reverse: boolean;
+  audio_clean: AudioClean | null;
+  /**
+   * Background replaced using a SAM 3.1 mask (made by remove_background)
+   */
+  bg_remove: BgRemove | null;
   lut: ClipLut | null;
   /**
    * Seconds the clip's sound fades in
@@ -281,7 +288,7 @@ export interface CropRect {
   bottom: number;
 }
 /**
- * Behind a clip shown with fit
+ * What fills the frame around a clip shown whole (fit): the clip itself, filled and blurred, or a color.
  */
 export interface Backdrop {
   kind: "blur" | "color";
@@ -436,6 +443,50 @@ export interface VolumeKey {
   v: number;
 }
 /**
+ * Cleaning up a clip's sound: noise reduction, and a voice treatment (rumble cut, presence, leveling).
+ *
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "AudioClean".
+ */
+export interface AudioClean {
+  /**
+   * Background noise reduction strength
+   */
+  denoise: number;
+  /**
+   * Make speech clearer: cut rumble, lift presence, even out the level
+   */
+  voice: boolean;
+}
+/**
+ * Keep what SAM 3.1 finds for `prompt` and replace everything else with a backdrop.
+ *
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "BgRemove".
+ */
+export interface BgRemove {
+  prompt: string;
+  /**
+   * main: the biggest match (the subject); all: every match
+   */
+  keep: "main" | "all";
+  backdrop: Backdrop1;
+}
+/**
+ * What fills the frame around a clip shown whole (fit): the clip itself, filled and blurred, or a color.
+ *
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "Backdrop".
+ */
+export interface Backdrop1 {
+  kind: "blur" | "color";
+  color: string;
+  /**
+   * Gaussian blur sigma as a fraction of the frame height
+   */
+  blur: number;
+}
+/**
  * A LUT uploaded to the project (.cube), applied before the grade.
  *
  * This interface was referenced by `Schema`'s JSON-Schema
@@ -467,6 +518,10 @@ export interface Overlay {
   box: OverlayBox | null;
   opacity: number;
   /**
+   * Key out a green/blue screen (with the normal blend)
+   */
+  chroma: ChromaKey | null;
+  /**
    * How the B-roll mixes with the picture under it
    */
   blend: "normal" | "screen" | "multiply" | "overlay" | "lighten" | "darken" | "add";
@@ -492,6 +547,23 @@ export interface OverlayBox {
    * Width and height as a fraction of the frame's
    */
   scale: number;
+}
+/**
+ * Make a color (a green or blue screen) transparent.
+ *
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "ChromaKey".
+ */
+export interface ChromaKey {
+  color: string;
+  /**
+   * How far from the color still counts as screen
+   */
+  similarity: number;
+  /**
+   * Soft edge
+   */
+  blend: number;
 }
 /**
  * This interface was referenced by `Schema`'s JSON-Schema
@@ -633,6 +705,8 @@ export interface Commit {
     | SetCropRect
     | SetFit
     | SetReverse
+    | SetAudioClean
+    | SetBgRemove
     | SetLut
     | SetTransformKeys
     | SetClipAnim
@@ -933,20 +1007,6 @@ export interface SetFit {
   backdrop: Backdrop1 | null;
 }
 /**
- * What fills the frame around a clip shown whole (fit): the clip itself, filled and blurred, or a color.
- *
- * This interface was referenced by `Schema`'s JSON-Schema
- * via the `definition` "Backdrop".
- */
-export interface Backdrop1 {
-  kind: "blur" | "color";
-  color: string;
-  /**
-   * Gaussian blur sigma as a fraction of the frame height
-   */
-  blur: number;
-}
-/**
  * This interface was referenced by `Schema`'s JSON-Schema
  * via the `definition` "SetReverse".
  */
@@ -954,6 +1014,30 @@ export interface SetReverse {
   op: "set_reverse";
   clip_id: string;
   reverse: boolean;
+}
+/**
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "SetAudioClean".
+ */
+export interface SetAudioClean {
+  op: "set_audio_clean";
+  clip_id: string;
+  /**
+   * null turns cleaning off
+   */
+  audio_clean: AudioClean | null;
+}
+/**
+ * This interface was referenced by `Schema`'s JSON-Schema
+ * via the `definition` "SetBgRemove".
+ */
+export interface SetBgRemove {
+  op: "set_bg_remove";
+  clip_id: string;
+  /**
+   * null shows the original background again
+   */
+  bg_remove: BgRemove | null;
 }
 /**
  * This interface was referenced by `Schema`'s JSON-Schema
@@ -1065,6 +1149,10 @@ export interface UpdateOverlay {
   box: OverlayBox | null;
   opacity: number | null;
   blend: ("normal" | "screen" | "multiply" | "overlay" | "lighten" | "darken" | "add") | null;
+  /**
+   * null (sent explicitly) turns keying off
+   */
+  chroma: ChromaKey | null;
   grade: Grade | null;
 }
 /**

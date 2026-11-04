@@ -404,6 +404,30 @@
       "title": "AddText",
       "type": "object"
     },
+    "AudioClean": {
+      "additionalProperties": false,
+      "description": "Cleaning up a clip's sound: noise reduction, and a voice treatment (rumble cut, presence, leveling).",
+      "properties": {
+        "denoise": {
+          "default": 0,
+          "description": "Background noise reduction strength",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "voice": {
+          "default": false,
+          "description": "Make speech clearer: cut rumble, lift presence, even out the level",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "denoise",
+        "voice"
+      ],
+      "title": "AudioClean",
+      "type": "object"
+    },
     "AudioItem": {
       "additionalProperties": false,
       "description": "Music on the audio track, at an absolute timeline time.",
@@ -497,6 +521,37 @@
         "blur"
       ],
       "title": "Backdrop",
+      "type": "object"
+    },
+    "BgRemove": {
+      "additionalProperties": false,
+      "description": "Keep what SAM 3.1 finds for `prompt` and replace everything else with a backdrop.",
+      "properties": {
+        "prompt": {
+          "default": "person",
+          "maxLength": 60,
+          "minLength": 1,
+          "type": "string"
+        },
+        "keep": {
+          "default": "main",
+          "description": "main: the biggest match (the subject); all: every match",
+          "enum": [
+            "main",
+            "all"
+          ],
+          "type": "string"
+        },
+        "backdrop": {
+          "$ref": "#/$defs/Backdrop"
+        }
+      },
+      "required": [
+        "prompt",
+        "keep",
+        "backdrop"
+      ],
+      "title": "BgRemove",
       "type": "object"
     },
     "Blur": {
@@ -670,6 +725,38 @@
       "title": "CheckResult",
       "type": "object"
     },
+    "ChromaKey": {
+      "additionalProperties": false,
+      "description": "Make a color (a green or blue screen) transparent.",
+      "properties": {
+        "color": {
+          "default": "#00FF00",
+          "pattern": "^#[0-9a-fA-F]{6}$",
+          "type": "string"
+        },
+        "similarity": {
+          "default": 0.3,
+          "description": "How far from the color still counts as screen",
+          "maximum": 1,
+          "minimum": 0.01,
+          "type": "number"
+        },
+        "blend": {
+          "default": 0.08,
+          "description": "Soft edge",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "color",
+        "similarity",
+        "blend"
+      ],
+      "title": "ChromaKey",
+      "type": "object"
+    },
     "Clip": {
       "additionalProperties": false,
       "properties": {
@@ -839,6 +926,29 @@
           "description": "Play the clip backwards (sound too)",
           "type": "boolean"
         },
+        "audio_clean": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AudioClean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "bg_remove": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BgRemove"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Background replaced using a SAM 3.1 mask (made by remove_background)"
+        },
         "lut": {
           "anyOf": [
             {
@@ -888,6 +998,8 @@
         "volume",
         "volume_keys",
         "reverse",
+        "audio_clean",
+        "bg_remove",
         "lut",
         "audio_fade_in",
         "audio_fade_out"
@@ -980,7 +1092,9 @@
                 "move": "#/$defs/Move",
                 "paste_clips": "#/$defs/PasteClips",
                 "set_aspect": "#/$defs/SetAspect",
+                "set_audio_clean": "#/$defs/SetAudioClean",
                 "set_audio_fade": "#/$defs/SetAudioFade",
+                "set_bg_remove": "#/$defs/SetBgRemove",
                 "set_clip_anim": "#/$defs/SetClipAnim",
                 "set_crop": "#/$defs/SetCrop",
                 "set_crop_rect": "#/$defs/SetCropRect",
@@ -1069,6 +1183,12 @@
               },
               {
                 "$ref": "#/$defs/SetReverse"
+              },
+              {
+                "$ref": "#/$defs/SetAudioClean"
+              },
+              {
+                "$ref": "#/$defs/SetBgRemove"
               },
               {
                 "$ref": "#/$defs/SetLut"
@@ -1788,6 +1908,18 @@
           "minimum": 0,
           "type": "number"
         },
+        "chroma": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ChromaKey"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Key out a green/blue screen (with the normal blend)"
+        },
         "blend": {
           "default": "normal",
           "description": "How the B-roll mixes with the picture under it",
@@ -1819,6 +1951,7 @@
         "layout",
         "box",
         "opacity",
+        "chroma",
         "blend",
         "grade",
         "muted"
@@ -2047,6 +2180,37 @@
       "title": "SetAspect",
       "type": "object"
     },
+    "SetAudioClean": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "set_audio_clean",
+          "default": "set_audio_clean",
+          "type": "string"
+        },
+        "clip_id": {
+          "type": "string"
+        },
+        "audio_clean": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AudioClean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "null turns cleaning off"
+        }
+      },
+      "required": [
+        "op",
+        "clip_id",
+        "audio_clean"
+      ],
+      "title": "SetAudioClean",
+      "type": "object"
+    },
     "SetAudioFade": {
       "additionalProperties": false,
       "properties": {
@@ -2078,6 +2242,37 @@
         "fade_out"
       ],
       "title": "SetAudioFade",
+      "type": "object"
+    },
+    "SetBgRemove": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "set_bg_remove",
+          "default": "set_bg_remove",
+          "type": "string"
+        },
+        "clip_id": {
+          "type": "string"
+        },
+        "bg_remove": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BgRemove"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "null shows the original background again"
+        }
+      },
+      "required": [
+        "op",
+        "clip_id",
+        "bg_remove"
+      ],
+      "title": "SetBgRemove",
       "type": "object"
     },
     "SetClipAnim": {
@@ -3608,6 +3803,18 @@
           ],
           "default": null
         },
+        "chroma": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ChromaKey"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "null (sent explicitly) turns keying off"
+        },
         "grade": {
           "anyOf": [
             {
@@ -3630,6 +3837,7 @@
         "box",
         "opacity",
         "blend",
+        "chroma",
         "grade"
       ],
       "title": "UpdateOverlay",
@@ -3965,7 +4173,9 @@
           "move": "#/$defs/Move",
           "paste_clips": "#/$defs/PasteClips",
           "set_aspect": "#/$defs/SetAspect",
+          "set_audio_clean": "#/$defs/SetAudioClean",
           "set_audio_fade": "#/$defs/SetAudioFade",
+          "set_bg_remove": "#/$defs/SetBgRemove",
           "set_clip_anim": "#/$defs/SetClipAnim",
           "set_crop": "#/$defs/SetCrop",
           "set_crop_rect": "#/$defs/SetCropRect",
@@ -4054,6 +4264,12 @@
         },
         {
           "$ref": "#/$defs/SetReverse"
+        },
+        {
+          "$ref": "#/$defs/SetAudioClean"
+        },
+        {
+          "$ref": "#/$defs/SetBgRemove"
         },
         {
           "$ref": "#/$defs/SetLut"

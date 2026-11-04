@@ -12,3 +12,10 @@ export type MediaGroup = "footage" | "pictures" | "scenes" | "audio";
 
 export const groupOf = (m: Pick<MediaView, "kind" | "image" | "scene_id">): MediaGroup =>
   m.kind === "audio" ? "audio" : m.scene_id ? "scenes" : m.image ? "pictures" : "footage";
+
+/** Languages Meta MMS-TTS speaks here (api tts.LANGUAGES) and its pitch variants. */
+export const VOICE_LANGUAGES = [
+  "English", "Indonesian", "Spanish", "French", "German", "Portuguese", "Dutch", "Tagalog", "Vietnamese", "Malay",
+  "Javanese", "Sundanese", "Swahili", "Turkish", "Polish",
+];
+export const VOICES = ["natural", "deeper", "brighter"] as const;

@@ -1,5 +1,5 @@
 import { getToken } from "@clerk/nextjs";
-import type { Media, Schema, Storyboard, Timeline } from "./timeline";
+import type { Backdrop, Media, Schema, Storyboard, Timeline } from "./timeline";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -54,6 +54,18 @@ export type ExportView = {
   error: string | null;
 };
 export type ExportRequest = { format: ExportFormat; resolution: number; quality: ExportQuality; fps: number | null; mbps?: number | null };
+
+/** The timeline's spoken words (api transcript_edit.TranscriptView). */
+export type TranscriptView = {
+  clips: {
+    clip_id: string;
+    media_id: string;
+    start: number;
+    words: { text: string; src_start: number; src_end: number; start: number; end: number; filler: boolean }[];
+  }[];
+  missing: string[];
+  missing_seconds: number;
+};
 
 export type ProjectView = {
   id: string;
@@ -180,6 +192,18 @@ export const api = {
   deleteLut: (id: string, lutId: string) => request<ProjectView>(`/projects/${id}/luts/${lutId}`, { method: "DELETE" }),
   freezeFrame: (id: string, clipId: string, at: number, duration: number) =>
     request<ProjectView>(`/projects/${id}/clips/${clipId}/freeze`, json({ at, duration })),
+  removeBackground: (id: string, clipId: string, body: { prompt: string; keep: "main" | "all"; backdrop: Backdrop }) =>
+    request<ProjectView>(`/projects/${id}/clips/${clipId}/remove-background`, json(body)),
+  getTranscript: (id: string) => request<TranscriptView>(`/projects/${id}/transcript`),
+  runTranscription: (id: string) => request<TranscriptView>(`/projects/${id}/transcript/run`, { method: "POST" }),
+  cutWords: (id: string, cuts: { clip_id: string; src_start: number; src_end: number }[], label: string) =>
+    request<ProjectView>(`/projects/${id}/transcript/cut`, json({ cuts, label })),
+  generateImage: (id: string, prompt: string) => request<ProjectView>(`/projects/${id}/media/generate`, json({ prompt })),
+  translateTexts: (id: string, language: string, subtitlesOnly: boolean) =>
+    request<ProjectView>(`/projects/${id}/texts/translate`, json({ language, subtitles_only: subtitlesOnly })),
+  voiceover: (id: string, body: { text: string; language: string; voice: string; speed: number; at: number | null }) =>
+    request<ProjectView>(`/projects/${id}/voiceover`, json(body)),
+  dub: (id: string, language: string, voice: string) => request<ProjectView>(`/projects/${id}/dub`, json({ language, voice })),
   importLink: (id: string, url: string) => request<ProjectView>(`/projects/${id}/media/link`, json({ url })),
   applyOps: (id: string, label: string, ops: OpInput[]) => request<ProjectView>(`/projects/${id}/ops`, json({ label, ops })),
   undo: (id: string) => request<ProjectView>(`/projects/${id}/undo`, { method: "POST" }),

@@ -69,3 +69,82 @@ def test_a_lut_changes_the_export(ramp: Media, tmp_path: Path) -> None:
     full = render(Timeline(clips=[Clip(id="c", media_id="m", src_in=0, src_out=1, lut=ClipLut(lut_id="lut_inv"))]),
                   {"m": ramp}, tmp_path / "l.mp4", scale=1 / 30)
     assert luma(plain, 0.1) < 40 and luma(full, 0.1) > 200  # dark frames inverted
+
+
+def test_noise_reduction_quiets_hiss_and_keeps_the_sound(tmp_path: Path) -> None:
+    from auteur.timeline.models import AudioClean
+
+    src = tmp_path / "noisy.mp4"  # a 300 Hz tone (the "voice") in white noise
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=black:s=64x36:r=30:d=3",
+                    "-f", "lavfi", "-i", "anoisesrc=d=3:c=white:a=0.05", "-f", "lavfi", "-i", "sine=f=300:d=3",
+                    "-filter_complex", "[2]volume=0.3[s];[1][s]amix=inputs=2:normalize=0[a]", "-map", "0:v", "-map", "[a]",
+                    "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "pcm_s16le", "-shortest", str(src.with_suffix(".mov"))],
+                   check=True)
+    src = src.with_suffix(".mov")
+    m = Media(id="n", name="noisy", path=str(src), duration=3, fps=30, width=64, height=36, has_audio=True)
+
+    def band(out: Path, filters: str) -> float:
+        err = subprocess.run(["ffmpeg", "-i", str(out), "-af", f"{filters},volumedetect", "-f", "null", "-"],
+                             capture_output=True, text=True).stderr
+        return float(err.split("mean_volume:")[1].split("dB")[0])
+
+    plain = render(Timeline(clips=[Clip(id="c", media_id="n", src_in=0, src_out=3)]), {"n": m}, tmp_path / "a.mp4", scale=1 / 30)
+    clean = render(Timeline(clips=[Clip(id="c", media_id="n", src_in=0, src_out=3, audio_clean=AudioClean(denoise=0.8))]),
+                   {"n": m}, tmp_path / "b.mp4", scale=1 / 30)
+    assert band(clean, "highpass=f=2000") < band(plain, "highpass=f=2000") - 6  # hiss down
+    tone = "highpass=f=200,lowpass=f=400"
+    assert abs(band(clean, tone) - band(plain, tone)) < 1.5  # the tone kept
+    assert derived.audio_clean_filters(AudioClean()) == []
+    assert derived.variant_name(Clip(id="c", media_id="n", src_in=0, src_out=3, audio_clean=AudioClean(voice=True))) is not None
+
+
+def test_chroma_key_makes_the_screen_transparent(tmp_path: Path) -> None:
+    from auteur.timeline.models import ChromaKey, Overlay
+
+    base = tmp_path / "base.mp4"
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=blue:s=320x180:r=30:d=1",
+                    "-c:v", "libx264", "-pix_fmt", "yuv420p", str(base)], check=True)
+    screen = tmp_path / "screen.mp4"  # a red box on a green screen
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=0x00FF00:s=320x180:r=30:d=1",
+                    "-vf", "drawbox=x=120:y=60:w=80:h=60:color=red:t=fill", "-c:v", "libx264", "-pix_fmt", "yuv420p", str(screen)], check=True)
+    media = {k: Media(id=k, name=k, path=str(p), duration=1, fps=30, width=320, height=180, has_audio=False)
+             for k, p in (("b", base), ("s", screen))}
+    tl = Timeline(clips=[Clip(id="c", media_id="b", src_in=0, src_out=1)],
+                  overlays=[Overlay(id="o", media_id="s", src_in=0, src_out=1, start=0, chroma=ChromaKey())])
+    out = render(tl, media, tmp_path / "out.mp4", scale=1 / 6)
+    raw = subprocess.run(["ffmpeg", "-loglevel", "error", "-ss", "0.5", "-i", str(out), "-frames:v", "1", "-f", "rawvideo",
+                          "-pix_fmt", "rgb24", "-"], capture_output=True, check=True).stdout
+    f = np.frombuffer(raw, np.uint8).reshape(180, 320, 3).astype(int)
+    assert f[20, 20][2] > 150 and f[20, 20][1] < 100  # the green screen shows the blue base through
+    assert f[90, 160][0] > 150 and f[90, 160][1] < 100  # the red subject stays
+
+
+def test_background_removal_keeps_the_masked_subject(tmp_path: Path) -> None:
+    from auteur import masks
+    from auteur.timeline.models import Backdrop, BgRemove
+
+    d = tmp_path / "proj" / "media" / "m"
+    d.mkdir(parents=True)
+    src = d / "source.mp4"  # red picture
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=red:s=320x180:r=30:d=1",
+                    "-c:v", "libx264", "-pix_fmt", "yuv420p", str(src)], check=True)
+    mask = d / masks.mask_name("person", "main")  # the subject: the middle third
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=black:s=160x90:r=15:d=1",
+                    "-vf", "drawbox=x=53:y=0:w=54:h=90:color=white:t=fill", "-c:v", "libx264", "-pix_fmt", "yuv420p", str(mask)], check=True)
+    m = Media(id="m", name="m", path=str(src), duration=1, fps=30, width=320, height=180, has_audio=False)
+    clip = Clip(id="c", media_id="m", src_in=0, src_out=1,
+                bg_remove=BgRemove(backdrop=Backdrop(kind="color", color="#0000FF")))
+    out = render(Timeline(clips=[clip]), {"m": m}, tmp_path / "out.mp4", scale=1 / 6)
+    raw = subprocess.run(["ffmpeg", "-loglevel", "error", "-ss", "0.5", "-i", str(out), "-frames:v", "1", "-f", "rawvideo",
+                          "-pix_fmt", "rgb24", "-"], capture_output=True, check=True).stdout
+    f = np.frombuffer(raw, np.uint8).reshape(180, 320, 3).astype(int)
+    assert f[90, 160][0] > 150 and f[90, 160][2] < 100  # the subject (red) stays
+    assert f[90, 20][2] > 150 and f[90, 20][0] < 100  # the background is the blue backdrop
+    # The editor's preview variant is made the same way.
+    (d / "preview.mp4").write_bytes(src.read_bytes())
+    variant = derived.make_variant(d, m, clip, tmp_path / "luts")
+    assert variant.name == derived.preview_name(clip)  # the file the editor asks for
+    raw = subprocess.run(["ffmpeg", "-loglevel", "error", "-ss", "0.5", "-i", str(variant), "-frames:v", "1", "-f", "rawvideo",
+                          "-pix_fmt", "rgb24", "-"], capture_output=True, check=True).stdout
+    p = np.frombuffer(raw, np.uint8).reshape(180, 320, 3).astype(int)
+    assert p[90, 160][0] > 150 and p[90, 20][2] > 150

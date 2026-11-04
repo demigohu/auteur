@@ -4,7 +4,9 @@
 
 Built for the [Meta Global AI Developer Hackathon](https://cerebralvalley.ai/e/meta-ai-developer-hackathon), Indie Developer track. Product spec: [docs/PRD.md](docs/PRD.md).
 
-<!-- TODO: demo video link and public demo URL -->
+**Live demo: [auteurlabs.xyz](https://auteurlabs.xyz)**
+
+<!-- TODO: demo video link -->
 
 ## What makes it different
 

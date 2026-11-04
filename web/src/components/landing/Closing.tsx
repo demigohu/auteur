@@ -205,7 +205,11 @@ export function Footer() {
         Auteur
       </p>
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-paper/15 pt-5 pr-16">
-        <p className="label text-[10px] text-paper/50">© 2026 Auteur Labs</p>
+        <p className="label flex gap-4 text-[10px] text-paper/50">
+          <span>© 2026 Auteur Labs</span>
+          <a href="/privacy" className="hover:text-paper">Privacy</a>
+          <a href="/terms" className="hover:text-paper">Terms</a>
+        </p>
         <a href="#top" className="label text-[10px] text-paper/50 hover:text-paper">
           Back to top ↑
         </a>

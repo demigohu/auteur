@@ -153,9 +153,9 @@ Otherwise reply with the complete corrected file in a single ```tsx code block."
 
 
 # A request Muse Wonder never answers would otherwise wait the SDK's 10 minutes, then twice more on retry,
-# with nothing on screen. These are generous for a reasoning model; a timeout becomes a SceneError the
-# agent sees and can retry.
-STORYBOARD_TIMEOUT = 240
+# with nothing on screen. A storyboard normally takes 15-20 s (30 s scenes, three images), so a hung one
+# is retried after 90 s; a timeout becomes a SceneError the agent sees and can retry.
+STORYBOARD_TIMEOUT = 90
 SCENE_TIMEOUT = 300
 
 
@@ -167,7 +167,7 @@ async def _ask_wonder(timeout: float, what: str, **kwargs: Any) -> Any:
     try:
         return await _client(timeout).responses.create(model=WONDER, **kwargs)
     except APITimeoutError:
-        raise SceneError(f"Muse Wonder didn't answer the {what} within {timeout // 60:.0f} minutes; ask again") from None
+        raise SceneError(f"Muse Wonder didn't answer the {what} within {timeout:.0f} seconds; ask again") from None
 
 
 def image_data_url(path: Path, longest: int | None = None) -> str:

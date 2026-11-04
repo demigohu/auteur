@@ -222,6 +222,6 @@ async def test_a_wonder_request_that_never_answers_becomes_a_scene_error(monkeyp
 
     seen = {}
     monkeypatch.setattr(motion, "_client", lambda timeout: seen.setdefault("timeout", timeout) and Never)
-    with pytest.raises(motion.SceneError, match="didn't answer the storyboard within 4 minutes"):
+    with pytest.raises(motion.SceneError, match="didn't answer the storyboard within 90 seconds"):
         await motion._ask_wonder(motion.STORYBOARD_TIMEOUT, "storyboard", input="x")
-    assert seen["timeout"] == 240
+    assert seen["timeout"] == 90
